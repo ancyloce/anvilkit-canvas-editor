@@ -44,6 +44,7 @@
 	},
 	"dependencies": {
 		"@anvilkit/canvas-core": "workspace:*",
+		"use-image": "^1.1.4",
 		"zustand": "^5.0.13"
 	},
 	"scripts": {
