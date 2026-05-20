@@ -31,14 +31,28 @@ function makeMock(type: string) {
 vi.mock("react-konva", () => {
 	type StageProps = {
 		children?: ReactNode;
-		ref?: { current: { destroy: () => void } | null };
+		ref?: { current: object | null };
 		width?: number;
 		height?: number;
 	};
 	const Stage = (props: StageProps) => {
 		calls.push({ type: "Stage", props: props as Record<string, unknown> });
 		if (props.ref && "current" in props.ref) {
-			props.ref.current = { destroy: destroyMock };
+			const container = document.createElement("div");
+			props.ref.current = {
+				destroy: destroyMock,
+				on: () => {},
+				off: () => {},
+				container: () => container,
+				getPointerPosition: () => null,
+				getAbsoluteTransform: () => ({
+					copy: () => ({
+						invert: () => ({
+							point: (p: { x: number; y: number }) => p,
+						}),
+					}),
+				}),
+			};
 		}
 		return <div data-testid="stage">{props.children}</div>;
 	};
@@ -76,19 +90,25 @@ describe("CanvasStudio integration", () => {
 			pages: [createPage({ id: "p1" })],
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
-		render(<CanvasStudio ir={ir} activePageId="p1" />);
-		const layers = layerCalls();
-		expect(layers.map((l) => l.props.name)).toEqual([
+		render(<CanvasStudio initialIR={ir} activePageId="p1" />);
+		// Dedupe by name: CanvasStudio re-renders once when CanvasStage's
+		// onReady captures the stage into context state. Structure assertion
+		// should be render-count-tolerant.
+		const layersByName = new Map<string, ElementCall>();
+		for (const l of layerCalls()) {
+			const name = l.props.name as string;
+			if (!layersByName.has(name)) layersByName.set(name, l);
+		}
+		expect(Array.from(layersByName.keys())).toEqual([
 			"background",
 			"objects",
 			"selection",
 			"presence",
 		]);
-		// background + presence: listening false; objects + selection: true.
-		expect(layers[0]?.props.listening).toBe(false);
-		expect(layers[1]?.props.listening).toBe(true);
-		expect(layers[2]?.props.listening).toBe(true);
-		expect(layers[3]?.props.listening).toBe(false);
+		expect(layersByName.get("background")?.props.listening).toBe(false);
+		expect(layersByName.get("objects")?.props.listening).toBe(true);
+		expect(layersByName.get("selection")?.props.listening).toBe(true);
+		expect(layersByName.get("presence")?.props.listening).toBe(false);
 	});
 
 	it("renders one CanvasNodeRenderer per top-level child of the active page root", () => {
@@ -121,7 +141,7 @@ describe("CanvasStudio integration", () => {
 			],
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
-		render(<CanvasStudio ir={ir} activePageId="p1" />);
+		render(<CanvasStudio initialIR={ir} activePageId="p1" />);
 		// Rect + Text emitted; Image suppressed because use-image returns loading.
 		const rectCalls = calls.filter((c) => c.type === "Rect");
 		const textCalls = calls.filter((c) => c.type === "Text");
@@ -156,7 +176,7 @@ describe("CanvasStudio integration", () => {
 			pages: [page1, page2],
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
-		render(<CanvasStudio ir={ir} activePageId="p2" />);
+		render(<CanvasStudio initialIR={ir} activePageId="p2" />);
 		const ids = calls.map((c) => c.props.id).filter(Boolean);
 		expect(ids).toContain("t-page2");
 		expect(ids).not.toContain("r-page1");
@@ -168,7 +188,7 @@ describe("CanvasStudio integration", () => {
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
 		const { getByTestId } = render(
-			<CanvasStudio ir={ir} activePageId="missing" />,
+			<CanvasStudio initialIR={ir} activePageId="missing" />,
 		);
 		expect(getByTestId("canvas-empty")).toBeTruthy();
 	});
@@ -178,7 +198,9 @@ describe("CanvasStudio integration", () => {
 			pages: [createPage({ id: "p1" })],
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
-		const { unmount } = render(<CanvasStudio ir={ir} activePageId="p1" />);
+		const { unmount } = render(
+			<CanvasStudio initialIR={ir} activePageId="p1" />,
+		);
 		expect(destroyMock).not.toHaveBeenCalled();
 		unmount();
 		expect(destroyMock).toHaveBeenCalledTimes(1);
@@ -193,7 +215,7 @@ describe("CanvasStudio integration", () => {
 			pages: [page],
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
-		render(<CanvasStudio ir={ir} activePageId="p1" />);
+		render(<CanvasStudio initialIR={ir} activePageId="p1" />);
 		const stage = calls.find((c) => c.type === "Stage");
 		expect(stage?.props.width).toBe(1234);
 		expect(stage?.props.height).toBe(567);
@@ -227,7 +249,7 @@ describe("CanvasStudio integration", () => {
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
 		ir.assets["a1"] = { id: "a1", uri: "data:image/png;base64,XXX" };
-		render(<CanvasStudio ir={ir} activePageId="p1" />);
+		render(<CanvasStudio initialIR={ir} activePageId="p1" />);
 		expect(calls.some((c) => c.type === "Text" && c.props.id === "t")).toBe(
 			true,
 		);
@@ -244,7 +266,7 @@ describe("CanvasStudio integration", () => {
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
 		expect(() =>
-			render(<CanvasStudio ir={ir} activePageId="p1" />),
+			render(<CanvasStudio initialIR={ir} activePageId="p1" />),
 		).not.toThrow();
 		// Stubs return null, so they don't show up in `calls`. The fact that
 		// rendering didn't throw is the proof.

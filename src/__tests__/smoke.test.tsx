@@ -37,7 +37,7 @@ describe("canvas-editor smoke", () => {
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
 		expect(() =>
-			render(<CanvasStudio ir={ir} activePageId="p1" />),
+			render(<CanvasStudio initialIR={ir} activePageId="p1" />),
 		).not.toThrow();
 	});
 
@@ -47,7 +47,7 @@ describe("canvas-editor smoke", () => {
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
 		const { getByTestId } = render(
-			<CanvasStudio ir={ir} activePageId="missing" />,
+			<CanvasStudio initialIR={ir} activePageId="missing" />,
 		);
 		expect(getByTestId("canvas-empty")).toBeTruthy();
 	});
