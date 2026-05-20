@@ -1,0 +1,79 @@
+{
+	"name": "@anvilkit/canvas-editor",
+	"version": "0.1.0",
+	"description": "React + Konva editor UI for AnvilKit Canvas Studio. Loads inside <Studio> via next/dynamic({ ssr: false }).",
+	"type": "module",
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
+		},
+		"./*": {
+			"import": {
+				"types": "./dist/*.d.ts",
+				"default": "./dist/*.js"
+			},
+			"require": {
+				"types": "./dist/*.d.cts",
+				"default": "./dist/*.cjs"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"license": "MIT",
+	"sideEffects": false,
+	"publishConfig": {
+		"access": "public"
+	},
+	"peerDependencies": {
+		"konva": "^9 || ^10",
+		"react": ">=19.0.0",
+		"react-dom": ">=19.0.0",
+		"react-konva": "^19"
+	},
+	"dependencies": {
+		"@anvilkit/canvas-core": "workspace:*"
+	},
+	"scripts": {
+		"build": "rslib build",
+		"dev": "rslib build --watch",
+		"lint": "pnpm exec biome lint package.json tsconfig.json rslib.config.ts vitest.config.ts src",
+		"format": "pnpm exec biome check --write package.json tsconfig.json rslib.config.ts vitest.config.ts src",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"publint": "publint",
+		"size": "size-limit"
+	},
+	"devDependencies": {
+		"@anvilkit/biome-config": "workspace:*",
+		"@anvilkit/typescript-config": "workspace:*",
+		"@anvilkit/vitest-config": "workspace:*",
+		"@rsbuild/plugin-react": "^1.4.6",
+		"@rslib/core": "^0.20.1",
+		"@testing-library/jest-dom": "^6.9.1",
+		"@testing-library/react": "^16.3.2",
+		"@types/node": "^25.6.0",
+		"@types/react": "19.2.14",
+		"@types/react-dom": "19.2.3",
+		"jsdom": "^29.1.1",
+		"konva": "^9.3.0",
+		"publint": "^0.3.20",
+		"react": "^19.2.6",
+		"react-dom": "^19.2.6",
+		"react-konva": "^19.2.4",
+		"typescript": "6.0.3",
+		"vitest": "^4.1.6"
+	}
+}

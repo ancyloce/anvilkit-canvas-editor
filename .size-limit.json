@@ -1,0 +1,17 @@
+[
+	{
+		"name": "@anvilkit/canvas-editor",
+		"path": "dist/index.js",
+		"limit": "400 KB",
+		"gzip": true,
+		"ignore": [
+			"react",
+			"react-dom",
+			"react/jsx-runtime",
+			"react/jsx-dev-runtime",
+			"konva",
+			"react-konva",
+			"@anvilkit/canvas-core"
+		]
+	}
+]
