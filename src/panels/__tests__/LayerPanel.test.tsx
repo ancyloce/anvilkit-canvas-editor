@@ -1,8 +1,8 @@
 import {
 	type CanvasIR,
 	type CanvasNodeDeleteCommand,
-	type CanvasNodeUpdateCommand,
 	type CanvasNodeKind,
+	type CanvasNodeUpdateCommand,
 	createCanvasIR,
 	createPage,
 	createRect,

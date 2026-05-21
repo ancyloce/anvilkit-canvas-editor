@@ -7,6 +7,10 @@ import {
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { describe, expect, it } from "vitest";
+import {
+	makeHarness,
+	pointerEvent,
+} from "../tools/__tests__/_tool-test-helpers.js";
 import { ellipseTool } from "../tools/ellipse-tool.js";
 import { handTool } from "../tools/hand-tool.js";
 import { imageTool } from "../tools/image-tool.js";
@@ -14,10 +18,6 @@ import { lineTool } from "../tools/line-tool.js";
 import { rectTool } from "../tools/rect-tool.js";
 import { selectTool } from "../tools/select-tool.js";
 import { textTool } from "../tools/text-tool.js";
-import {
-	makeHarness,
-	pointerEvent,
-} from "../tools/__tests__/_tool-test-helpers.js";
 
 /**
  * MVP-7 (PRD FR-011) contract: a full pointer interaction (down → many

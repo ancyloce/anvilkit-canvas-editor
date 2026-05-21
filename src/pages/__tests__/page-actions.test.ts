@@ -10,6 +10,7 @@ import {
 	createRect,
 } from "@anvilkit/canvas-core";
 import { describe, expect, it } from "vitest";
+import { makeHarness } from "../../tools/__tests__/_tool-test-helpers.js";
 import {
 	addPage,
 	deletePage,
@@ -18,7 +19,6 @@ import {
 	reorderPage,
 	switchToPage,
 } from "../page-actions.js";
-import { makeHarness } from "../../tools/__tests__/_tool-test-helpers.js";
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
 

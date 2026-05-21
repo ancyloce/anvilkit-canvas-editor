@@ -1,5 +1,5 @@
-import { computeSnap } from "../snap/snap-engine.js";
 import { getOtherNodeRects } from "../snap/get-node-rect.js";
+import { computeSnap } from "../snap/snap-engine.js";
 import type { SmartGuide } from "../snap/snap-types.js";
 import type { ToolContext } from "./tool-types.js";
 

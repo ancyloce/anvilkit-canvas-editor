@@ -14,6 +14,9 @@ import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
 } from "./context/canvas-studio-context.js";
+import { PageNavigator } from "./pages/PageNavigator.js";
+import { CanvasTransformer } from "./selection/CanvasTransformer.js";
+import { SmartGuideOverlay } from "./snap/SmartGuideOverlay.js";
 import { CanvasAssetsContext } from "./stage/CanvasAssetsContext.js";
 import { CanvasNodeRenderer } from "./stage/CanvasNodeRenderer.js";
 import { CanvasStage } from "./stage/CanvasStage.js";
@@ -22,8 +25,6 @@ import { Grid } from "./stage/Grid.js";
 import { RemoteCursors } from "./stage/RemoteCursors.js";
 import { RemoteSelections } from "./stage/RemoteSelections.js";
 import { RenderLayer } from "./stage/RenderLayer.js";
-import { CanvasTransformer } from "./selection/CanvasTransformer.js";
-import { SmartGuideOverlay } from "./snap/SmartGuideOverlay.js";
 import { createDraftStore } from "./stores/draft-store.js";
 import { createEditingStore } from "./stores/editing-store.js";
 import { createGuidesStore } from "./stores/guides-store.js";
@@ -32,7 +33,6 @@ import { createPagesStore } from "./stores/pages-store.js";
 import { createSelectionStore } from "./stores/selection-store.js";
 import { createToolStore, type ToolId } from "./stores/tool-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
-import { PageNavigator } from "./pages/PageNavigator.js";
 import { DraftRenderer } from "./tools/DraftRenderer.js";
 import { TextEditorOverlay } from "./tools/TextEditorOverlay.js";
 import { ToolInteractionLayer } from "./tools/ToolInteractionLayer.js";

@@ -1,5 +1,5 @@
-import type Konva from "konva";
 import { act, render } from "@testing-library/react";
+import type Konva from "konva";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	CanvasStudioContext,
