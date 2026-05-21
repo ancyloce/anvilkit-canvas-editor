@@ -8,6 +8,7 @@ import { createDraftStore } from "../../stores/draft-store.js";
 import { createEditingStore } from "../../stores/editing-store.js";
 import { createGuidesStore } from "../../stores/guides-store.js";
 import { createHistoryStore } from "../../stores/history-store.js";
+import { createPagesStore } from "../../stores/pages-store.js";
 import { createSelectionStore } from "../../stores/selection-store.js";
 import { createToolStore } from "../../stores/tool-store.js";
 import { createViewportStore } from "../../stores/viewport-store.js";
@@ -32,11 +33,13 @@ function makeCtx(): CanvasStudioContextValue {
 		guidesStore: createGuidesStore(),
 		draftStore: createDraftStore(),
 		editingStore: createEditingStore(),
+		pagesStore: createPagesStore({ initialActivePageId: "p1" }),
 		getIR: () => ({}) as never,
 		commit: vi.fn(() => ({}) as never),
 		pickAsset: () => Promise.resolve(""),
 		stage: null,
 		activePageId: "p1",
+		ir: {} as never,
 	};
 }
 
