@@ -28,9 +28,11 @@ import { createDraftStore } from "./stores/draft-store.js";
 import { createEditingStore } from "./stores/editing-store.js";
 import { createGuidesStore } from "./stores/guides-store.js";
 import { createHistoryStore } from "./stores/history-store.js";
+import { createPagesStore } from "./stores/pages-store.js";
 import { createSelectionStore } from "./stores/selection-store.js";
 import { createToolStore, type ToolId } from "./stores/tool-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
+import { PageNavigator } from "./pages/PageNavigator.js";
 import { DraftRenderer } from "./tools/DraftRenderer.js";
 import { TextEditorOverlay } from "./tools/TextEditorOverlay.js";
 import { ToolInteractionLayer } from "./tools/ToolInteractionLayer.js";
@@ -42,7 +44,12 @@ export interface CanvasStudioProps {
 	 * internal IR. Use `onChange` to mirror state into a host store.
 	 */
 	initialIR: CanvasIR;
-	activePageId: string;
+	/**
+	 * Initial active page id. Defaults to `initialIR.pages[0].id`. Uncontrolled
+	 * — after mount the `pagesStore` owns the active id; switch pages via the
+	 * `<PageNavigator>` or by calling `useCanvasStudio().pagesStore.getState().setActivePageId(...)`.
+	 */
+	initialActivePageId?: string;
 	width?: number;
 	height?: number;
 	initialTool?: ToolId;
@@ -52,17 +59,20 @@ export interface CanvasStudioProps {
 	onPickAsset?: () => Promise<string>;
 	/** Tool registry override (mainly for tests). Defaults to the built-in registry. */
 	toolRegistry?: ToolRegistry;
+	/** Suppress the built-in `<PageNavigator>` (e.g. hosts that bring their own). */
+	hidePageNavigator?: boolean;
 }
 
 export function CanvasStudio({
 	initialIR,
-	activePageId,
+	initialActivePageId,
 	width,
 	height,
 	initialTool,
 	onChange,
 	onPickAsset,
 	toolRegistry,
+	hidePageNavigator,
 }: CanvasStudioProps): React.JSX.Element {
 	const [ir, setIR] = useState<CanvasIR>(initialIR);
 	const irRef = useRef<CanvasIR>(ir);
@@ -72,6 +82,16 @@ export function CanvasStudio({
 	const [toolStore] = useState(() => createToolStore({ initialTool }));
 	const [selectionStore] = useState(() => createSelectionStore());
 	const [viewportStore] = useState(() => createViewportStore());
+	const [pagesStore] = useState(() =>
+		createPagesStore({
+			initialActivePageId: initialActivePageId ?? initialIR.pages[0]?.id ?? "",
+		}),
+	);
+	const activePageId = useSyncExternalStore(
+		pagesStore.subscribe,
+		() => pagesStore.getState().activePageId,
+		() => pagesStore.getState().activePageId,
+	);
 
 	// Subscribe so viewportStore changes (hand-tool pan, zoom) re-render
 	// <CanvasStage> with the new transform.
@@ -135,11 +155,13 @@ export function CanvasStudio({
 			guidesStore,
 			draftStore,
 			editingStore,
+			pagesStore,
 			getIR,
 			commit,
 			pickAsset,
 			stage,
 			activePageId,
+			ir,
 		}),
 		[
 			historyStore,
@@ -149,11 +171,13 @@ export function CanvasStudio({
 			guidesStore,
 			draftStore,
 			editingStore,
+			pagesStore,
 			getIR,
 			commit,
 			pickAsset,
 			stage,
 			activePageId,
+			ir,
 		],
 	);
 
@@ -169,37 +193,43 @@ export function CanvasStudio({
 	const stageHeight = height ?? activePage.size.height;
 	return (
 		<CanvasStudioContext.Provider value={ctxValue}>
-			<CanvasAssetsContext.Provider value={ir.assets}>
-				<CanvasStage
-					width={stageWidth}
-					height={stageHeight}
-					zoom={zoom}
-					panX={panX}
-					panY={panY}
-					onReady={setStage}
-				>
-					<RenderLayer name="background" listening={false}>
-						<DesignBackground />
-						<Grid />
-					</RenderLayer>
-					<RenderLayer name="objects">
-						{activePage.root.children.map((node) => (
-							<CanvasNodeRenderer key={node.id} node={node} />
-						))}
-					</RenderLayer>
-					<RenderLayer name="selection">
-						<DraftRenderer />
-						<SmartGuideOverlay />
-						<CanvasTransformer />
-					</RenderLayer>
-					<RenderLayer name="presence" listening={false}>
-						<RemoteCursors />
-						<RemoteSelections />
-					</RenderLayer>
-				</CanvasStage>
-				<ToolInteractionLayer registry={toolRegistry} />
-				<TextEditorOverlay />
-			</CanvasAssetsContext.Provider>
+			<div
+				data-testid="canvas-studio-root"
+				style={{ display: "flex", flexDirection: "column" }}
+			>
+				{!hidePageNavigator && <PageNavigator />}
+				<CanvasAssetsContext.Provider value={ir.assets}>
+					<CanvasStage
+						width={stageWidth}
+						height={stageHeight}
+						zoom={zoom}
+						panX={panX}
+						panY={panY}
+						onReady={setStage}
+					>
+						<RenderLayer name="background" listening={false}>
+							<DesignBackground />
+							<Grid />
+						</RenderLayer>
+						<RenderLayer name="objects">
+							{activePage.root.children.map((node) => (
+								<CanvasNodeRenderer key={node.id} node={node} />
+							))}
+						</RenderLayer>
+						<RenderLayer name="selection">
+							<DraftRenderer />
+							<SmartGuideOverlay />
+							<CanvasTransformer />
+						</RenderLayer>
+						<RenderLayer name="presence" listening={false}>
+							<RemoteCursors />
+							<RemoteSelections />
+						</RenderLayer>
+					</CanvasStage>
+					<ToolInteractionLayer registry={toolRegistry} />
+					<TextEditorOverlay />
+				</CanvasAssetsContext.Provider>
+			</div>
 		</CanvasStudioContext.Provider>
 	);
 }

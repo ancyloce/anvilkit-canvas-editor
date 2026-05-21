@@ -44,6 +44,23 @@ export type {
 } from "./stores/editing-store.js";
 export { createGuidesStore } from "./stores/guides-store.js";
 export type { GuidesState, GuidesStoreApi } from "./stores/guides-store.js";
+export { createPagesStore } from "./stores/pages-store.js";
+export type {
+	CreatePagesStoreOptions,
+	PagesState,
+	PagesStoreApi,
+} from "./stores/pages-store.js";
+export { clonePage, regenerateIds } from "./pages/clone-page.js";
+export type { ClonePageOptions } from "./pages/clone-page.js";
+export { PageNavigator } from "./pages/PageNavigator.js";
+export type { PageNavigatorProps } from "./pages/PageNavigator.js";
+export {
+	addPage,
+	deletePage,
+	duplicateCurrentPage,
+	switchToPage,
+} from "./pages/page-actions.js";
+export type { AddPageOptions } from "./pages/page-actions.js";
 export { createSelectionStore } from "./stores/selection-store.js";
 export type {
 	SelectionState,
