@@ -2,10 +2,12 @@ import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
 import { createCanvasIR, createPage } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { vi } from "vitest";
+import type { CanvasStudioContextValue } from "../../context/canvas-studio-context.js";
 import { createDraftStore } from "../../stores/draft-store.js";
 import { createEditingStore } from "../../stores/editing-store.js";
 import { createGuidesStore } from "../../stores/guides-store.js";
 import { createHistoryStore } from "../../stores/history-store.js";
+import { createPagesStore } from "../../stores/pages-store.js";
 import { createSelectionStore } from "../../stores/selection-store.js";
 import { createToolStore } from "../../stores/tool-store.js";
 import { createViewportStore } from "../../stores/viewport-store.js";
@@ -32,37 +34,91 @@ export function makeFakeStage(): Konva.Stage {
 
 export interface TestHarness {
 	ctx: ToolContext;
+	/** Full <CanvasStudio> context shape — for tests of page-actions etc. */
+	studioCtx: CanvasStudioContextValue;
 	ir: CanvasIR;
 	setIR: (next: CanvasIR) => void;
 	commits: CanvasCommand[];
 }
 
-export function makeHarness(opts: { pageId?: string } = {}): TestHarness {
+export interface MakeHarnessOptions {
+	pageId?: string;
+	/** Provide a custom IR (e.g. multi-page). Overrides the default 1-page IR. */
+	ir?: CanvasIR;
+}
+
+export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 	const pageId = opts.pageId ?? "p1";
-	let ir = createCanvasIR({
-		id: "ir-1",
-		pages: [createPage({ id: pageId })],
-		now: () => FIXED_TS,
-	});
+	let ir =
+		opts.ir ??
+		createCanvasIR({
+			id: "ir-1",
+			pages: [createPage({ id: pageId })],
+			now: () => FIXED_TS,
+		});
 	const commits: CanvasCommand[] = [];
+
+	const historyStore = createHistoryStore();
+	const selectionStore = createSelectionStore();
+	const viewportStore = createViewportStore({ gridEnabled: false });
+	const toolStore = createToolStore();
+	const guidesStore = createGuidesStore();
+	const draftStore = createDraftStore();
+	const editingStore = createEditingStore();
+	const pagesStore = createPagesStore({
+		initialActivePageId: opts.ir ? (opts.ir.pages[0]?.id ?? pageId) : pageId,
+	});
+
+	const stage = makeFakeStage();
+	const getIR = () => ir;
+	// Record-only commit — does NOT apply the command via historyStore. Keeps
+	// behavior compatible with tool tests that override `getIR` to return a
+	// fixture IR whose nodes wouldn't exist in the harness's blank IR. Tests
+	// that need post-commit state can call `historyStore.getState().commit(...)`
+	// directly with their own IR.
+	const commit = vi.fn((cmd: CanvasCommand) => {
+		commits.push(cmd);
+		return ir;
+	});
+	const pickAsset = vi.fn(() => Promise.resolve("asset-1"));
+
 	const ctx: ToolContext = {
-		stage: makeFakeStage(),
-		getIR: () => ir,
-		commit: vi.fn((cmd: CanvasCommand) => {
-			commits.push(cmd);
-			return ir;
-		}),
-		selectionStore: createSelectionStore(),
-		viewportStore: createViewportStore({ gridEnabled: false }),
-		toolStore: createToolStore(),
-		guidesStore: createGuidesStore(),
-		draftStore: createDraftStore(),
-		editingStore: createEditingStore(),
-		pickAsset: vi.fn(() => Promise.resolve("asset-1")),
-		activePageId: pageId,
+		stage,
+		getIR,
+		commit,
+		selectionStore,
+		viewportStore,
+		toolStore,
+		guidesStore,
+		draftStore,
+		editingStore,
+		pickAsset,
+		activePageId: pagesStore.getState().activePageId,
 	};
+
+	const studioCtx: CanvasStudioContextValue = {
+		historyStore,
+		toolStore,
+		selectionStore,
+		viewportStore,
+		guidesStore,
+		draftStore,
+		editingStore,
+		pagesStore,
+		getIR,
+		commit,
+		pickAsset,
+		stage,
+		// `activePageId` and `ir` are snapshots at harness creation. Live reads
+		// flow through pagesStore + getIR; page-actions don't read these
+		// fields directly.
+		activePageId: pagesStore.getState().activePageId,
+		ir,
+	};
+
 	return {
 		ctx,
+		studioCtx,
 		ir,
 		setIR(next) {
 			ir = next;
