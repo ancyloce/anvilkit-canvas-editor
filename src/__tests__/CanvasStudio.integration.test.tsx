@@ -91,7 +91,7 @@ describe("CanvasStudio integration", () => {
 			pages: [createPage({ id: "p1" })],
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
-		render(<CanvasStudio initialIR={ir} activePageId="p1" />);
+		render(<CanvasStudio initialIR={ir} initialActivePageId="p1" />);
 		// Dedupe by name: CanvasStudio re-renders once when CanvasStage's
 		// onReady captures the stage into context state. Structure assertion
 		// should be render-count-tolerant.
@@ -142,7 +142,7 @@ describe("CanvasStudio integration", () => {
 			],
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
-		render(<CanvasStudio initialIR={ir} activePageId="p1" />);
+		render(<CanvasStudio initialIR={ir} initialActivePageId="p1" />);
 		// Rect + Text emitted; Image suppressed because use-image returns loading.
 		const rectCalls = calls.filter((c) => c.type === "Rect");
 		const textCalls = calls.filter((c) => c.type === "Text");
@@ -177,7 +177,7 @@ describe("CanvasStudio integration", () => {
 			pages: [page1, page2],
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
-		render(<CanvasStudio initialIR={ir} activePageId="p2" />);
+		render(<CanvasStudio initialIR={ir} initialActivePageId="p2" />);
 		const ids = calls.map((c) => c.props.id).filter(Boolean);
 		expect(ids).toContain("t-page2");
 		expect(ids).not.toContain("r-page1");
@@ -189,7 +189,7 @@ describe("CanvasStudio integration", () => {
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
 		const { getByTestId } = render(
-			<CanvasStudio initialIR={ir} activePageId="missing" />,
+			<CanvasStudio initialIR={ir} initialActivePageId="missing" />,
 		);
 		expect(getByTestId("canvas-empty")).toBeTruthy();
 	});
@@ -200,7 +200,7 @@ describe("CanvasStudio integration", () => {
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
 		const { unmount } = render(
-			<CanvasStudio initialIR={ir} activePageId="p1" />,
+			<CanvasStudio initialIR={ir} initialActivePageId="p1" />,
 		);
 		expect(destroyMock).not.toHaveBeenCalled();
 		unmount();
@@ -216,7 +216,7 @@ describe("CanvasStudio integration", () => {
 			pages: [page],
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
-		render(<CanvasStudio initialIR={ir} activePageId="p1" />);
+		render(<CanvasStudio initialIR={ir} initialActivePageId="p1" />);
 		const stage = calls.find((c) => c.type === "Stage");
 		expect(stage?.props.width).toBe(1234);
 		expect(stage?.props.height).toBe(567);
@@ -250,7 +250,7 @@ describe("CanvasStudio integration", () => {
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
 		ir.assets["a1"] = { id: "a1", uri: "data:image/png;base64,XXX" };
-		render(<CanvasStudio initialIR={ir} activePageId="p1" />);
+		render(<CanvasStudio initialIR={ir} initialActivePageId="p1" />);
 		expect(calls.some((c) => c.type === "Text" && c.props.id === "t")).toBe(
 			true,
 		);
@@ -267,9 +267,40 @@ describe("CanvasStudio integration", () => {
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
 		expect(() =>
-			render(<CanvasStudio initialIR={ir} activePageId="p1" />),
+			render(<CanvasStudio initialIR={ir} initialActivePageId="p1" />),
 		).not.toThrow();
 		// Stubs return null, so they don't show up in `calls`. The fact that
 		// rendering didn't throw is the proof.
+	});
+
+	it("mounts <PageNavigator> by default (MVP-8 integration)", () => {
+		const ir = createCanvasIR({
+			pages: [createPage({ id: "p1" })],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		const { container } = render(
+			<CanvasStudio initialIR={ir} initialActivePageId="p1" />,
+		);
+		expect(
+			container.querySelector("[data-testid='page-navigator']"),
+		).not.toBeNull();
+		expect(container.querySelector("[data-testid='page-add']")).not.toBeNull();
+	});
+
+	it("hidePageNavigator hides the built-in nav", () => {
+		const ir = createCanvasIR({
+			pages: [createPage({ id: "p1" })],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		const { container } = render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				hidePageNavigator
+			/>,
+		);
+		expect(
+			container.querySelector("[data-testid='page-navigator']"),
+		).toBeNull();
 	});
 });
