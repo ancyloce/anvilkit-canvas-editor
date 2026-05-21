@@ -105,6 +105,10 @@ export type {
 	SnapRect,
 	SnapResult,
 } from "./snap/snap-types.js";
+export { LayerPanel } from "./panels/LayerPanel.js";
+export type { LayerPanelProps } from "./panels/LayerPanel.js";
+export { PropertyInspector } from "./panels/PropertyInspector.js";
+export type { PropertyInspectorProps } from "./panels/PropertyInspector.js";
 export { CanvasTransformer } from "./selection/CanvasTransformer.js";
 export {
 	DRAFT_DASH,

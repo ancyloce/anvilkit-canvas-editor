@@ -57,6 +57,13 @@ export interface CanvasStudioProps {
 	onChange?: (ir: CanvasIR, command: CanvasCommand) => void;
 	/** Required for the image tool (MVP-6 Task 8). Host opens picker, returns asset id. */
 	onPickAsset?: () => Promise<string>;
+	/**
+	 * Fires once after `<CanvasStage>` has constructed the Konva.Stage, and
+	 * again with `null` when the stage tears down. Hosts use this to drive
+	 * export pipelines (e.g. `stage.toDataURL()`) without reaching into the
+	 * editor's internals.
+	 */
+	onStageReady?: (stage: Konva.Stage | null) => void;
 	/** Tool registry override (mainly for tests). Defaults to the built-in registry. */
 	toolRegistry?: ToolRegistry;
 	/** Suppress the built-in `<PageNavigator>` (e.g. hosts that bring their own). */
@@ -71,12 +78,26 @@ export function CanvasStudio({
 	initialTool,
 	onChange,
 	onPickAsset,
+	onStageReady,
 	toolRegistry,
 	hidePageNavigator,
 }: CanvasStudioProps): React.JSX.Element {
 	const [ir, setIR] = useState<CanvasIR>(initialIR);
 	const irRef = useRef<CanvasIR>(ir);
 	const [stage, setStage] = useState<Konva.Stage | null>(null);
+	const onStageReadyRef = useRef(onStageReady);
+	useEffect(() => {
+		onStageReadyRef.current = onStageReady;
+	}, [onStageReady]);
+	const handleStageReady = useCallback((next: Konva.Stage | null) => {
+		setStage(next);
+		onStageReadyRef.current?.(next);
+	}, []);
+	useEffect(() => {
+		return () => {
+			onStageReadyRef.current?.(null);
+		};
+	}, []);
 
 	const [historyStore] = useState(() => createHistoryStore());
 	const [toolStore] = useState(() => createToolStore({ initialTool }));
@@ -205,7 +226,7 @@ export function CanvasStudio({
 						zoom={zoom}
 						panX={panX}
 						panY={panY}
-						onReady={setStage}
+						onReady={handleStageReady}
 					>
 						<RenderLayer name="background" listening={false}>
 							<DesignBackground />
