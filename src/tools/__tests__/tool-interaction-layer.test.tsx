@@ -5,6 +5,9 @@ import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
 } from "../../context/canvas-studio-context.js";
+import { createDraftStore } from "../../stores/draft-store.js";
+import { createEditingStore } from "../../stores/editing-store.js";
+import { createGuidesStore } from "../../stores/guides-store.js";
 import { createHistoryStore } from "../../stores/history-store.js";
 import { createSelectionStore } from "../../stores/selection-store.js";
 import { createToolStore } from "../../stores/tool-store.js";
@@ -57,6 +60,9 @@ function makeCtx(
 		toolStore: createToolStore(),
 		selectionStore: createSelectionStore(),
 		viewportStore: createViewportStore(),
+		guidesStore: createGuidesStore(),
+		draftStore: createDraftStore(),
+		editingStore: createEditingStore(),
 		getIR: () =>
 			({
 				version: "1",
@@ -69,6 +75,7 @@ function makeCtx(
 		commit: vi.fn(() => ({}) as never),
 		pickAsset,
 		stage,
+		activePageId: "p1",
 	};
 }
 
