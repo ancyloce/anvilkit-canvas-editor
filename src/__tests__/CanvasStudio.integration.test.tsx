@@ -41,8 +41,8 @@ vi.mock("react-konva", () => {
 			const container = document.createElement("div");
 			props.ref.current = {
 				destroy: destroyMock,
-				on: () => {},
-				off: () => {},
+				on: vi.fn(),
+				off: vi.fn(),
 				container: () => container,
 				getPointerPosition: () => null,
 				getAbsoluteTransform: () => ({
@@ -66,6 +66,7 @@ vi.mock("react-konva", () => {
 		Path: makeMock("Path"),
 		Text: makeMock("Text"),
 		Image: makeMock("Image"),
+		Transformer: makeMock("Transformer"),
 	};
 });
 

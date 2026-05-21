@@ -16,6 +16,7 @@ vi.mock("react-konva", () => {
 		Path: Leaf,
 		Text: Leaf,
 		Image: Leaf,
+		Transformer: Leaf,
 	};
 });
 
