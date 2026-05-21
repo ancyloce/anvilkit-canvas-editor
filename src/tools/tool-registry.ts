@@ -1,10 +1,24 @@
+import { ellipseTool } from "./ellipse-tool.js";
+import { handTool } from "./hand-tool.js";
+import { imageTool } from "./image-tool.js";
+import { lineTool } from "./line-tool.js";
+import { rectTool } from "./rect-tool.js";
+import { selectTool } from "./select-tool.js";
+import { textTool } from "./text-tool.js";
 import type { Tool, ToolRegistry } from "./tool-types.js";
 
 /**
- * Default tool registry. Each MVP-6 task adds its tool here.
- * Tasks 4–9 populate this object as their tools land.
+ * Default tool registry — all 7 PRD FR-009 tools wired.
  */
-export const defaultToolRegistry: ToolRegistry = {};
+export const defaultToolRegistry: ToolRegistry = {
+	select: selectTool,
+	rect: rectTool,
+	ellipse: ellipseTool,
+	line: lineTool,
+	text: textTool,
+	image: imageTool,
+	hand: handTool,
+};
 
 export function buildToolRegistry(tools: Tool[]): ToolRegistry {
 	const registry: ToolRegistry = {};
