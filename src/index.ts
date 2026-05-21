@@ -22,6 +22,11 @@ export { RemoteCursors } from "./stage/RemoteCursors.js";
 export { RemoteSelections } from "./stage/RemoteSelections.js";
 export { RenderLayer } from "./stage/RenderLayer.js";
 export type { RenderLayerName, RenderLayerProps } from "./stage/RenderLayer.js";
+export { rasterizePage } from "./render/rasterize-page.js";
+export type {
+	RasterizePageInput,
+	RasterizePageResult,
+} from "./render/rasterize-page.js";
 export {
 	createHistoryStore,
 	DEFAULT_HISTORY_LIMIT,
