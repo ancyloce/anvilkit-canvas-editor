@@ -1,0 +1,162 @@
+import {
+	type CanvasIR,
+	type CanvasNodeDeleteCommand,
+	type CanvasNodeUpdateCommand,
+	type CanvasNodeKind,
+	createCanvasIR,
+	createPage,
+	createRect,
+	createText,
+} from "@anvilkit/canvas-core";
+import { fireEvent, render } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import {
+	CanvasStudioContext,
+	type CanvasStudioContextValue,
+} from "../../context/canvas-studio-context.js";
+import { makeHarness } from "../../tools/__tests__/_tool-test-helpers.js";
+import { LayerPanel } from "../LayerPanel.js";
+
+const FIXED_TS = "2026-05-20T00:00:00.000Z";
+
+function withNodesIR(): CanvasIR {
+	const ir = createCanvasIR({
+		id: "ir-1",
+		pages: [createPage({ id: "p1" })],
+		now: () => FIXED_TS,
+	});
+	const rect = createRect({
+		id: "rect-a",
+		bounds: { width: 50, height: 50 },
+		now: () => FIXED_TS,
+	});
+	const text = createText({
+		id: "text-b",
+		text: "Hello",
+		bounds: { width: 100, height: 20 },
+		now: () => FIXED_TS,
+	});
+	const firstPage = ir.pages[0];
+	if (!firstPage) throw new Error("expected at least one page");
+	firstPage.root.children = [rect, text];
+	return ir;
+}
+
+function mount(ctx: CanvasStudioContextValue) {
+	return render(
+		<CanvasStudioContext.Provider value={ctx}>
+			<LayerPanel />
+		</CanvasStudioContext.Provider>,
+	);
+}
+
+describe("LayerPanel — render", () => {
+	it("renders one row per layer with top-most layer first", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		const { container } = mount(h.studioCtx);
+		const rows = container.querySelectorAll("[data-testid^='layer-row-']");
+		// Two layer rows: rect-a and text-b. (Buttons inside rows match the same
+		// prefix, so filter to the row containers themselves.)
+		const rowIds = Array.from(rows)
+			.map((el) => el.getAttribute("data-testid") ?? "")
+			.filter((id) => id === "layer-row-rect-a" || id === "layer-row-text-b");
+		expect(rowIds).toEqual(["layer-row-text-b", "layer-row-rect-a"]);
+	});
+
+	it("renders an empty state when the active page has no children", () => {
+		const h = makeHarness();
+		const { container } = mount(h.studioCtx);
+		expect(
+			container.querySelector("[data-testid='layer-panel-empty']"),
+		).not.toBeNull();
+	});
+});
+
+describe("LayerPanel — selection", () => {
+	it("clicking a row sets selection to that node", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		const { container } = mount(h.studioCtx);
+		const row = container.querySelector(
+			"[data-testid='layer-row-rect-a']",
+		) as HTMLElement;
+		fireEvent.click(row);
+		expect(h.studioCtx.selectionStore.getState().selectedIds).toEqual([
+			"rect-a",
+		]);
+	});
+
+	it("shift-click toggles selection", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		const row = container.querySelector(
+			"[data-testid='layer-row-text-b']",
+		) as HTMLElement;
+		fireEvent.click(row, { shiftKey: true });
+		expect(h.studioCtx.selectionStore.getState().selectedIds).toEqual([
+			"rect-a",
+			"text-b",
+		]);
+	});
+});
+
+describe("LayerPanel — visibility / lock toggles", () => {
+	it("visibility toggle fires node.update with visible patch", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		const { container } = mount(h.studioCtx);
+		const btn = container.querySelector(
+			"[data-testid='layer-row-rect-a-visibility']",
+		) as HTMLElement;
+		fireEvent.click(btn);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasNodeUpdateCommand<CanvasNodeKind>;
+		expect(cmd.type).toBe("node.update");
+		expect(cmd.nodeId).toBe("rect-a");
+		expect((cmd.patch as { visible?: boolean }).visible).toBe(false);
+	});
+
+	it("lock toggle fires node.update with locked patch", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		const { container } = mount(h.studioCtx);
+		const btn = container.querySelector(
+			"[data-testid='layer-row-text-b-lock']",
+		) as HTMLElement;
+		fireEvent.click(btn);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasNodeUpdateCommand<CanvasNodeKind>;
+		expect(cmd.type).toBe("node.update");
+		expect(cmd.nodeId).toBe("text-b");
+		expect((cmd.patch as { locked?: boolean }).locked).toBe(true);
+	});
+});
+
+describe("LayerPanel — keyboard", () => {
+	it("Delete key fires node.delete for each selected layer", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		const panel = container.querySelector(
+			"[data-testid='layer-panel']",
+		) as HTMLElement;
+		fireEvent.keyDown(panel, { key: "Delete" });
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasNodeDeleteCommand;
+		expect(cmd.type).toBe("node.delete");
+		expect(cmd.nodeId).toBe("rect-a");
+		expect(h.studioCtx.selectionStore.getState().selectedIds).toEqual([]);
+	});
+
+	it("ArrowDown moves selection to next row", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["text-b"]);
+		const { container } = mount(h.studioCtx);
+		const panel = container.querySelector(
+			"[data-testid='layer-panel']",
+		) as HTMLElement;
+		fireEvent.keyDown(panel, { key: "ArrowDown" });
+		// text-b is first (top-most); ArrowDown moves to rect-a.
+		expect(h.studioCtx.selectionStore.getState().selectedIds).toEqual([
+			"rect-a",
+		]);
+	});
+});
