@@ -63,6 +63,8 @@ export {
 	addPage,
 	deletePage,
 	duplicateCurrentPage,
+	renamePage,
+	reorderPage,
 	switchToPage,
 } from "./pages/page-actions.js";
 export type { AddPageOptions } from "./pages/page-actions.js";
