@@ -2,7 +2,14 @@
 
 import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
@@ -15,10 +22,17 @@ import { Grid } from "./stage/Grid.js";
 import { RemoteCursors } from "./stage/RemoteCursors.js";
 import { RemoteSelections } from "./stage/RemoteSelections.js";
 import { RenderLayer } from "./stage/RenderLayer.js";
+import { CanvasTransformer } from "./selection/CanvasTransformer.js";
+import { SmartGuideOverlay } from "./snap/SmartGuideOverlay.js";
+import { createDraftStore } from "./stores/draft-store.js";
+import { createEditingStore } from "./stores/editing-store.js";
+import { createGuidesStore } from "./stores/guides-store.js";
 import { createHistoryStore } from "./stores/history-store.js";
 import { createSelectionStore } from "./stores/selection-store.js";
 import { createToolStore, type ToolId } from "./stores/tool-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
+import { DraftRenderer } from "./tools/DraftRenderer.js";
+import { TextEditorOverlay } from "./tools/TextEditorOverlay.js";
 import { ToolInteractionLayer } from "./tools/ToolInteractionLayer.js";
 import type { ToolRegistry } from "./tools/tool-types.js";
 
@@ -59,6 +73,27 @@ export function CanvasStudio({
 	const [selectionStore] = useState(() => createSelectionStore());
 	const [viewportStore] = useState(() => createViewportStore());
 
+	// Subscribe so viewportStore changes (hand-tool pan, zoom) re-render
+	// <CanvasStage> with the new transform.
+	const zoom = useSyncExternalStore(
+		viewportStore.subscribe,
+		() => viewportStore.getState().zoom,
+		() => viewportStore.getState().zoom,
+	);
+	const panX = useSyncExternalStore(
+		viewportStore.subscribe,
+		() => viewportStore.getState().panX,
+		() => viewportStore.getState().panX,
+	);
+	const panY = useSyncExternalStore(
+		viewportStore.subscribe,
+		() => viewportStore.getState().panY,
+		() => viewportStore.getState().panY,
+	);
+	const [guidesStore] = useState(() => createGuidesStore());
+	const [draftStore] = useState(() => createDraftStore());
+	const [editingStore] = useState(() => createEditingStore());
+
 	const onChangeRef = useRef(onChange);
 	const onPickAssetRef = useRef(onPickAsset);
 	useEffect(() => {
@@ -97,20 +132,28 @@ export function CanvasStudio({
 			toolStore,
 			selectionStore,
 			viewportStore,
+			guidesStore,
+			draftStore,
+			editingStore,
 			getIR,
 			commit,
 			pickAsset,
 			stage,
+			activePageId,
 		}),
 		[
 			historyStore,
 			toolStore,
 			selectionStore,
 			viewportStore,
+			guidesStore,
+			draftStore,
+			editingStore,
 			getIR,
 			commit,
 			pickAsset,
 			stage,
+			activePageId,
 		],
 	);
 
@@ -127,7 +170,14 @@ export function CanvasStudio({
 	return (
 		<CanvasStudioContext.Provider value={ctxValue}>
 			<CanvasAssetsContext.Provider value={ir.assets}>
-				<CanvasStage width={stageWidth} height={stageHeight} onReady={setStage}>
+				<CanvasStage
+					width={stageWidth}
+					height={stageHeight}
+					zoom={zoom}
+					panX={panX}
+					panY={panY}
+					onReady={setStage}
+				>
 					<RenderLayer name="background" listening={false}>
 						<DesignBackground />
 						<Grid />
@@ -138,7 +188,9 @@ export function CanvasStudio({
 						))}
 					</RenderLayer>
 					<RenderLayer name="selection">
-						{/* MVP-6 Tasks 3, 6: SmartGuideOverlay / MarqueeOverlay / CanvasTransformer */}
+						<DraftRenderer />
+						<SmartGuideOverlay />
+						<CanvasTransformer />
 					</RenderLayer>
 					<RenderLayer name="presence" listening={false}>
 						<RemoteCursors />
@@ -146,6 +198,7 @@ export function CanvasStudio({
 					</RenderLayer>
 				</CanvasStage>
 				<ToolInteractionLayer registry={toolRegistry} />
+				<TextEditorOverlay />
 			</CanvasAssetsContext.Provider>
 		</CanvasStudioContext.Provider>
 	);
