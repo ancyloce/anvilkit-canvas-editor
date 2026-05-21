@@ -1,5 +1,8 @@
 import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
+import type { DraftStoreApi } from "../stores/draft-store.js";
+import type { EditingStoreApi } from "../stores/editing-store.js";
+import type { GuidesStoreApi } from "../stores/guides-store.js";
 import type { SelectionStoreApi } from "../stores/selection-store.js";
 import type { ToolId, ToolStoreApi } from "../stores/tool-store.js";
 import type { ViewportStoreApi } from "../stores/viewport-store.js";
@@ -16,7 +19,11 @@ export interface ToolContext {
 	selectionStore: SelectionStoreApi;
 	viewportStore: ViewportStoreApi;
 	toolStore: ToolStoreApi;
+	guidesStore: GuidesStoreApi;
+	draftStore: DraftStoreApi;
+	editingStore: EditingStoreApi;
 	pickAsset: () => Promise<string>;
+	activePageId: string;
 }
 
 export interface ToolPointerEvent {
