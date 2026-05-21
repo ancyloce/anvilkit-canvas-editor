@@ -2,6 +2,8 @@ import {
 	type CanvasIR,
 	type CanvasPageCreateCommand,
 	type CanvasPageDeleteCommand,
+	type CanvasPageRenameCommand,
+	type CanvasPageReorderCommand,
 	createCanvasIR,
 	createGroup,
 	createPage,
@@ -12,6 +14,8 @@ import {
 	addPage,
 	deletePage,
 	duplicateCurrentPage,
+	renamePage,
+	reorderPage,
 	switchToPage,
 } from "../page-actions.js";
 import { makeHarness } from "../../tools/__tests__/_tool-test-helpers.js";
@@ -187,5 +191,76 @@ describe("switchToPage", () => {
 		expect(h.studioCtx.selectionStore.getState().selectedIds).toEqual([
 			"rectA",
 		]);
+	});
+});
+
+describe("reorderPage", () => {
+	it("commits page.reorder with the live from/to indices", () => {
+		const h = makeHarness({ ir: multiPageIR() });
+		reorderPage(h.studioCtx, "p1", 1);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasPageReorderCommand;
+		expect(cmd.type).toBe("page.reorder");
+		expect(cmd.pageId).toBe("p1");
+		expect(cmd.from).toBe(0);
+		expect(cmd.to).toBe(1);
+	});
+
+	it("is a no-op when the page is already at toIndex", () => {
+		const h = makeHarness({ ir: multiPageIR() });
+		reorderPage(h.studioCtx, "p1", 0);
+		expect(h.commits).toHaveLength(0);
+	});
+
+	it("is a no-op when toIndex is out of range", () => {
+		const h = makeHarness({ ir: multiPageIR() });
+		reorderPage(h.studioCtx, "p1", 99);
+		reorderPage(h.studioCtx, "p1", -1);
+		expect(h.commits).toHaveLength(0);
+	});
+
+	it("is a no-op when the page id is unknown", () => {
+		const h = makeHarness({ ir: multiPageIR() });
+		reorderPage(h.studioCtx, "ghost", 1);
+		expect(h.commits).toHaveLength(0);
+	});
+
+	it("does not change the active page", () => {
+		const h = makeHarness({ ir: multiPageIR() });
+		reorderPage(h.studioCtx, "p2", 0);
+		expect(h.studioCtx.pagesStore.getState().activePageId).toBe("p1");
+	});
+});
+
+describe("renamePage", () => {
+	it("commits page.rename with the prior and new names", () => {
+		const h = makeHarness({ ir: multiPageIR() });
+		renamePage(h.studioCtx, "p1", "Hero");
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasPageRenameCommand;
+		expect(cmd.type).toBe("page.rename");
+		expect(cmd.pageId).toBe("p1");
+		expect(cmd.from).toBe("Page 1");
+		expect(cmd.to).toBe("Hero");
+	});
+
+	it("treats empty string as undefined (clears the name)", () => {
+		const h = makeHarness({ ir: multiPageIR() });
+		renamePage(h.studioCtx, "p1", "");
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasPageRenameCommand;
+		expect(cmd.to).toBeUndefined();
+	});
+
+	it("is a no-op when the name is unchanged", () => {
+		const h = makeHarness({ ir: multiPageIR() });
+		renamePage(h.studioCtx, "p1", "Page 1");
+		expect(h.commits).toHaveLength(0);
+	});
+
+	it("is a no-op when the page id is unknown", () => {
+		const h = makeHarness({ ir: multiPageIR() });
+		renamePage(h.studioCtx, "ghost", "Hero");
+		expect(h.commits).toHaveLength(0);
 	});
 });

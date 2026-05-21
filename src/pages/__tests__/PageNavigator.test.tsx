@@ -2,6 +2,8 @@ import {
 	type CanvasIR,
 	type CanvasPageCreateCommand,
 	type CanvasPageDeleteCommand,
+	type CanvasPageRenameCommand,
+	type CanvasPageReorderCommand,
 	createCanvasIR,
 	createPage,
 } from "@anvilkit/canvas-core";
@@ -174,5 +176,157 @@ describe("PageNavigator — delete", () => {
 		expect(cmd.type).toBe("page.delete");
 		expect(cmd.pageId).toBe("p1");
 		expect(h.studioCtx.pagesStore.getState().activePageId).toBe("p2");
+	});
+});
+
+describe("PageNavigator — reorder", () => {
+	it("Left/Right buttons are disabled at the boundaries", () => {
+		const h = makeHarness({ ir: multiPage() }); // p1 active (index 0)
+		const { container } = mount(h.studioCtx);
+		const left = container.querySelector(
+			"[data-testid='page-reorder-left']",
+		) as HTMLButtonElement;
+		const right = container.querySelector(
+			"[data-testid='page-reorder-right']",
+		) as HTMLButtonElement;
+		expect(left.disabled).toBe(true); // p1 is at index 0 — cannot move left
+		expect(right.disabled).toBe(false);
+	});
+
+	it("Right button fires page.reorder with from/to", () => {
+		const h = makeHarness({ ir: multiPage() }); // p1 active (index 0)
+		const { container } = mount(h.studioCtx);
+		const right = container.querySelector(
+			"[data-testid='page-reorder-right']",
+		) as HTMLButtonElement;
+		fireEvent.click(right);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasPageReorderCommand;
+		expect(cmd.type).toBe("page.reorder");
+		expect(cmd.pageId).toBe("p1");
+		expect(cmd.from).toBe(0);
+		expect(cmd.to).toBe(1);
+	});
+
+	it("Left button moves the active page back one slot", () => {
+		const h = makeHarness({ ir: multiPage() });
+		h.studioCtx.pagesStore.getState().setActivePageId("p2"); // index 1
+		const { container } = mount(h.studioCtx);
+		const left = container.querySelector(
+			"[data-testid='page-reorder-left']",
+		) as HTMLButtonElement;
+		expect(left.disabled).toBe(false);
+		fireEvent.click(left);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasPageReorderCommand;
+		expect(cmd.from).toBe(1);
+		expect(cmd.to).toBe(0);
+	});
+});
+
+describe("PageNavigator — rename", () => {
+	it("double-clicking a tab swaps in a rename input with the existing name", () => {
+		const h = makeHarness({ ir: multiPage() });
+		const { container } = mount(h.studioCtx);
+		const tab = container.querySelector(
+			"[data-testid='page-tab-p1']",
+		) as HTMLButtonElement;
+		fireEvent.doubleClick(tab);
+		const input = container.querySelector(
+			"[data-testid='page-rename-input-p1']",
+		) as HTMLInputElement;
+		expect(input).not.toBeNull();
+		expect(input.value).toBe("First");
+	});
+
+	it("commits page.rename on Enter and exits rename mode", () => {
+		const h = makeHarness({ ir: multiPage() });
+		const { container } = mount(h.studioCtx);
+		const tab = container.querySelector(
+			"[data-testid='page-tab-p1']",
+		) as HTMLButtonElement;
+		fireEvent.doubleClick(tab);
+		const input = container.querySelector(
+			"[data-testid='page-rename-input-p1']",
+		) as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "Hero" } });
+		fireEvent.keyDown(input, { key: "Enter" });
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasPageRenameCommand;
+		expect(cmd.type).toBe("page.rename");
+		expect(cmd.pageId).toBe("p1");
+		expect(cmd.from).toBe("First");
+		expect(cmd.to).toBe("Hero");
+		// Input gone — rename mode exited.
+		expect(
+			container.querySelector("[data-testid='page-rename-input-p1']"),
+		).toBeNull();
+	});
+
+	it("commits on blur", () => {
+		const h = makeHarness({ ir: multiPage() });
+		const { container } = mount(h.studioCtx);
+		const tab = container.querySelector(
+			"[data-testid='page-tab-p1']",
+		) as HTMLButtonElement;
+		fireEvent.doubleClick(tab);
+		const input = container.querySelector(
+			"[data-testid='page-rename-input-p1']",
+		) as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "Cover" } });
+		fireEvent.blur(input);
+		expect(h.commits).toHaveLength(1);
+		expect((h.commits[0] as CanvasPageRenameCommand).to).toBe("Cover");
+	});
+
+	it("Escape cancels and does not commit", () => {
+		const h = makeHarness({ ir: multiPage() });
+		const { container } = mount(h.studioCtx);
+		const tab = container.querySelector(
+			"[data-testid='page-tab-p1']",
+		) as HTMLButtonElement;
+		fireEvent.doubleClick(tab);
+		const input = container.querySelector(
+			"[data-testid='page-rename-input-p1']",
+		) as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "Throwaway" } });
+		fireEvent.keyDown(input, { key: "Escape" });
+		expect(h.commits).toHaveLength(0);
+		expect(
+			container.querySelector("[data-testid='page-rename-input-p1']"),
+		).toBeNull();
+	});
+
+	it("skips the commit when the name is unchanged", () => {
+		const h = makeHarness({ ir: multiPage() });
+		const { container } = mount(h.studioCtx);
+		const tab = container.querySelector(
+			"[data-testid='page-tab-p1']",
+		) as HTMLButtonElement;
+		fireEvent.doubleClick(tab);
+		const input = container.querySelector(
+			"[data-testid='page-rename-input-p1']",
+		) as HTMLInputElement;
+		// value is "First" already; press Enter without editing
+		fireEvent.keyDown(input, { key: "Enter" });
+		expect(h.commits).toHaveLength(0);
+	});
+
+	it("clears the name when the input is emptied", () => {
+		const h = makeHarness({ ir: multiPage() });
+		const { container } = mount(h.studioCtx);
+		const tab = container.querySelector(
+			"[data-testid='page-tab-p1']",
+		) as HTMLButtonElement;
+		fireEvent.doubleClick(tab);
+		const input = container.querySelector(
+			"[data-testid='page-rename-input-p1']",
+		) as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "" } });
+		fireEvent.keyDown(input, { key: "Enter" });
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasPageRenameCommand;
+		expect(cmd.from).toBe("First");
+		expect(cmd.to).toBeUndefined();
 	});
 });

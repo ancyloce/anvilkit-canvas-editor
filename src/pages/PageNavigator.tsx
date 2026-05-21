@@ -1,11 +1,20 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import {
+	type KeyboardEvent as ReactKeyboardEvent,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import {
 	addPage,
 	deletePage,
 	duplicateCurrentPage,
+	renamePage,
+	reorderPage,
 	switchToPage,
 } from "./page-actions.js";
 
@@ -45,6 +54,16 @@ const styles = {
 		borderColor: "#3b82f6",
 		color: "#1f2937",
 		boxShadow: "0 0 0 1px #3b82f6 inset",
+	} as const,
+	renameInput: {
+		height: TAB_HEIGHT - 4,
+		padding: `0 ${PADDING_X / 2}px`,
+		background: "#ffffff",
+		border: "1px solid #3b82f6",
+		borderRadius: 4,
+		color: "#1f2937",
+		font: "inherit",
+		minWidth: 80,
 	} as const,
 	actions: {
 		marginLeft: "auto",
@@ -88,8 +107,57 @@ export function PageNavigator({
 		() => ctx.pagesStore.getState().activePageId,
 	);
 	const pages = ctx.ir.pages;
+
+	const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
+	const [renamingValue, setRenamingValue] = useState("");
+	const renameInputRef = useRef<HTMLInputElement | null>(null);
+
+	useEffect(() => {
+		if (renamingPageId !== null) renameInputRef.current?.focus();
+	}, [renamingPageId]);
+
+	// Bail out of rename mode if the page being renamed disappears (e.g. it was
+	// deleted by another action). Otherwise the input would commit a name onto
+	// a stale id.
+	useEffect(() => {
+		if (renamingPageId === null) return;
+		if (!pages.some((p) => p.id === renamingPageId)) {
+			setRenamingPageId(null);
+			setRenamingValue("");
+		}
+	}, [renamingPageId, pages]);
+
+	const commitRename = useCallback(() => {
+		if (renamingPageId === null) return;
+		renamePage(ctx, renamingPageId, renamingValue.trim());
+		setRenamingPageId(null);
+		setRenamingValue("");
+	}, [ctx, renamingPageId, renamingValue]);
+
+	const cancelRename = useCallback(() => {
+		setRenamingPageId(null);
+		setRenamingValue("");
+	}, []);
+
+	const onRenameKeyDown = useCallback(
+		(e: ReactKeyboardEvent<HTMLInputElement>) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				commitRename();
+			} else if (e.key === "Escape") {
+				e.preventDefault();
+				cancelRename();
+			}
+		},
+		[commitRename, cancelRename],
+	);
+
 	if (pages.length === 0) return null;
 	const deleteDisabled = pages.length <= 1;
+	const activeIndex = pages.findIndex((p) => p.id === activePageId);
+	const reorderLeftDisabled = activeIndex <= 0;
+	const reorderRightDisabled =
+		activeIndex < 0 || activeIndex >= pages.length - 1;
 
 	return (
 		<div
@@ -99,9 +167,27 @@ export function PageNavigator({
 		>
 			{pages.map((p) => {
 				const isActive = p.id === activePageId;
+				const isRenaming = p.id === renamingPageId;
 				const tabStyle = isActive
 					? { ...styles.tab, ...styles.tabActive }
 					: styles.tab;
+				if (isRenaming) {
+					return (
+						<input
+							key={p.id}
+							ref={renameInputRef}
+							type="text"
+							data-page-id={p.id}
+							data-testid={`page-rename-input-${p.id}`}
+							style={styles.renameInput}
+							value={renamingValue}
+							onChange={(e) => setRenamingValue(e.target.value)}
+							onKeyDown={onRenameKeyDown}
+							onBlur={commitRename}
+							aria-label={`Rename page ${tabLabel(p.name, p.id)}`}
+						/>
+					);
+				}
 				return (
 					<button
 						type="button"
@@ -111,12 +197,46 @@ export function PageNavigator({
 						data-testid={`page-tab-${p.id}`}
 						style={tabStyle}
 						onClick={() => switchToPage(ctx, p.id)}
+						onDoubleClick={() => {
+							setRenamingPageId(p.id);
+							setRenamingValue(p.name ?? "");
+						}}
 					>
 						{tabLabel(p.name, p.id)}
 					</button>
 				);
 			})}
 			<div style={styles.actions}>
+				<button
+					type="button"
+					data-testid="page-reorder-left"
+					style={
+						reorderLeftDisabled
+							? { ...styles.actionButton, ...styles.actionButtonDisabled }
+							: styles.actionButton
+					}
+					disabled={reorderLeftDisabled}
+					onClick={() => reorderPage(ctx, activePageId, activeIndex - 1)}
+					aria-label="Move page left"
+					title="Move page left"
+				>
+					{"←"}
+				</button>
+				<button
+					type="button"
+					data-testid="page-reorder-right"
+					style={
+						reorderRightDisabled
+							? { ...styles.actionButton, ...styles.actionButtonDisabled }
+							: styles.actionButton
+					}
+					disabled={reorderRightDisabled}
+					onClick={() => reorderPage(ctx, activePageId, activeIndex + 1)}
+					aria-label="Move page right"
+					title="Move page right"
+				>
+					{"→"}
+				</button>
 				<button
 					type="button"
 					data-testid="page-add"

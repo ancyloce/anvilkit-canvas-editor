@@ -1,6 +1,8 @@
 import {
 	type CanvasPageCreateCommand,
 	type CanvasPageDeleteCommand,
+	type CanvasPageRenameCommand,
+	type CanvasPageReorderCommand,
 	type CanvasPageSize,
 	createPage,
 } from "@anvilkit/canvas-core";
@@ -84,6 +86,54 @@ export function deletePage(
 		const next = remaining[targetIndex] ?? remaining[remaining.length - 1];
 		if (next) ctx.pagesStore.getState().setActivePageId(next.id);
 	}
+}
+
+/**
+ * Reorder a page in the IR. No-op when the page is already at `toIndex`,
+ * the page id is unknown, or `toIndex` is out of range. Active page is
+ * preserved (reordering does not change which page is editable).
+ */
+export function reorderPage(
+	ctx: CanvasStudioContextValue,
+	pageId: string,
+	toIndex: number,
+): void {
+	const ir = ctx.getIR();
+	const fromIndex = ir.pages.findIndex((p) => p.id === pageId);
+	if (fromIndex < 0) return;
+	if (toIndex < 0 || toIndex >= ir.pages.length) return;
+	if (fromIndex === toIndex) return;
+	const cmd: CanvasPageReorderCommand = {
+		type: "page.reorder",
+		pageId,
+		from: fromIndex,
+		to: toIndex,
+	};
+	ctx.commit(cmd);
+}
+
+/**
+ * Rename a page. No-op when the page id is unknown or the new name matches
+ * the existing name. Pass `undefined` (or use `clearPageName`) to remove
+ * the explicit name and fall back to the default tab label.
+ */
+export function renamePage(
+	ctx: CanvasStudioContextValue,
+	pageId: string,
+	name: string | undefined,
+): void {
+	const ir = ctx.getIR();
+	const page = ir.pages.find((p) => p.id === pageId);
+	if (!page) return;
+	const next = name === undefined || name.length === 0 ? undefined : name;
+	if (page.name === next) return;
+	const cmd: CanvasPageRenameCommand = {
+		type: "page.rename",
+		pageId,
+		from: page.name,
+		to: next,
+	};
+	ctx.commit(cmd);
 }
 
 /**

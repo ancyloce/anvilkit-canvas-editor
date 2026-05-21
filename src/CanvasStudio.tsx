@@ -55,6 +55,13 @@ export interface CanvasStudioProps {
 	initialTool?: ToolId;
 	/** Fires after every committed command with the new IR + the command. */
 	onChange?: (ir: CanvasIR, command: CanvasCommand) => void;
+	/**
+	 * Fires whenever the active page (artboard) changes, with the new
+	 * page id. Used by hosts that want to mirror the active artboard
+	 * out (e.g. preview-export bridges that need to tag exports with
+	 * the artboard id).
+	 */
+	onActivePageChange?: (pageId: string) => void;
 	/** Required for the image tool (MVP-6 Task 8). Host opens picker, returns asset id. */
 	onPickAsset?: () => Promise<string>;
 	/**
@@ -77,6 +84,7 @@ export function CanvasStudio({
 	height,
 	initialTool,
 	onChange,
+	onActivePageChange,
 	onPickAsset,
 	onStageReady,
 	toolRegistry,
@@ -113,6 +121,14 @@ export function CanvasStudio({
 		() => pagesStore.getState().activePageId,
 		() => pagesStore.getState().activePageId,
 	);
+
+	const onActivePageChangeRef = useRef(onActivePageChange);
+	useEffect(() => {
+		onActivePageChangeRef.current = onActivePageChange;
+	}, [onActivePageChange]);
+	useEffect(() => {
+		onActivePageChangeRef.current?.(activePageId);
+	}, [activePageId]);
 
 	// Subscribe so viewportStore changes (hand-tool pan, zoom) re-render
 	// <CanvasStage> with the new transform.
