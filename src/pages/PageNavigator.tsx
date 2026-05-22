@@ -51,7 +51,7 @@ const styles = {
 	} as const,
 	tabActive: {
 		background: "#ffffff",
-		borderColor: "#3b82f6",
+		border: "1px solid #3b82f6",
 		color: "#1f2937",
 		boxShadow: "0 0 0 1px #3b82f6 inset",
 	} as const,
