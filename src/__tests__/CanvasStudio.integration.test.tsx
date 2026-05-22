@@ -74,6 +74,15 @@ vi.mock("use-image", () => ({
 	default: () => [null, "loading"],
 }));
 
+// I2-5: PageNavigator rasterizes non-active pages into thumbnails; stub the
+// off-screen rasterizer so the integration tests don't mount a second tree.
+vi.mock("../render/rasterize-page.js", () => ({
+	rasterizePage: vi.fn(async ({ page }: { page: { id: string } }) => ({
+		url: `data:thumb/${page.id}`,
+		mimeType: "image/png",
+	})),
+}));
+
 import { CanvasStudio, type Tool } from "../index.js";
 
 function layerCalls() {
@@ -86,7 +95,7 @@ describe("CanvasStudio integration", () => {
 		destroyMock.mockClear();
 	});
 
-	it("renders four layers in canonical z-order with correct listening flags", () => {
+	it("renders five layers in canonical z-order with correct listening flags", () => {
 		const ir = createCanvasIR({
 			pages: [createPage({ id: "p1" })],
 			now: () => "2026-01-01T00:00:00.000Z",
@@ -103,13 +112,65 @@ describe("CanvasStudio integration", () => {
 		expect(Array.from(layersByName.keys())).toEqual([
 			"background",
 			"objects",
+			"drag",
 			"selection",
 			"presence",
 		]);
 		expect(layersByName.get("background")?.props.listening).toBe(false);
 		expect(layersByName.get("objects")?.props.listening).toBe(true);
+		expect(layersByName.get("drag")?.props.listening).toBe(true);
 		expect(layersByName.get("selection")?.props.listening).toBe(true);
 		expect(layersByName.get("presence")?.props.listening).toBe(false);
+	});
+
+	it("routes a dragged node into the drag layer, leaving the rest in objects (I2-5)", () => {
+		// Probe tool that opens a `move` draft for r1 on activation, so the
+		// drag-layer partition can be exercised through a live <CanvasStudio>.
+		const dragProbe: Tool = {
+			id: "select",
+			cursor: "default",
+			onActivate(ctx) {
+				ctx.draftStore.getState().setDraft({
+					type: "move",
+					startX: 0,
+					startY: 0,
+					currentX: 0,
+					currentY: 0,
+					nodeStarts: [{ id: "r1", x: 0, y: 0 }],
+				});
+			},
+		};
+		const ir = createCanvasIR({
+			pages: [
+				(() => {
+					const page = createPage({ id: "p1" });
+					page.root = createGroup({
+						id: "p1-root",
+						bounds: page.root.bounds,
+						children: [
+							createRect({ id: "r1", bounds: { width: 10, height: 10 } }),
+							createRect({ id: "r2", bounds: { width: 10, height: 10 } }),
+						],
+					});
+					return page;
+				})(),
+			],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		const { container } = render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				initialTool="select"
+				toolRegistry={{ select: dragProbe }}
+			/>,
+		);
+		const dragLayer = container.querySelector('[data-layer-name="drag"]');
+		const objectsLayer = container.querySelector('[data-layer-name="objects"]');
+		// r1 (dragging) floats in the drag layer; r2 stays in objects.
+		expect(dragLayer?.querySelector('[data-id="r1"]')).not.toBeNull();
+		expect(objectsLayer?.querySelector('[data-id="r1"]')).toBeNull();
+		expect(objectsLayer?.querySelector('[data-id="r2"]')).not.toBeNull();
 	});
 
 	it("renders one CanvasNodeRenderer per top-level child of the active page root", () => {

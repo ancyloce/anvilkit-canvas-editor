@@ -8,6 +8,7 @@ import type Konva from "konva";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { Transformer } from "react-konva";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import { draggedIdsKey } from "../perf/active-nodes.js";
 
 const EPSILON = 0.5;
 
@@ -19,12 +20,20 @@ const EPSILON = 0.5;
  * new bounds — standard react-konva transformer pattern.
  */
 export function CanvasTransformer(): React.JSX.Element | null {
-	const { stage, selectionStore, getIR, commit, activePageId } =
+	const { stage, selectionStore, draftStore, getIR, commit, activePageId } =
 		useCanvasStudio();
 	const selectedIds = useSyncExternalStore(
 		selectionStore.subscribe,
 		() => selectionStore.getState().selectedIds,
 		() => selectionStore.getState().selectedIds,
+	);
+	// I2-5: dragging promotes a node into the drag layer, which remounts its
+	// Konva node. Re-bind when the dragged set changes (start/end) so the
+	// Transformer points at the live node, not the unmounted one.
+	const draggedKey = useSyncExternalStore(
+		draftStore.subscribe,
+		() => draggedIdsKey(draftStore.getState().draft),
+		() => draggedIdsKey(draftStore.getState().draft),
 	);
 	const transformerRef = useRef<Konva.Transformer | null>(null);
 
@@ -38,7 +47,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		}
 		tr.nodes(nodes);
 		tr.getLayer?.()?.batchDraw?.();
-	}, [stage, selectedIds]);
+	}, [stage, selectedIds, draggedKey]);
 
 	const onTransformEnd = useCallback(() => {
 		if (!stage) return;

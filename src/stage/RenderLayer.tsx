@@ -6,6 +6,7 @@ import { Layer } from "react-konva";
 export type RenderLayerName =
 	| "background"
 	| "objects"
+	| "drag"
 	| "selection"
 	| "presence";
 

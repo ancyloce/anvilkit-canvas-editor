@@ -8,13 +8,23 @@ import {
 	createPage,
 } from "@anvilkit/canvas-core";
 import { fireEvent, render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
 } from "../../context/canvas-studio-context.js";
 import { makeHarness } from "../../tools/__tests__/_tool-test-helpers.js";
 import { PageNavigator } from "../PageNavigator.js";
+
+// I2-5: PageNavigator now rasterizes non-active pages into thumbnails. Stub the
+// off-screen rasterizer (a real Konva mount won't run under jsdom) so these
+// tests stay deterministic and fast.
+vi.mock("../../render/rasterize-page.js", () => ({
+	rasterizePage: vi.fn(async ({ page }: { page: { id: string } }) => ({
+		url: `data:thumb/${page.id}`,
+		mimeType: "image/png",
+	})),
+}));
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
 
@@ -59,6 +69,14 @@ describe("PageNavigator — render", () => {
 			"[data-testid='page-tab-p2']",
 		) as HTMLElement;
 		expect(inactive.getAttribute("data-active")).toBe("false");
+	});
+
+	it("renders a cached thumbnail for non-active pages, not the active one (I2-5)", async () => {
+		const h = makeHarness({ ir: multiPage() });
+		const { container, findByTestId } = mount(h.studioCtx);
+		const thumb = await findByTestId("page-thumb-p2");
+		expect(thumb.getAttribute("src")).toBe("data:thumb/p2");
+		expect(container.querySelector("[data-testid='page-thumb-p1']")).toBeNull();
 	});
 
 	it("shows page.name as the tab label", () => {

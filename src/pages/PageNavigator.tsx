@@ -9,6 +9,7 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import { usePageThumbnails } from "../perf/page-thumbnails.js";
 import {
 	addPage,
 	deletePage,
@@ -54,6 +55,15 @@ const styles = {
 		border: "1px solid #3b82f6",
 		color: "#1f2937",
 		boxShadow: "0 0 0 1px #3b82f6 inset",
+	} as const,
+	thumb: {
+		height: TAB_HEIGHT - 8,
+		width: "auto",
+		maxWidth: 32,
+		marginRight: 4,
+		borderRadius: 2,
+		objectFit: "contain",
+		verticalAlign: "middle",
 	} as const,
 	renameInput: {
 		height: TAB_HEIGHT - 4,
@@ -107,6 +117,12 @@ export function PageNavigator({
 		() => ctx.pagesStore.getState().activePageId,
 	);
 	const pages = ctx.ir.pages;
+	// I2-5 off-screen tiling: cached bitmap previews of non-active pages.
+	const thumbnails = usePageThumbnails({
+		pages,
+		activePageId,
+		assets: ctx.ir.assets,
+	});
 
 	const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
 	const [renamingValue, setRenamingValue] = useState("");
@@ -202,6 +218,14 @@ export function PageNavigator({
 							setRenamingValue(p.name ?? "");
 						}}
 					>
+						{thumbnails.has(p.id) ? (
+							<img
+								src={thumbnails.get(p.id)}
+								alt=""
+								data-testid={`page-thumb-${p.id}`}
+								style={styles.thumb}
+							/>
+						) : null}
 						{tabLabel(p.name, p.id)}
 					</button>
 				);

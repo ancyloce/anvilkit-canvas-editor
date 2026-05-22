@@ -34,6 +34,8 @@ import { createPagesStore } from "./stores/pages-store.js";
 import { createSelectionStore } from "./stores/selection-store.js";
 import { createToolStore, type ToolId } from "./stores/tool-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
+import { draggedIdsKey } from "./perf/active-nodes.js";
+import { useStaticGroupCache } from "./perf/static-cache.js";
 import { DraftRenderer } from "./tools/DraftRenderer.js";
 import { TextEditorOverlay } from "./tools/TextEditorOverlay.js";
 import { ToolInteractionLayer } from "./tools/ToolInteractionLayer.js";
@@ -203,6 +205,31 @@ export function CanvasStudio({
 		onAiIntentRef.current?.(intent);
 	}, []);
 
+	// I2-5: cache idle static groups on the active page as bitmaps. Renders
+	// nothing; clears a group's cache the moment it is selected/edited/dragged.
+	useStaticGroupCache({
+		stage,
+		getIR,
+		activePageId,
+		ir,
+		selectionStore,
+		editingStore,
+		draftStore,
+	});
+
+	// I2-5 drag-layer: a string key for the dragged-node SET. Stable across
+	// pointermoves (a `move` draft mutates only currentX/Y), so subscribing here
+	// re-renders <CanvasStudio> only on drag start/end — not per move (MVP-7).
+	const draggedKey = useSyncExternalStore(
+		draftStore.subscribe,
+		() => draggedIdsKey(draftStore.getState().draft),
+		() => draggedIdsKey(draftStore.getState().draft),
+	);
+	const draggedIds = useMemo(
+		() => new Set(draggedKey ? draggedKey.split(",") : []),
+		[draggedKey],
+	);
+
 	const ctxValue = useMemo<CanvasStudioContextValue>(
 		() => ({
 			historyStore,
@@ -273,9 +300,20 @@ export function CanvasStudio({
 							<Grid />
 						</RenderLayer>
 						<RenderLayer name="objects">
-							{activePage.root.children.map((node) => (
-								<CanvasNodeRenderer key={node.id} node={node} />
-							))}
+							{activePage.root.children
+								.filter((node) => !draggedIds.has(node.id))
+								.map((node) => (
+									<CanvasNodeRenderer key={node.id} node={node} />
+								))}
+						</RenderLayer>
+						{/* I2-5: dragged nodes float on their own layer so only it
+						    redraws during a drag; the (cached) objects layer stays put. */}
+						<RenderLayer name="drag">
+							{activePage.root.children
+								.filter((node) => draggedIds.has(node.id))
+								.map((node) => (
+									<CanvasNodeRenderer key={node.id} node={node} />
+								))}
 						</RenderLayer>
 						<RenderLayer name="selection">
 							<DraftRenderer />
