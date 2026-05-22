@@ -2,6 +2,7 @@
 
 import type {
 	CanvasAiPlaceholderNode,
+	CanvasAiPlaceholderStatus,
 	CanvasEllipseNode,
 	CanvasGroupNode,
 	CanvasImageNode,
@@ -12,6 +13,7 @@ import type {
 	CanvasRectNode,
 	CanvasTextNode,
 } from "@anvilkit/canvas-core";
+import { useContext } from "react";
 import {
 	Ellipse,
 	Group,
@@ -22,6 +24,7 @@ import {
 	Text,
 } from "react-konva";
 import useImage from "use-image";
+import { CanvasStudioContext } from "../context/canvas-studio-context.js";
 import { useCanvasAsset } from "./CanvasAssetsContext.js";
 
 export interface CanvasNodeRendererProps {
@@ -152,31 +155,133 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 	);
 }
 
+interface PlaceholderStatusStyle {
+	stroke: string;
+	fill: string;
+	color: string;
+	label: string;
+}
+
+/** Per-status visual treatment — `pending` reads as an active loading state. */
+const PLACEHOLDER_STATUS_STYLE: Record<
+	CanvasAiPlaceholderStatus,
+	PlaceholderStatusStyle
+> = {
+	pending: {
+		stroke: "#6366f1",
+		fill: "rgba(99, 102, 241, 0.08)",
+		color: "#4f46e5",
+		label: "Generating…",
+	},
+	complete: {
+		stroke: "#888",
+		fill: "rgba(136, 136, 136, 0.08)",
+		color: "#666",
+		label: "AI ready",
+	},
+	error: {
+		stroke: "#dc2626",
+		fill: "rgba(220, 38, 38, 0.08)",
+		color: "#b91c1c",
+		label: "AI failed",
+	},
+};
+
 function CanvasAiPlaceholderNodeRenderer({
 	node,
 }: {
 	node: CanvasAiPlaceholderNode;
 }) {
+	// Null-safe: this renderer is also exercised outside a <CanvasStudio> tree
+	// (e.g. unit tests render the node directly), where there is no AI job
+	// registry — and a non-pending placeholder has no job to cancel.
+	const studio = useContext(CanvasStudioContext);
 	const base = commonProps(node);
+	const style = PLACEHOLDER_STATUS_STYLE[node.status];
+	const width = node.bounds.width;
+	const height = node.bounds.height;
+
+	const isPending = node.status === "pending";
+	const hasCancelableJob =
+		isPending && studio?.aiJobStore?.getState().get(node.jobId) !== undefined;
+
+	// Static indeterminate progress bar (no Konva animation — keeps the loading
+	// affordance deterministic for tests; animation is a follow-up).
+	const barY = height - 10;
+	const barWidth = Math.max(0, width - 16);
+
+	const cancelW = 54;
+	const cancelH = 18;
+	const cancelX = Math.max(8, width - cancelW - 8);
+
+	const onCancel = (e: { cancelBubble: boolean }): void => {
+		// Don't let the click also select/drag the placeholder node.
+		e.cancelBubble = true;
+		studio?.aiJobStore?.getState().cancel(node.jobId);
+	};
+
 	return (
 		<Group {...base}>
 			<Rect
-				width={node.bounds.width}
-				height={node.bounds.height}
-				stroke="#888"
+				width={width}
+				height={height}
+				stroke={style.stroke}
 				strokeWidth={1}
 				dash={[6, 4]}
-				fill="rgba(136, 136, 136, 0.08)"
+				fill={style.fill}
 			/>
 			<Text
-				text={`AI ${node.status}…`}
+				text={style.label}
 				x={8}
 				y={8}
 				fontSize={14}
 				fontFamily="Inter"
-				fill="#666"
-				width={node.bounds.width - 16}
+				fill={style.color}
+				width={width - 16}
 			/>
+			{isPending ? (
+				<>
+					<Rect
+						x={8}
+						y={barY}
+						width={barWidth}
+						height={4}
+						cornerRadius={2}
+						fill="rgba(99, 102, 241, 0.2)"
+						listening={false}
+					/>
+					<Rect
+						x={8}
+						y={barY}
+						width={barWidth * 0.4}
+						height={4}
+						cornerRadius={2}
+						fill={style.stroke}
+						listening={false}
+					/>
+				</>
+			) : null}
+			{hasCancelableJob ? (
+				<Group x={cancelX} y={8} onClick={onCancel} onTap={onCancel}>
+					<Rect
+						width={cancelW}
+						height={cancelH}
+						cornerRadius={3}
+						fill="#ffffff"
+						stroke={style.stroke}
+						strokeWidth={1}
+					/>
+					<Text
+						text="Cancel"
+						width={cancelW}
+						y={4}
+						align="center"
+						fontSize={11}
+						fontFamily="Inter"
+						fill={style.color}
+					/>
+				</Group>
+			) : null}
 		</Group>
 	);
 }

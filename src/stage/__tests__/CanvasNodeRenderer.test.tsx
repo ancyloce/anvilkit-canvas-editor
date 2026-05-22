@@ -42,6 +42,11 @@ vi.mock("use-image", () => ({
 	default: (uri: string) => useImageMock(uri),
 }));
 
+import {
+	CanvasStudioContext,
+	type CanvasStudioContextValue,
+} from "../../context/canvas-studio-context.js";
+import { createAiJobStore } from "../../stores/ai-job-store.js";
 import { CanvasAssetsContext } from "../CanvasAssetsContext.js";
 import { CanvasNodeRenderer } from "../CanvasNodeRenderer.js";
 
@@ -201,22 +206,82 @@ describe("CanvasNodeRenderer", () => {
 		expect(callsOfType("Image")[0]?.props.image).toBe(fakeImg);
 	});
 
-	it("renders an ai-placeholder as a dashed rect + label group", () => {
-		const placeholder = {
-			id: "ai1",
-			type: "ai-placeholder" as const,
-			transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-			bounds: { width: 200, height: 200 },
-			zIndex: 0,
-			jobId: "job-1",
-			status: "pending" as const,
-		};
-		render(<CanvasNodeRenderer node={placeholder} />);
-		expect(callsOfType("Group")).toHaveLength(1);
-		expect(callsOfType("Rect")).toHaveLength(1);
-		expect(callsOfType("Text")).toHaveLength(1);
-		expect(callsOfType("Rect")[0]?.props.dash).toEqual([6, 4]);
-		expect(callsOfType("Text")[0]?.props.text).toBe("AI pending…");
+	const placeholderFixture = (
+		status: "pending" | "complete" | "error",
+		jobId = "job-1",
+	) => ({
+		id: "ai1",
+		type: "ai-placeholder" as const,
+		transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+		bounds: { width: 200, height: 200 },
+		zIndex: 0,
+		jobId,
+		status,
+	});
+
+	const cancelGroupCall = () =>
+		callsOfType("Group").find((c) => typeof c.props.onClick === "function");
+
+	it("renders a pending ai-placeholder with a dashed border + loading label", () => {
+		render(<CanvasNodeRenderer node={placeholderFixture("pending")} />);
+		const border = callsOfType("Rect").find((c) => Array.isArray(c.props.dash));
+		expect(border?.props.dash).toEqual([6, 4]);
+		expect(
+			callsOfType("Text").some((c) => c.props.text === "Generating…"),
+		).toBe(true);
+	});
+
+	it("shows no Cancel control without a CanvasStudio context", () => {
+		render(<CanvasNodeRenderer node={placeholderFixture("pending")} />);
+		expect(cancelGroupCall()).toBeUndefined();
+	});
+
+	it("renders a Cancel control that cancels the registered job when pending", () => {
+		const store = createAiJobStore();
+		const abort = vi.fn();
+		store.getState().register("job-1", { nodeId: "ai1", abort });
+		render(
+			<CanvasStudioContext.Provider
+				value={{ aiJobStore: store } as unknown as CanvasStudioContextValue}
+			>
+				<CanvasNodeRenderer node={placeholderFixture("pending")} />
+			</CanvasStudioContext.Provider>,
+		);
+		const cancel = cancelGroupCall();
+		expect(cancel).toBeDefined();
+		expect(callsOfType("Text").some((c) => c.props.text === "Cancel")).toBe(
+			true,
+		);
+
+		(cancel?.props.onClick as (e: { cancelBubble: boolean }) => void)({
+			cancelBubble: false,
+		});
+		expect(abort).toHaveBeenCalledTimes(1);
+		expect(store.getState().get("job-1")?.status).toBe("cancelled");
+	});
+
+	it("shows no Cancel control when the status is not pending", () => {
+		const store = createAiJobStore();
+		store.getState().register("job-1", { nodeId: "ai1", abort: vi.fn() });
+		render(
+			<CanvasStudioContext.Provider
+				value={{ aiJobStore: store } as unknown as CanvasStudioContextValue}
+			>
+				<CanvasNodeRenderer node={placeholderFixture("complete")} />
+			</CanvasStudioContext.Provider>,
+		);
+		expect(cancelGroupCall()).toBeUndefined();
+		expect(callsOfType("Text").some((c) => c.props.text === "AI ready")).toBe(
+			true,
+		);
+	});
+
+	it("labels an errored placeholder and shows no Cancel", () => {
+		render(<CanvasNodeRenderer node={placeholderFixture("error")} />);
+		expect(callsOfType("Text").some((c) => c.props.text === "AI failed")).toBe(
+			true,
+		);
+		expect(cancelGroupCall()).toBeUndefined();
 	});
 });
 
