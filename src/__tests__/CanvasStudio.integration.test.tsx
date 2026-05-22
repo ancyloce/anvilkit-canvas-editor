@@ -74,7 +74,7 @@ vi.mock("use-image", () => ({
 	default: () => [null, "loading"],
 }));
 
-import { CanvasStudio } from "../index.js";
+import { CanvasStudio, type Tool } from "../index.js";
 
 function layerCalls() {
 	return calls.filter((c) => c.type === "Layer");
@@ -285,6 +285,74 @@ describe("CanvasStudio integration", () => {
 			container.querySelector("[data-testid='page-navigator']"),
 		).not.toBeNull();
 		expect(container.querySelector("[data-testid='page-add']")).not.toBeNull();
+	});
+
+	it("routes a tool's requestAiIntent through the onAiIntent prop (I1-7 seam)", () => {
+		const onAiIntent = vi.fn();
+		// Probe tool standing in for an AI tool: emits on activation so the seam
+		// can be exercised through a live <CanvasStudio> (the mocked Konva stage
+		// does not dispatch real pointer events).
+		const probe: Tool = {
+			id: "ai-image",
+			cursor: "crosshair",
+			onActivate(ctx) {
+				ctx.requestAiIntent?.({
+					kind: "ai-image-marquee",
+					context: {
+						artboardId: ctx.activePageId,
+						bounds: { x: 0, y: 0, width: 10, height: 10 },
+					},
+				});
+			},
+		};
+		const ir = createCanvasIR({
+			pages: [createPage({ id: "p1" })],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				initialTool="ai-image"
+				toolRegistry={{ "ai-image": probe }}
+				onAiIntent={onAiIntent}
+			/>,
+		);
+		expect(onAiIntent).toHaveBeenCalled();
+		expect(onAiIntent.mock.calls[0]?.[0]).toMatchObject({
+			kind: "ai-image-marquee",
+			context: {
+				artboardId: "p1",
+				bounds: { x: 0, y: 0, width: 10, height: 10 },
+			},
+		});
+	});
+
+	it("does not throw when an AI tool emits without an onAiIntent prop", () => {
+		const probe: Tool = {
+			id: "ai-image",
+			cursor: "crosshair",
+			onActivate(ctx) {
+				ctx.requestAiIntent?.({
+					kind: "ai-image-marquee",
+					context: { artboardId: ctx.activePageId },
+				});
+			},
+		};
+		const ir = createCanvasIR({
+			pages: [createPage({ id: "p1" })],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		expect(() =>
+			render(
+				<CanvasStudio
+					initialIR={ir}
+					initialActivePageId="p1"
+					initialTool="ai-image"
+					toolRegistry={{ "ai-image": probe }}
+				/>,
+			),
+		).not.toThrow();
 	});
 
 	it("hidePageNavigator hides the built-in nav", () => {

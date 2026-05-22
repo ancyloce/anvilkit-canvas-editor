@@ -25,6 +25,7 @@ import { Grid } from "./stage/Grid.js";
 import { RemoteCursors } from "./stage/RemoteCursors.js";
 import { RemoteSelections } from "./stage/RemoteSelections.js";
 import { RenderLayer } from "./stage/RenderLayer.js";
+import { createAiJobStore } from "./stores/ai-job-store.js";
 import { createDraftStore } from "./stores/draft-store.js";
 import { createEditingStore } from "./stores/editing-store.js";
 import { createGuidesStore } from "./stores/guides-store.js";
@@ -36,6 +37,7 @@ import { createViewportStore } from "./stores/viewport-store.js";
 import { DraftRenderer } from "./tools/DraftRenderer.js";
 import { TextEditorOverlay } from "./tools/TextEditorOverlay.js";
 import { ToolInteractionLayer } from "./tools/ToolInteractionLayer.js";
+import type { AiToolIntent } from "./tools/ai-intent.js";
 import type { ToolRegistry } from "./tools/tool-types.js";
 
 export interface CanvasStudioProps {
@@ -65,6 +67,12 @@ export interface CanvasStudioProps {
 	/** Required for the image tool (MVP-6 Task 8). Host opens picker, returns asset id. */
 	onPickAsset?: () => Promise<string>;
 	/**
+	 * Fires when an AI tool (`ai-image` / `ai-brush`, I1-7) captures a gesture.
+	 * Hosts wire this to the AI panel / job client. Omit it to leave the AI
+	 * tools as inert gesture-capture (the marquee/selection still render).
+	 */
+	onAiIntent?: (intent: AiToolIntent) => void;
+	/**
 	 * Fires once after `<CanvasStage>` has constructed the Konva.Stage, and
 	 * again with `null` when the stage tears down. Hosts use this to drive
 	 * export pipelines (e.g. `stage.toDataURL()`) without reaching into the
@@ -86,6 +94,7 @@ export function CanvasStudio({
 	onChange,
 	onActivePageChange,
 	onPickAsset,
+	onAiIntent,
 	onStageReady,
 	toolRegistry,
 	hidePageNavigator,
@@ -150,15 +159,20 @@ export function CanvasStudio({
 	const [guidesStore] = useState(() => createGuidesStore());
 	const [draftStore] = useState(() => createDraftStore());
 	const [editingStore] = useState(() => createEditingStore());
+	const [aiJobStore] = useState(() => createAiJobStore());
 
 	const onChangeRef = useRef(onChange);
 	const onPickAssetRef = useRef(onPickAsset);
+	const onAiIntentRef = useRef(onAiIntent);
 	useEffect(() => {
 		onChangeRef.current = onChange;
 	}, [onChange]);
 	useEffect(() => {
 		onPickAssetRef.current = onPickAsset;
 	}, [onPickAsset]);
+	useEffect(() => {
+		onAiIntentRef.current = onAiIntent;
+	}, [onAiIntent]);
 
 	const commit = useCallback(
 		(cmd: CanvasCommand): CanvasIR => {
@@ -183,6 +197,12 @@ export function CanvasStudio({
 		return fn();
 	}, []);
 
+	// Stable seam for the AI tools (I1-7). Always defined; a no-op when no host
+	// wired `onAiIntent`. The AI tools call it on gesture completion.
+	const requestAiIntent = useCallback((intent: AiToolIntent) => {
+		onAiIntentRef.current?.(intent);
+	}, []);
+
 	const ctxValue = useMemo<CanvasStudioContextValue>(
 		() => ({
 			historyStore,
@@ -193,9 +213,11 @@ export function CanvasStudio({
 			draftStore,
 			editingStore,
 			pagesStore,
+			aiJobStore,
 			getIR,
 			commit,
 			pickAsset,
+			requestAiIntent,
 			stage,
 			activePageId,
 			ir,
@@ -209,9 +231,11 @@ export function CanvasStudio({
 			draftStore,
 			editingStore,
 			pagesStore,
+			aiJobStore,
 			getIR,
 			commit,
 			pickAsset,
+			requestAiIntent,
 			stage,
 			activePageId,
 			ir,

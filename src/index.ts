@@ -66,6 +66,13 @@ export { RemoteSelections } from "./stage/RemoteSelections.js";
 export type { RenderLayerName, RenderLayerProps } from "./stage/RenderLayer.js";
 export { RenderLayer } from "./stage/RenderLayer.js";
 export type {
+	AiJobEntry,
+	AiJobRegistration,
+	AiJobState,
+	AiJobStoreApi,
+} from "./stores/ai-job-store.js";
+export { createAiJobStore } from "./stores/ai-job-store.js";
+export type {
 	DraftState,
 	DraftStoreApi,
 	DrawDraft,
@@ -117,11 +124,18 @@ export {
 	createViewportStore,
 	DEFAULT_GRID_SIZE,
 } from "./stores/viewport-store.js";
+export type {
+	AiBrushSelectIntent,
+	AiImageMarqueeIntent,
+	AiToolIntent,
+} from "./tools/ai-intent.js";
 export {
 	DRAFT_DASH,
 	DRAFT_STROKE_COLOR,
 	DraftRenderer,
 } from "./tools/DraftRenderer.js";
+export { aiBrushTool } from "./tools/ai-brush-tool.js";
+export { aiImageTool } from "./tools/ai-image-tool.js";
 export { snapPoint } from "./tools/draw-snap.js";
 export { ellipseTool } from "./tools/ellipse-tool.js";
 export type { StagePointer } from "./tools/get-stage-pointer.js";
