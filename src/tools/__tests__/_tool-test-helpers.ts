@@ -11,6 +11,7 @@ import { createPagesStore } from "../../stores/pages-store.js";
 import { createSelectionStore } from "../../stores/selection-store.js";
 import { createToolStore } from "../../stores/tool-store.js";
 import { createViewportStore } from "../../stores/viewport-store.js";
+import type { AiToolIntent } from "../ai-intent.js";
 import type { ToolContext, ToolPointerEvent } from "../tool-types.js";
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
@@ -39,6 +40,8 @@ export interface TestHarness {
 	ir: CanvasIR;
 	setIR: (next: CanvasIR) => void;
 	commits: CanvasCommand[];
+	/** AI intents emitted via `requestAiIntent` (I1-7 ai-image / ai-brush). */
+	aiIntents: AiToolIntent[];
 }
 
 export interface MakeHarnessOptions {
@@ -81,6 +84,10 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 		return ir;
 	});
 	const pickAsset = vi.fn(() => Promise.resolve("asset-1"));
+	const aiIntents: AiToolIntent[] = [];
+	const requestAiIntent = vi.fn((intent: AiToolIntent) => {
+		aiIntents.push(intent);
+	});
 
 	const ctx: ToolContext = {
 		stage,
@@ -94,6 +101,7 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 		editingStore,
 		pickAsset,
 		activePageId: pagesStore.getState().activePageId,
+		requestAiIntent,
 	};
 
 	const studioCtx: CanvasStudioContextValue = {
@@ -108,6 +116,7 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 		getIR,
 		commit,
 		pickAsset,
+		requestAiIntent,
 		stage,
 		// `activePageId` and `ir` are snapshots at harness creation. Live reads
 		// flow through pagesStore + getIR; page-actions don't read these
@@ -124,6 +133,7 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 			ir = next;
 		},
 		commits,
+		aiIntents,
 	};
 }
 

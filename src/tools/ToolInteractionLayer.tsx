@@ -33,6 +33,7 @@ export function ToolInteractionLayer({
 		editingStore,
 		pickAsset,
 		activePageId,
+		requestAiIntent,
 	} = useCanvasStudio();
 
 	const ctx = useMemo<ToolContext | null>(() => {
@@ -49,6 +50,7 @@ export function ToolInteractionLayer({
 			editingStore,
 			pickAsset,
 			activePageId,
+			requestAiIntent,
 		};
 	}, [
 		stage,
@@ -62,6 +64,7 @@ export function ToolInteractionLayer({
 		editingStore,
 		pickAsset,
 		activePageId,
+		requestAiIntent,
 	]);
 
 	// Wire pointer dispatch.

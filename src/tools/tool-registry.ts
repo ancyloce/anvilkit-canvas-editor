@@ -1,3 +1,5 @@
+import { aiBrushTool } from "./ai-brush-tool.js";
+import { aiImageTool } from "./ai-image-tool.js";
 import { ellipseTool } from "./ellipse-tool.js";
 import { handTool } from "./hand-tool.js";
 import { imageTool } from "./image-tool.js";
@@ -8,7 +10,8 @@ import { textTool } from "./text-tool.js";
 import type { Tool, ToolRegistry } from "./tool-types.js";
 
 /**
- * Default tool registry — all 7 PRD FR-009 tools wired.
+ * Default tool registry — the PRD FR-009 tools wired. The AI tools
+ * (`ai-image`, `ai-brush`) emit intents to the host rather than committing IR.
  */
 export const defaultToolRegistry: ToolRegistry = {
 	select: selectTool,
@@ -18,6 +21,8 @@ export const defaultToolRegistry: ToolRegistry = {
 	text: textTool,
 	image: imageTool,
 	hand: handTool,
+	"ai-image": aiImageTool,
+	"ai-brush": aiBrushTool,
 };
 
 export function buildToolRegistry(tools: Tool[]): ToolRegistry {

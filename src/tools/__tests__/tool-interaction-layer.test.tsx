@@ -76,6 +76,7 @@ function makeCtx(
 			}) as never,
 		commit: vi.fn(() => ({}) as never),
 		pickAsset,
+		requestAiIntent: vi.fn(),
 		stage,
 		activePageId: "p1",
 		ir: {} as never,
@@ -200,6 +201,14 @@ describe("ToolInteractionLayer", () => {
 		mock.fire("pointerdown", { evt: {} as PointerEvent, target: {} as never });
 		// no throw, no handler called
 		expect(select.onPointerDown).not.toHaveBeenCalled();
+	});
+
+	it("threads requestAiIntent from context into the ToolContext", () => {
+		render(<Harness ctx={ctx} registry={registry} />);
+		mock.fire("pointerdown", { evt: {} as PointerEvent, target: {} as never });
+		const [, toolCtx] = (select.onPointerDown as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		expect(toolCtx.requestAiIntent).toBe(ctx.requestAiIntent);
 	});
 
 	it("detaches stage listeners on unmount + fires final deactivate", () => {

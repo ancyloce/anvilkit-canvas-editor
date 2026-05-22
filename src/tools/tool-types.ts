@@ -6,6 +6,7 @@ import type { GuidesStoreApi } from "../stores/guides-store.js";
 import type { SelectionStoreApi } from "../stores/selection-store.js";
 import type { ToolId, ToolStoreApi } from "../stores/tool-store.js";
 import type { ViewportStoreApi } from "../stores/viewport-store.js";
+import type { AiToolIntent } from "./ai-intent.js";
 
 /**
  * Per-event context handed to every tool handler. Stable across an interaction —
@@ -24,6 +25,12 @@ export interface ToolContext {
 	editingStore: EditingStoreApi;
 	pickAsset: () => Promise<string>;
 	activePageId: string;
+	/**
+	 * Hand an AI gesture (marquee region / image selection) to the host. Optional
+	 * because the AI host is opt-in — `<CanvasStudio>` always supplies a function
+	 * (a no-op when no `onAiIntent` prop is wired), but tool tests may omit it.
+	 */
+	requestAiIntent?: (intent: AiToolIntent) => void;
 }
 
 export interface ToolPointerEvent {
