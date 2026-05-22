@@ -22,6 +22,14 @@ describe("createToolStore — setActiveTool", () => {
 		store.getState().setActiveTool("hand");
 		expect(store.getState().activeTool).toBe("hand");
 	});
+
+	it("accepts the I1-7 AI tools", () => {
+		const store = createToolStore();
+		store.getState().setActiveTool("ai-image");
+		expect(store.getState().activeTool).toBe("ai-image");
+		store.getState().setActiveTool("ai-brush");
+		expect(store.getState().activeTool).toBe("ai-brush");
+	});
 });
 
 describe("createToolStore — independent instances", () => {

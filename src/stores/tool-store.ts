@@ -1,8 +1,10 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 
 /**
- * PRD FR-009: seven canvas tools. `select` is the default; draw tools commit
+ * PRD FR-009: nine canvas tools. `select` is the default; draw tools commit
  * `node.create` on pointerup; `hand` pans the viewport and never touches IR.
+ * The AI tools (`ai-image`, `ai-brush`) commit nothing — they capture a gesture
+ * and emit an {@link ../tools/ai-intent.js#AiToolIntent} to the host.
  */
 export type ToolId =
 	| "select"
@@ -11,7 +13,9 @@ export type ToolId =
 	| "ellipse"
 	| "line"
 	| "image"
-	| "hand";
+	| "hand"
+	| "ai-image"
+	| "ai-brush";
 
 export const DEFAULT_TOOL: ToolId = "select";
 
