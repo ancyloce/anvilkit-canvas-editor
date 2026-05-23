@@ -3,6 +3,7 @@
 import { cn } from "@anvilkit/ui/lib/utils";
 import { Separator } from "@anvilkit/ui/separator";
 import { useBrandColors, useBrandFonts } from "../brand/use-brand-kit.js";
+import { BrandPanel } from "../panels/BrandPanel.js";
 import { LayerPanel } from "../panels/LayerPanel.js";
 
 export interface EditorContextPanelProps {
@@ -35,36 +36,7 @@ export function EditorContextPanel({
 			{hasBrand ? (
 				<>
 					<Separator />
-					<div className="flex flex-col gap-3 p-4" data-testid="brand-section">
-						<div className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-							Brand kit
-						</div>
-						{colors.length > 0 ? (
-							<div className="flex gap-1.5" data-testid="brand-palette">
-								{colors.map((c) => (
-									<span
-										key={c.name}
-										title={`${c.name} · ${c.value}`}
-										className="h-7 flex-1 rounded-md ring-1 ring-border"
-										style={{ backgroundColor: c.value }}
-									/>
-								))}
-							</div>
-						) : null}
-						{fonts.length > 0 ? (
-							<div className="flex flex-col gap-1" data-testid="brand-fonts">
-								{fonts.map((f) => (
-									<div
-										key={f}
-										className="text-xs text-muted-foreground"
-										style={{ fontFamily: f }}
-									>
-										{f}
-									</div>
-								))}
-							</div>
-						) : null}
-					</div>
+					<BrandPanel />
 				</>
 			) : null}
 		</aside>
