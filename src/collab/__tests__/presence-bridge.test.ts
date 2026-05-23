@@ -1,6 +1,6 @@
+import { describe, expect, it, vi } from "vitest";
 import { Awareness } from "y-protocols/awareness";
 import { Doc as YDoc } from "yjs";
-import { describe, expect, it, vi } from "vitest";
 import { createCanvasPresence } from "../presence-bridge.js";
 import type { CanvasPresenceState } from "../presence-types.js";
 

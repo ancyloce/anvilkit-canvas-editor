@@ -3,12 +3,13 @@ import React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 afterEach(cleanup);
+
+import type { CanvasPresenceState } from "../presence-types.js";
 import {
 	CanvasPresenceContext,
 	type CanvasPresenceSource,
 	useCanvasPresence,
 } from "../useCanvasPresence.js";
-import type { CanvasPresenceState } from "../presence-types.js";
 
 function makeFakeSource() {
 	let cb: ((peers: readonly CanvasPresenceState[]) => void) | null = null;

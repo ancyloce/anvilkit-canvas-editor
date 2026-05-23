@@ -1,9 +1,9 @@
 import type { Awareness } from "y-protocols/awareness";
+import { validateCanvasPresenceState } from "./presence-schema.js";
 import type {
 	CanvasBindingUnsubscribe,
 	CanvasPresenceState,
 } from "./presence-types.js";
-import { validateCanvasPresenceState } from "./presence-schema.js";
 
 export interface CanvasPresence {
 	/** Set local presence (cursor / selection / display name). Token-bucket

@@ -13,8 +13,8 @@ export const CANVAS_COLLAB_VERSION = "0.1.0";
 
 export {
 	type CanvasYjsBinding,
-	createCanvasYjsBinding,
 	type CreateCanvasYjsBindingOptions,
+	createCanvasYjsBinding,
 } from "./binding.js";
 export { decodeCanvasIR, encodeCanvasIR } from "./encode.js";
 export {
@@ -24,8 +24,8 @@ export {
 } from "./keys.js";
 export {
 	type CanvasPresence,
-	createCanvasPresence,
 	type CreateCanvasPresenceOptions,
+	createCanvasPresence,
 } from "./presence-bridge.js";
 export {
 	MAX_DISPLAY_NAME_LENGTH,
