@@ -1,7 +1,6 @@
 "use client";
 
 import {
-	type CanvasAnyNodeUpdateCommand,
 	type CanvasEllipseNode,
 	type CanvasGroupNode,
 	type CanvasImageNode,
@@ -13,161 +12,20 @@ import {
 	findNode,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
-import { cn } from "@anvilkit/ui/lib/utils";
-import { Input } from "@anvilkit/ui/input";
-import type { ReactNode } from "react";
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { beginCrop } from "../selection/crop-actions.js";
 import { beginPathEdit } from "../selection/path-edit-actions.js";
-
-const eyebrowClass =
-	"text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
-
-function Section({
-	title,
-	children,
-}: {
-	title: string;
-	children: ReactNode;
-}): React.JSX.Element {
-	return (
-		<div className="flex flex-col gap-2">
-			<div className={eyebrowClass}>{title}</div>
-			{children}
-		</div>
-	);
-}
-
-function FieldRow({
-	label,
-	children,
-}: {
-	label: string;
-	children: ReactNode;
-}): React.JSX.Element {
-	return (
-		<label className="grid grid-cols-[64px_1fr] items-center gap-2.5">
-			<span className="text-[11.5px] text-muted-foreground">{label}</span>
-			{children}
-		</label>
-	);
-}
-
-interface NumberFieldProps {
-	label: string;
-	value: number;
-	step?: number;
-	min?: number;
-	max?: number;
-	dataTestId: string;
-	onCommit: (next: number) => void;
-}
-
-function NumberField({
-	label,
-	value,
-	step,
-	min,
-	max,
-	dataTestId,
-	onCommit,
-}: NumberFieldProps): React.JSX.Element {
-	return (
-		<FieldRow label={label}>
-			<Input
-				// Uncontrolled (commit-on-blur), so re-key on external value changes
-				// (drag/nudge/undo) to remount with a fresh defaultValue instead of
-				// mutating an initialized Base UI FieldControl (which warns + leaves
-				// the field stale). Stable while typing — the store only updates on blur.
-				key={value}
-				type="number"
-				aria-label={label}
-				defaultValue={value}
-				step={step ?? 1}
-				className="h-7.5 text-xs"
-				{...(min !== undefined ? { min } : {})}
-				{...(max !== undefined ? { max } : {})}
-				data-testid={dataTestId}
-				onBlur={(e) => {
-					const parsed = Number.parseFloat(e.currentTarget.value);
-					if (!Number.isNaN(parsed) && parsed !== value) onCommit(parsed);
-				}}
-			/>
-		</FieldRow>
-	);
-}
-
-interface TextFieldProps {
-	label: string;
-	value: string;
-	dataTestId: string;
-	onCommit: (next: string) => void;
-}
-
-function TextField({
-	label,
-	value,
-	dataTestId,
-	onCommit,
-}: TextFieldProps): React.JSX.Element {
-	return (
-		<FieldRow label={label}>
-			<Input
-				// See NumberField: re-key uncontrolled input on external value change.
-				key={value}
-				type="text"
-				aria-label={label}
-				defaultValue={value}
-				className="h-7.5 text-xs"
-				data-testid={dataTestId}
-				onBlur={(e) => {
-					if (e.currentTarget.value !== value) onCommit(e.currentTarget.value);
-				}}
-			/>
-		</FieldRow>
-	);
-}
-
-interface ColorFieldProps {
-	label: string;
-	value: string | undefined;
-	dataTestId: string;
-	onCommit: (next: string) => void;
-}
-
-function ColorField({
-	label,
-	value,
-	dataTestId,
-	onCommit,
-}: ColorFieldProps): React.JSX.Element {
-	return (
-		<FieldRow label={label}>
-			<div className="flex items-center gap-2">
-				<span
-					className="size-5 shrink-0 rounded-sm ring-1 ring-border"
-					style={{ backgroundColor: value ?? "#000000" }}
-					aria-hidden
-				/>
-				<Input
-					// See NumberField: re-key uncontrolled input on external value change.
-					key={value ?? "#000000"}
-					type="color"
-					aria-label={label}
-					defaultValue={value ?? "#000000"}
-					className="h-7.5 flex-1 p-0.5"
-					data-testid={dataTestId}
-					onBlur={(e) => {
-						if (e.currentTarget.value !== value)
-							onCommit(e.currentTarget.value);
-					}}
-				/>
-			</div>
-		</FieldRow>
-	);
-}
+import {
+	ColorField,
+	type CommitPatch,
+	FieldRow,
+	NumberField,
+	Section,
+	TextField,
+	useCommitPatch,
+} from "./fields.js";
 
 export interface PropertyInspectorProps {
 	id?: string;
@@ -186,18 +44,7 @@ export function PropertyInspector({
 	const found = firstSelectedId ? findNode(ctx.ir, firstSelectedId) : null;
 	const node = found?.node ?? null;
 
-	const commitPatch = useCallback(
-		(targetNode: CanvasNode, patch: Record<string, unknown>) => {
-			const cmd = {
-				type: "node.update",
-				nodeId: targetNode.id,
-				kind: targetNode.type,
-				patch,
-			} as CanvasAnyNodeUpdateCommand;
-			ctx.commit(cmd);
-		},
-		[ctx],
-	);
+	const commitPatch = useCommitPatch();
 
 	const rootClass =
 		"flex h-full min-w-[240px] max-w-[320px] flex-col gap-4 overflow-y-auto bg-card p-4 text-sm text-foreground select-none";
@@ -322,7 +169,7 @@ export function PropertyInspector({
 
 function renderTypeSpecificFields(
 	node: CanvasNode,
-	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
+	commitPatch: CommitPatch,
 	ctx: CanvasStudioContextValue,
 ): React.JSX.Element | null {
 	switch (node.type) {
@@ -349,7 +196,7 @@ function renderTypeSpecificFields(
 
 function renderRectFields(
 	node: CanvasRectNode,
-	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
+	commitPatch: CommitPatch,
 ): React.JSX.Element {
 	return (
 		<Section title="Shape">
@@ -385,7 +232,7 @@ function renderRectFields(
 
 function renderEllipseFields(
 	node: CanvasEllipseNode,
-	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
+	commitPatch: CommitPatch,
 ): React.JSX.Element {
 	return (
 		<Section title="Shape">
@@ -414,7 +261,7 @@ function renderEllipseFields(
 
 function renderLineFields(
 	node: CanvasLineNode,
-	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
+	commitPatch: CommitPatch,
 ): React.JSX.Element {
 	return (
 		<Section title="Line">
@@ -437,7 +284,7 @@ function renderLineFields(
 
 function renderTextFields(
 	node: CanvasTextNode,
-	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
+	commitPatch: CommitPatch,
 ): React.JSX.Element {
 	return (
 		<Section title="Text">
@@ -472,7 +319,7 @@ function renderTextFields(
 
 function renderImageFields(
 	node: CanvasImageNode,
-	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
+	commitPatch: CommitPatch,
 	ctx: CanvasStudioContextValue,
 ): React.JSX.Element {
 	const crop = node.crop;
@@ -549,7 +396,7 @@ function renderImageFields(
 
 function renderPathFields(
 	node: CanvasPathNode,
-	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
+	commitPatch: CommitPatch,
 	ctx: CanvasStudioContextValue,
 ): React.JSX.Element {
 	return (
