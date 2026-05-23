@@ -2,7 +2,6 @@
 
 import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
-import type { BrandKit } from "./brand/brand-kit.js";
 import {
 	useCallback,
 	useEffect,
@@ -12,12 +11,17 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
+import type { BrandKit } from "./brand/brand-kit.js";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
 } from "./context/canvas-studio-context.js";
 import { PageNavigator } from "./pages/PageNavigator.js";
+import { draggedIdsKey } from "./perf/active-nodes.js";
+import { useStaticGroupCache } from "./perf/static-cache.js";
 import { CanvasTransformer } from "./selection/CanvasTransformer.js";
+import { CropEditorOverlay } from "./selection/CropEditorOverlay.js";
+import { PathEditOverlay } from "./selection/PathEditOverlay.js";
 import { SmartGuideOverlay } from "./snap/SmartGuideOverlay.js";
 import { CanvasAssetsContext } from "./stage/CanvasAssetsContext.js";
 import { CanvasNodeRenderer } from "./stage/CanvasNodeRenderer.js";
@@ -27,29 +31,25 @@ import { Grid } from "./stage/Grid.js";
 import { RemoteCursors } from "./stage/RemoteCursors.js";
 import { RemoteSelections } from "./stage/RemoteSelections.js";
 import { RenderLayer } from "./stage/RenderLayer.js";
-import { CropEditorOverlay } from "./selection/CropEditorOverlay.js";
-import { PathEditOverlay } from "./selection/PathEditOverlay.js";
 import { createAiJobStore } from "./stores/ai-job-store.js";
 import { createCropStore } from "./stores/crop-store.js";
 import { createDraftStore } from "./stores/draft-store.js";
 import { createEditingStore } from "./stores/editing-store.js";
-import { createPathEditStore } from "./stores/path-edit-store.js";
-import { createPenStore } from "./stores/pen-store.js";
 import { createGuidesStore } from "./stores/guides-store.js";
 import { createHistoryStore } from "./stores/history-store.js";
 import { createPagesStore } from "./stores/pages-store.js";
+import { createPathEditStore } from "./stores/path-edit-store.js";
+import { createPenStore } from "./stores/pen-store.js";
 import { createSceneStore } from "./stores/scene-store.js";
 import { createSelectionStore } from "./stores/selection-store.js";
 import { createToolStore, type ToolId } from "./stores/tool-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
-import { draggedIdsKey } from "./perf/active-nodes.js";
-import { useStaticGroupCache } from "./perf/static-cache.js";
+import type { AiToolIntent } from "./tools/ai-intent.js";
 import { DraftRenderer } from "./tools/DraftRenderer.js";
 import { PenPreview } from "./tools/PenPreview.js";
 import { PenToolOverlay } from "./tools/PenToolOverlay.js";
 import { TextEditorOverlay } from "./tools/TextEditorOverlay.js";
 import { ToolInteractionLayer } from "./tools/ToolInteractionLayer.js";
-import type { AiToolIntent } from "./tools/ai-intent.js";
 import type { ToolRegistry } from "./tools/tool-types.js";
 
 export interface CanvasStudioProps {
@@ -335,8 +335,12 @@ export function CanvasStudio({
 			</div>
 		);
 	}
-	const stageWidth = width ?? activePage.size.width;
-	const stageHeight = height ?? activePage.size.height;
+	// The stage box scales with zoom so the page grows/shrinks as a whole and
+	// Konva pointer mapping stays correct (scaleX=zoom over a zoom-sized box).
+	// At zoom = 1 this is the page's natural pixel size (unchanged). This is
+	// what lets the multi-page workspace scale every page uniformly via zoom.
+	const stageWidth = (width ?? activePage.size.width) * zoom;
+	const stageHeight = (height ?? activePage.size.height) * zoom;
 	// The Konva stage + its overlays. Computed once so it can be slotted either
 	// into the legacy bare layout or anywhere a `renderShell` decides to place
 	// it (e.g. the centre column of the reference editor grid).

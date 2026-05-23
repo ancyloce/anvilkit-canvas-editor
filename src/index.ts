@@ -43,6 +43,23 @@ export {
 	reorderPage,
 	switchToPage,
 } from "./pages/page-actions.js";
+export { BrandPanel, type BrandPanelProps } from "./panels/BrandPanel.js";
+export {
+	ElementsPanel,
+	type ElementsPanelProps,
+} from "./panels/ElementsPanel.js";
+export {
+	ColorField,
+	type ColorFieldProps,
+	type CommitPatch,
+	FieldRow,
+	NumberField,
+	type NumberFieldProps,
+	Section,
+	TextField,
+	type TextFieldProps,
+	useCommitPatch,
+} from "./panels/fields.js";
 export type { LayerPanelProps } from "./panels/LayerPanel.js";
 export { LayerPanel } from "./panels/LayerPanel.js";
 export type { PropertyInspectorProps } from "./panels/PropertyInspector.js";
@@ -56,10 +73,10 @@ export { CanvasTransformer } from "./selection/CanvasTransformer.js";
 export { CropEditorOverlay } from "./selection/CropEditorOverlay.js";
 export {
 	beginCrop,
+	type CropDragMode,
 	cancelCrop,
 	commitCrop,
 	computeCropDrag,
-	type CropDragMode,
 } from "./selection/crop-actions.js";
 export {
 	canGroupSelection,
@@ -67,12 +84,12 @@ export {
 	groupSelection,
 	ungroupSelection,
 } from "./selection/group-actions.js";
+export { PathEditOverlay } from "./selection/PathEditOverlay.js";
 export {
 	beginPathEdit,
 	commitPathD,
 	endPathEdit,
 } from "./selection/path-edit-actions.js";
-export { PathEditOverlay } from "./selection/PathEditOverlay.js";
 export {
 	getNodeWorldRect,
 	getOtherNodeRects,
@@ -183,6 +200,8 @@ export {
 	createViewportStore,
 	DEFAULT_GRID_SIZE,
 } from "./stores/viewport-store.js";
+export { aiBrushTool } from "./tools/ai-brush-tool.js";
+export { aiImageTool } from "./tools/ai-image-tool.js";
 export type {
 	AiBrushSelectIntent,
 	AiImageMarqueeIntent,
@@ -193,8 +212,6 @@ export {
 	DRAFT_STROKE_COLOR,
 	DraftRenderer,
 } from "./tools/DraftRenderer.js";
-export { aiBrushTool } from "./tools/ai-brush-tool.js";
-export { aiImageTool } from "./tools/ai-image-tool.js";
 export { snapPoint } from "./tools/draw-snap.js";
 export { ellipseTool } from "./tools/ellipse-tool.js";
 export type { StagePointer } from "./tools/get-stage-pointer.js";
@@ -202,26 +219,26 @@ export { getStagePointer } from "./tools/get-stage-pointer.js";
 export { handTool } from "./tools/hand-tool.js";
 export { imageTool } from "./tools/image-tool.js";
 export { lineTool } from "./tools/line-tool.js";
+export { PenPreview } from "./tools/PenPreview.js";
+export { PenToolOverlay } from "./tools/PenToolOverlay.js";
 export {
-	cancelPenPath,
-	type PenCommitContext,
-	commitPenPath,
-} from "./tools/pen-actions.js";
-export {
+	movePathControl,
 	type ParsedPath,
 	type PathControl,
 	type PathControlRef,
 	type PathSeg,
 	type Pt,
-	movePathControl,
 	parsePathD,
 	pathControlPoints,
 	serializeParsedPath,
 } from "./tools/path-edit-geometry.js";
-export { type PenBounds, buildPathD, penBounds } from "./tools/pen-geometry.js";
+export {
+	cancelPenPath,
+	commitPenPath,
+	type PenCommitContext,
+} from "./tools/pen-actions.js";
+export { buildPathD, type PenBounds, penBounds } from "./tools/pen-geometry.js";
 export { penTool } from "./tools/pen-tool.js";
-export { PenPreview } from "./tools/PenPreview.js";
-export { PenToolOverlay } from "./tools/PenToolOverlay.js";
 export { rectTool } from "./tools/rect-tool.js";
 export { selectTool } from "./tools/select-tool.js";
 export { TextEditorOverlay } from "./tools/TextEditorOverlay.js";
@@ -238,3 +255,4 @@ export type {
 	ToolPointerEvent,
 	ToolRegistry,
 } from "./tools/tool-types.js";
+export * from "./workspace/index.js";
