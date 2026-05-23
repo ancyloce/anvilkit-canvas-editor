@@ -19,9 +19,24 @@ const EPSILON = 0.5;
  * is reset to 1 after each commit so subsequent transforms re-derive from the
  * new bounds — standard react-konva transformer pattern.
  */
+const noopSubscribe = () => () => undefined;
+
 export function CanvasTransformer(): React.JSX.Element | null {
-	const { stage, selectionStore, draftStore, getIR, commit, activePageId } =
-		useCanvasStudio();
+	const {
+		stage,
+		selectionStore,
+		draftStore,
+		cropStore,
+		getIR,
+		commit,
+		activePageId,
+	} = useCanvasStudio();
+	// Hide the resize/rotate transformer while the crop editor owns the handles.
+	const croppingId = useSyncExternalStore(
+		cropStore ? cropStore.subscribe : noopSubscribe,
+		() => cropStore?.getState().cropNodeId ?? null,
+		() => cropStore?.getState().cropNodeId ?? null,
+	);
 	const selectedIds = useSyncExternalStore(
 		selectionStore.subscribe,
 		() => selectionStore.getState().selectedIds,
@@ -103,5 +118,6 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		}
 	}, [stage, selectedIds, getIR, commit, activePageId]);
 
+	if (croppingId) return null;
 	return <Transformer ref={transformerRef} onTransformEnd={onTransformEnd} />;
 }
