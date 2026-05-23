@@ -124,8 +124,10 @@ describe("CanvasStudio integration", () => {
 	});
 
 	it("routes a dragged node into the drag layer, leaving the rest in objects (I2-5)", () => {
-		// Probe tool that opens a `move` draft for r1 on activation, so the
-		// drag-layer partition can be exercised through a live <CanvasStudio>.
+		// Probe tool that opens a *moved* `move` draft for r1 on activation, so the
+		// drag-layer partition can be exercised through a live <CanvasStudio>. The
+		// pointer must have travelled (currentX/Y past the drag threshold) for the
+		// node to promote — a zero-distance draft is just a selection click.
 		const dragProbe: Tool = {
 			id: "select",
 			cursor: "default",
@@ -134,8 +136,8 @@ describe("CanvasStudio integration", () => {
 					type: "move",
 					startX: 0,
 					startY: 0,
-					currentX: 0,
-					currentY: 0,
+					currentX: 25,
+					currentY: 40,
 					nodeStarts: [{ id: "r1", x: 0, y: 0 }],
 				});
 			},
