@@ -8,6 +8,16 @@ import {
 	type CanvasPage,
 	isGroupNode,
 } from "@anvilkit/canvas-core";
+import { Button } from "@anvilkit/ui/button";
+import { cn } from "@anvilkit/ui/lib/utils";
+import {
+	Eye,
+	EyeOff,
+	Group as GroupIcon,
+	Lock,
+	LockOpen,
+	Ungroup,
+} from "lucide-react";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import {
@@ -17,86 +27,8 @@ import {
 	ungroupSelection,
 } from "../selection/group-actions.js";
 
-const ROW_HEIGHT = 28;
 const INDENT_PX = 14;
-const PADDING_X = 8;
-
-const styles = {
-	root: {
-		display: "flex",
-		flexDirection: "column",
-		minWidth: 220,
-		maxWidth: 320,
-		height: "100%",
-		borderRight: "1px solid #e5e7eb",
-		background: "#ffffff",
-		fontFamily:
-			"ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-		fontSize: 12,
-		userSelect: "none",
-	} as const,
-	header: {
-		display: "flex",
-		alignItems: "center",
-		height: ROW_HEIGHT,
-		padding: `0 ${PADDING_X}px`,
-		borderBottom: "1px solid #e5e7eb",
-		background: "#f9fafb",
-		fontWeight: 600,
-		color: "#374151",
-		gap: 4,
-	} as const,
-	headerLabel: {
-		flex: 1,
-	} as const,
-	list: {
-		flex: 1,
-		overflowY: "auto",
-		paddingBottom: 4,
-	} as const,
-	row: {
-		display: "flex",
-		alignItems: "center",
-		height: ROW_HEIGHT,
-		padding: `0 ${PADDING_X}px`,
-		cursor: "pointer",
-		color: "#374151",
-		gap: 4,
-	} as const,
-	rowSelected: {
-		background: "#dbeafe",
-		color: "#1e3a8a",
-	} as const,
-	rowLabel: {
-		flex: 1,
-		whiteSpace: "nowrap",
-		overflow: "hidden",
-		textOverflow: "ellipsis",
-	} as const,
-	iconButton: {
-		display: "inline-flex",
-		alignItems: "center",
-		justifyContent: "center",
-		width: 20,
-		height: 20,
-		border: "none",
-		background: "transparent",
-		color: "#6b7280",
-		cursor: "pointer",
-		borderRadius: 3,
-		padding: 0,
-		font: "inherit",
-		lineHeight: 1,
-	} as const,
-	iconButtonDim: {
-		color: "#cbd5e1",
-	} as const,
-	empty: {
-		padding: PADDING_X,
-		color: "#9ca3af",
-		fontStyle: "italic",
-	} as const,
-} as const;
+const ROW_PAD_X = 8;
 
 interface FlatRow {
 	node: CanvasNode;
@@ -242,53 +174,55 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 	return (
 		<div
 			data-testid="layer-panel"
-			style={styles.root}
+			className="flex h-full min-w-[220px] max-w-[320px] flex-col bg-card text-sm text-foreground select-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
 			tabIndex={0}
 			onKeyDown={handleKeyDown}
 			{...(id !== undefined ? { id } : {})}
 		>
-			<div style={styles.header}>
-				<span style={styles.headerLabel}>Layers</span>
-				<button
+			<div className="flex h-9 items-center gap-1 border-b border-border px-3">
+				<span className="flex-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+					Layers
+				</span>
+				<Button
 					type="button"
-					style={{
-						...styles.iconButton,
-						...(canGroup ? {} : styles.iconButtonDim),
-					}}
+					variant="ghost"
+					size="icon-xs"
 					data-testid="layer-group-btn"
 					aria-label="Group selection"
 					title="Group selection (⌘G)"
 					disabled={!canGroup}
 					onClick={() => groupSelection(ctx)}
 				>
-					⊞
-				</button>
-				<button
+					<GroupIcon aria-hidden />
+				</Button>
+				<Button
 					type="button"
-					style={{
-						...styles.iconButton,
-						...(canUngroup ? {} : styles.iconButtonDim),
-					}}
+					variant="ghost"
+					size="icon-xs"
 					data-testid="layer-ungroup-btn"
 					aria-label="Ungroup"
 					title="Ungroup (⌘⇧G)"
 					disabled={!canUngroup}
 					onClick={() => ungroupSelection(ctx)}
 				>
-					⊟
-				</button>
+					<Ungroup aria-hidden />
+				</Button>
 			</div>
-			<div style={styles.list} role="tree" aria-label="Layers">
+			<div
+				className="flex-1 overflow-y-auto p-1.5"
+				role="tree"
+				aria-label="Layers"
+			>
 				{rows.length === 0 ? (
-					<div style={styles.empty} data-testid="layer-panel-empty">
+					<div
+						className="px-2 py-1.5 text-xs text-muted-foreground italic"
+						data-testid="layer-panel-empty"
+					>
 						No layers on this page yet.
 					</div>
 				) : (
 					rows.map(({ node, depth }) => {
 						const isSelected = selectedSet.has(node.id);
-						const rowStyle = isSelected
-							? { ...styles.row, ...styles.rowSelected }
-							: styles.row;
 						const visible = node.visible !== false;
 						const locked = node.locked === true;
 						return (
@@ -296,10 +230,14 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 								key={node.id}
 								data-testid={`layer-row-${node.id}`}
 								data-selected={isSelected ? "true" : "false"}
-								style={{
-									...rowStyle,
-									paddingLeft: PADDING_X + depth * INDENT_PX,
-								}}
+								className={cn(
+									"flex h-7 items-center gap-1 rounded-md pr-1 text-[13px]",
+									"cursor-pointer hover:bg-muted",
+									isSelected
+										? "bg-accent text-accent-foreground hover:bg-accent"
+										: "text-foreground",
+								)}
+								style={{ paddingLeft: ROW_PAD_X + depth * INDENT_PX }}
 								onClick={(e) => handleSelect(node.id, e)}
 								onKeyDown={(e) => {
 									if (e.key === "Enter" || e.key === " ") {
@@ -311,13 +249,17 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 								aria-selected={isSelected}
 								tabIndex={-1}
 							>
-								<span style={styles.rowLabel}>{nodeLabel(node)}</span>
-								<button
+								<span className="flex-1 truncate">{nodeLabel(node)}</span>
+								<Button
 									type="button"
-									style={{
-										...styles.iconButton,
-										...(visible ? {} : styles.iconButtonDim),
-									}}
+									variant="ghost"
+									size="icon-xs"
+									className={cn(
+										"size-6",
+										visible
+											? "text-muted-foreground"
+											: "text-muted-foreground/40",
+									)}
 									data-testid={`layer-row-${node.id}-visibility`}
 									aria-label={visible ? "Hide layer" : "Show layer"}
 									title={visible ? "Hide" : "Show"}
@@ -326,14 +268,16 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 										handleToggleVisibility(node);
 									}}
 								>
-									{visible ? "○" : "✕"}
-								</button>
-								<button
+									{visible ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
+								</Button>
+								<Button
 									type="button"
-									style={{
-										...styles.iconButton,
-										...(locked ? {} : styles.iconButtonDim),
-									}}
+									variant="ghost"
+									size="icon-xs"
+									className={cn(
+										"size-6",
+										locked ? "text-foreground" : "text-muted-foreground/40",
+									)}
 									data-testid={`layer-row-${node.id}-lock`}
 									aria-label={locked ? "Unlock layer" : "Lock layer"}
 									title={locked ? "Unlock" : "Lock"}
@@ -342,8 +286,8 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 										handleToggleLock(node);
 									}}
 								>
-									{locked ? "■" : "□"}
-								</button>
+									{locked ? <Lock aria-hidden /> : <LockOpen aria-hidden />}
+								</Button>
 							</div>
 						);
 					})

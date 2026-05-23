@@ -12,85 +12,48 @@ import {
 	type CanvasTextNode,
 	findNode,
 } from "@anvilkit/canvas-core";
+import { Button } from "@anvilkit/ui/button";
+import { cn } from "@anvilkit/ui/lib/utils";
+import { Input } from "@anvilkit/ui/input";
+import type { ReactNode } from "react";
 import { useCallback, useSyncExternalStore } from "react";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { beginCrop } from "../selection/crop-actions.js";
 import { beginPathEdit } from "../selection/path-edit-actions.js";
 
-const ROW_HEIGHT = 28;
-const PADDING_X = 8;
+const eyebrowClass =
+	"text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
 
-const styles = {
-	root: {
-		display: "flex",
-		flexDirection: "column",
-		minWidth: 240,
-		maxWidth: 320,
-		height: "100%",
-		borderLeft: "1px solid #e5e7eb",
-		background: "#ffffff",
-		fontFamily:
-			"ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-		fontSize: 12,
-		userSelect: "none",
-	} as const,
-	header: {
-		display: "flex",
-		alignItems: "center",
-		height: ROW_HEIGHT,
-		padding: `0 ${PADDING_X}px`,
-		borderBottom: "1px solid #e5e7eb",
-		background: "#f9fafb",
-		fontWeight: 600,
-		color: "#374151",
-	} as const,
-	body: {
-		flex: 1,
-		overflowY: "auto",
-		padding: PADDING_X,
-		display: "flex",
-		flexDirection: "column",
-		gap: 12,
-	} as const,
-	group: {
-		display: "flex",
-		flexDirection: "column",
-		gap: 4,
-	} as const,
-	groupTitle: {
-		fontSize: 11,
-		fontWeight: 600,
-		color: "#6b7280",
-		textTransform: "uppercase",
-		letterSpacing: 0.5,
-	} as const,
-	field: {
-		display: "grid",
-		gridTemplateColumns: "70px 1fr",
-		alignItems: "center",
-		gap: 6,
-	} as const,
-	label: {
-		color: "#6b7280",
-	} as const,
-	input: {
-		height: 22,
-		padding: "0 6px",
-		border: "1px solid #d1d5db",
-		borderRadius: 3,
-		font: "inherit",
-		color: "#1f2937",
-		background: "#ffffff",
-		width: "100%",
-		boxSizing: "border-box" as const,
-	} as const,
-	empty: {
-		padding: PADDING_X,
-		color: "#9ca3af",
-		fontStyle: "italic",
-	} as const,
-} as const;
+function Section({
+	title,
+	children,
+}: {
+	title: string;
+	children: ReactNode;
+}): React.JSX.Element {
+	return (
+		<div className="flex flex-col gap-2">
+			<div className={eyebrowClass}>{title}</div>
+			{children}
+		</div>
+	);
+}
+
+function FieldRow({
+	label,
+	children,
+}: {
+	label: string;
+	children: ReactNode;
+}): React.JSX.Element {
+	return (
+		<label className="grid grid-cols-[64px_1fr] items-center gap-2.5">
+			<span className="text-[11.5px] text-muted-foreground">{label}</span>
+			{children}
+		</label>
+	);
+}
 
 interface NumberFieldProps {
 	label: string;
@@ -112,23 +75,27 @@ function NumberField({
 	onCommit,
 }: NumberFieldProps): React.JSX.Element {
 	return (
-		<label style={styles.field}>
-			<span style={styles.label}>{label}</span>
-			<input
+		<FieldRow label={label}>
+			<Input
+				// Uncontrolled (commit-on-blur), so re-key on external value changes
+				// (drag/nudge/undo) to remount with a fresh defaultValue instead of
+				// mutating an initialized Base UI FieldControl (which warns + leaves
+				// the field stale). Stable while typing — the store only updates on blur.
+				key={value}
 				type="number"
 				aria-label={label}
 				defaultValue={value}
 				step={step ?? 1}
+				className="h-7.5 text-xs"
 				{...(min !== undefined ? { min } : {})}
 				{...(max !== undefined ? { max } : {})}
-				style={styles.input}
 				data-testid={dataTestId}
 				onBlur={(e) => {
 					const parsed = Number.parseFloat(e.currentTarget.value);
 					if (!Number.isNaN(parsed) && parsed !== value) onCommit(parsed);
 				}}
 			/>
-		</label>
+		</FieldRow>
 	);
 }
 
@@ -146,19 +113,20 @@ function TextField({
 	onCommit,
 }: TextFieldProps): React.JSX.Element {
 	return (
-		<label style={styles.field}>
-			<span style={styles.label}>{label}</span>
-			<input
+		<FieldRow label={label}>
+			<Input
+				// See NumberField: re-key uncontrolled input on external value change.
+				key={value}
 				type="text"
 				aria-label={label}
 				defaultValue={value}
-				style={styles.input}
+				className="h-7.5 text-xs"
 				data-testid={dataTestId}
 				onBlur={(e) => {
 					if (e.currentTarget.value !== value) onCommit(e.currentTarget.value);
 				}}
 			/>
-		</label>
+		</FieldRow>
 	);
 }
 
@@ -176,19 +144,28 @@ function ColorField({
 	onCommit,
 }: ColorFieldProps): React.JSX.Element {
 	return (
-		<label style={styles.field}>
-			<span style={styles.label}>{label}</span>
-			<input
-				type="color"
-				aria-label={label}
-				defaultValue={value ?? "#000000"}
-				style={{ ...styles.input, padding: 0, height: 24 }}
-				data-testid={dataTestId}
-				onBlur={(e) => {
-					if (e.currentTarget.value !== value) onCommit(e.currentTarget.value);
-				}}
-			/>
-		</label>
+		<FieldRow label={label}>
+			<div className="flex items-center gap-2">
+				<span
+					className="size-5 shrink-0 rounded-sm ring-1 ring-border"
+					style={{ backgroundColor: value ?? "#000000" }}
+					aria-hidden
+				/>
+				<Input
+					// See NumberField: re-key uncontrolled input on external value change.
+					key={value ?? "#000000"}
+					type="color"
+					aria-label={label}
+					defaultValue={value ?? "#000000"}
+					className="h-7.5 flex-1 p-0.5"
+					data-testid={dataTestId}
+					onBlur={(e) => {
+						if (e.currentTarget.value !== value)
+							onCommit(e.currentTarget.value);
+					}}
+				/>
+			</div>
+		</FieldRow>
 	);
 }
 
@@ -222,17 +199,25 @@ export function PropertyInspector({
 		[ctx],
 	);
 
+	const rootClass =
+		"flex h-full min-w-[240px] max-w-[320px] flex-col gap-4 overflow-y-auto bg-card p-4 text-sm text-foreground select-none";
+
 	if (!node) {
 		return (
 			<div
 				data-testid="property-inspector"
 				role="region"
 				aria-label="Properties"
-				style={styles.root}
+				className={rootClass}
 				{...(id !== undefined ? { id } : {})}
 			>
-				<div style={styles.header}>Properties</div>
-				<div style={styles.empty} data-testid="property-inspector-empty">
+				<div className="text-[13px] font-semibold text-foreground">
+					Inspector
+				</div>
+				<div
+					className="text-xs text-muted-foreground italic"
+					data-testid="property-inspector-empty"
+				>
 					Select a layer to edit its properties.
 				</div>
 			</div>
@@ -245,13 +230,19 @@ export function PropertyInspector({
 			data-node-id={node.id}
 			role="region"
 			aria-label="Properties"
-			style={styles.root}
+			className={rootClass}
 			{...(id !== undefined ? { id } : {})}
 		>
-			<div style={styles.header}>Properties · {node.type}</div>
-			<div style={styles.body} key={node.id}>
-				<div style={styles.group}>
-					<div style={styles.groupTitle}>Layer</div>
+			<div>
+				<div className="text-[13px] font-semibold text-foreground">
+					Inspector
+				</div>
+				<div className="text-xs text-muted-foreground capitalize">
+					{node.type} layer
+				</div>
+			</div>
+			<div className="flex flex-col gap-4" key={node.id}>
+				<Section title="Layer">
 					<TextField
 						label="Name"
 						value={node.name ?? ""}
@@ -267,9 +258,8 @@ export function PropertyInspector({
 						dataTestId="prop-opacity"
 						onCommit={(v) => commitPatch(node, { opacity: v })}
 					/>
-				</div>
-				<div style={styles.group}>
-					<div style={styles.groupTitle}>Transform</div>
+				</Section>
+				<Section title="Transform">
 					<NumberField
 						label="X"
 						value={node.transform.x}
@@ -323,7 +313,7 @@ export function PropertyInspector({
 							})
 						}
 					/>
-				</div>
+				</Section>
 				{renderTypeSpecificFields(node, commitPatch, ctx)}
 			</div>
 		</div>
@@ -362,8 +352,7 @@ function renderRectFields(
 	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
 ): React.JSX.Element {
 	return (
-		<div style={styles.group}>
-			<div style={styles.groupTitle}>Shape</div>
+		<Section title="Shape">
 			<ColorField
 				label="Fill"
 				value={node.fill}
@@ -390,7 +379,7 @@ function renderRectFields(
 				dataTestId="prop-radius"
 				onCommit={(v) => commitPatch(node, { radius: v })}
 			/>
-		</div>
+		</Section>
 	);
 }
 
@@ -399,8 +388,7 @@ function renderEllipseFields(
 	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
 ): React.JSX.Element {
 	return (
-		<div style={styles.group}>
-			<div style={styles.groupTitle}>Shape</div>
+		<Section title="Shape">
 			<ColorField
 				label="Fill"
 				value={node.fill}
@@ -420,7 +408,7 @@ function renderEllipseFields(
 				dataTestId="prop-stroke-width"
 				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
 			/>
-		</div>
+		</Section>
 	);
 }
 
@@ -429,8 +417,7 @@ function renderLineFields(
 	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
 ): React.JSX.Element {
 	return (
-		<div style={styles.group}>
-			<div style={styles.groupTitle}>Line</div>
+		<Section title="Line">
 			<ColorField
 				label="Stroke"
 				value={node.stroke}
@@ -444,7 +431,7 @@ function renderLineFields(
 				dataTestId="prop-stroke-width"
 				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
 			/>
-		</div>
+		</Section>
 	);
 }
 
@@ -453,8 +440,7 @@ function renderTextFields(
 	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
 ): React.JSX.Element {
 	return (
-		<div style={styles.group}>
-			<div style={styles.groupTitle}>Text</div>
+		<Section title="Text">
 			<TextField
 				label="Content"
 				value={node.text}
@@ -480,7 +466,7 @@ function renderTextFields(
 				dataTestId="prop-text-fill"
 				onCommit={(v) => commitPatch(node, { fill: v })}
 			/>
-		</div>
+		</Section>
 	);
 }
 
@@ -495,25 +481,27 @@ function renderImageFields(
 		commitPatch(node, { crop: { ...c, ...patch } });
 	return (
 		<>
-			<div style={styles.group}>
-				<div style={styles.groupTitle}>Image</div>
-				<div style={styles.field}>
-					<span style={styles.label}>Asset</span>
-					<span data-testid="prop-asset-id" style={{ color: "#1f2937" }}>
+			<Section title="Image">
+				<FieldRow label="Asset">
+					<span
+						data-testid="prop-asset-id"
+						className="truncate text-xs text-foreground"
+					>
 						{node.assetId}
 					</span>
-				</div>
-			</div>
-			<div style={styles.group}>
-				<div style={styles.groupTitle}>Crop</div>
-				<button
+				</FieldRow>
+			</Section>
+			<Section title="Crop">
+				<Button
 					type="button"
+					variant="outline"
+					size="sm"
+					className="w-full"
 					data-testid="prop-crop-begin"
-					style={{ ...styles.input, cursor: "pointer", background: "#f9fafb" }}
 					onClick={() => beginCrop(ctx, node.id)}
 				>
 					Crop image
-				</button>
+				</Button>
 				<NumberField
 					label="Crop X"
 					value={c.x}
@@ -543,20 +531,18 @@ function renderImageFields(
 					onCommit={(v) => setCrop({ height: v })}
 				/>
 				{crop ? (
-					<button
+					<Button
 						type="button"
+						variant="ghost"
+						size="sm"
+						className="w-full"
 						data-testid="prop-crop-clear"
-						style={{
-							...styles.input,
-							cursor: "pointer",
-							background: "#f9fafb",
-						}}
 						onClick={() => commitPatch(node, { crop: undefined })}
 					>
 						Clear crop
-					</button>
+					</Button>
 				) : null}
-			</div>
+			</Section>
 		</>
 	);
 }
@@ -567,8 +553,7 @@ function renderPathFields(
 	ctx: CanvasStudioContextValue,
 ): React.JSX.Element {
 	return (
-		<div style={styles.group}>
-			<div style={styles.groupTitle}>Path</div>
+		<Section title="Path">
 			<ColorField
 				label="Fill"
 				value={node.fill}
@@ -594,28 +579,31 @@ function renderPathFields(
 				dataTestId="prop-path-d"
 				onCommit={(v) => commitPatch(node, { d: v })}
 			/>
-			<button
+			<Button
 				type="button"
+				variant="outline"
+				size="sm"
+				className="w-full"
 				data-testid="prop-path-edit"
-				style={{ ...styles.input, cursor: "pointer", background: "#f9fafb" }}
 				onClick={() => beginPathEdit(ctx, node.id)}
 			>
 				Edit points
-			</button>
-		</div>
+			</Button>
+		</Section>
 	);
 }
 
 function renderGroupFields(node: CanvasGroupNode): React.JSX.Element {
 	return (
-		<div style={styles.group}>
-			<div style={styles.groupTitle}>Group</div>
-			<div style={styles.field}>
-				<span style={styles.label}>Children</span>
-				<span data-testid="prop-children-count" style={{ color: "#1f2937" }}>
+		<Section title="Group">
+			<FieldRow label="Children">
+				<span
+					data-testid="prop-children-count"
+					className="text-xs text-foreground"
+				>
 					{node.children.length}
 				</span>
-			</div>
-		</div>
+			</FieldRow>
+		</Section>
 	);
 }
