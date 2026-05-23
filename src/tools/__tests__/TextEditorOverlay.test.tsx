@@ -52,6 +52,22 @@ function makeFakeStage(): Konva.Stage {
 	} as unknown as Konva.Stage;
 }
 
+/**
+ * A stage whose `container()` reads `this` (like real Konva, which delegates to
+ * `this.getContainer()`). Calling it unbound throws "reading 'getContainer'" —
+ * the bug the default `this`-less fake stage above could never catch.
+ */
+function konvaLikeStage(): Konva.Stage {
+	const el = document.createElement("div");
+	document.body.appendChild(el);
+	return {
+		container(this: { getContainer: () => HTMLElement }) {
+			return this.getContainer();
+		},
+		getContainer: () => el,
+	} as unknown as Konva.Stage;
+}
+
 function makeCtx(
 	ir: CanvasIR,
 	stage: Konva.Stage | null,
@@ -109,6 +125,24 @@ describe("TextEditorOverlay", () => {
 		) as HTMLTextAreaElement | null;
 		expect(ta).not.toBeNull();
 		expect(ta?.value).toBe("Hello");
+	});
+
+	it("calls stage.container() bound to the stage (no 'getContainer' crash)", () => {
+		// Regression: the overlay used to extract `const fn = stage.container`
+		// and call `fn()` unbound, which threw against a real Konva stage.
+		const ir = fixtureIR();
+		const { ctx } = makeCtx(ir, konvaLikeStage());
+		ctx.editingStore.getState().setEditing("text1");
+		expect(() => {
+			render(
+				<CanvasStudioContext.Provider value={ctx}>
+					<TextEditorOverlay />
+				</CanvasStudioContext.Provider>,
+			);
+		}).not.toThrow();
+		expect(
+			document.querySelector("[data-testid=text-editor-overlay]"),
+		).not.toBeNull();
 	});
 
 	it("sanity: simple textarea onBlur fires under fireEvent.blur", () => {

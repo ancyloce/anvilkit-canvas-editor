@@ -1,6 +1,6 @@
 import type { CanvasNodeCreateCommand } from "@anvilkit/canvas-core";
 import { beforeEach, describe, expect, it } from "vitest";
-import { commitPenPath, cancelPenPath } from "../pen-actions.js";
+import { cancelPenPath, commitPenPath } from "../pen-actions.js";
 import { penTool } from "../pen-tool.js";
 import {
 	makeHarness,

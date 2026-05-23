@@ -5,8 +5,8 @@ import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
 } from "../../context/canvas-studio-context.js";
-import { makeHarness } from "./_tool-test-helpers.js";
 import { PenToolOverlay } from "../PenToolOverlay.js";
+import { makeHarness } from "./_tool-test-helpers.js";
 
 function mount(ctx: CanvasStudioContextValue) {
 	return render(

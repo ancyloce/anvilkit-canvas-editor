@@ -8,8 +8,8 @@ import {
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { describe, expect, it } from "vitest";
-import type { AiBrushSelectIntent } from "../ai-intent.js";
 import { aiBrushTool } from "../ai-brush-tool.js";
+import type { AiBrushSelectIntent } from "../ai-intent.js";
 import { makeHarness, pointerEvent } from "./_tool-test-helpers.js";
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";

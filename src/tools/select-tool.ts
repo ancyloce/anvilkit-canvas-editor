@@ -2,6 +2,7 @@ import type { CanvasNodeMoveCommand } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { getOtherNodeRects } from "../snap/get-node-rect.js";
 import { computeSnap } from "../snap/snap-engine.js";
+import { nodeRenderOffset } from "../stage/node-render-offset.js";
 import type { Tool, ToolContext, ToolPointerEvent } from "./tool-types.js";
 
 const MIN_MOVE_DISTANCE = 0.5;
@@ -25,6 +26,35 @@ function aabbIntersect(
  * (marquee/transformer/guide). Single-page descent is sufficient for MVP —
  * future iterations could recurse into groups.
  */
+/**
+ * True when a pointer interaction originates on the selection `Transformer`
+ * (its resize/rotate anchors, the rotater handle, or its border) rather than on
+ * canvas content. The Transformer is a sibling overlay on the selection layer
+ * and owns its own drag gesture; if the select tool *also* treats that gesture
+ * as a marquee/move, the two fight over one pointer stream — the phantom
+ * marquee's pointerup re-runs `setSelection()` over the swept area and
+ * intermittently clears/replaces the selection the moment a rotate or resize
+ * commits. Walks the Konva parent chain (anchors are children of the
+ * Transformer node) looking for `getClassName() === "Transformer"`. Guarded so
+ * it is a safe no-op against the plain fake nodes used in tool tests.
+ */
+function isTransformerTarget(target: Konva.Node | undefined | null): boolean {
+	let cur: Konva.Node | null = target ?? null;
+	let safety = 16;
+	while (cur && safety-- > 0) {
+		const getClassName = (cur as { getClassName?: () => string }).getClassName;
+		if (
+			typeof getClassName === "function" &&
+			getClassName.call(cur) === "Transformer"
+		) {
+			return true;
+		}
+		const parent = (cur as { getParent?: () => Konva.Node | null }).getParent;
+		cur = typeof parent === "function" ? parent.call(cur) : null;
+	}
+	return false;
+}
+
 function findHitNodeId(
 	target: Konva.Node | undefined | null,
 	ctx: ToolContext,
@@ -87,6 +117,12 @@ export const selectTool: Tool = {
 	cursor: "default",
 
 	onPointerDown(e, ctx) {
+		// Let the selection Transformer own gestures that start on its own
+		// handles. Starting a marquee/move draft here would run a phantom
+		// selection alongside the resize/rotate and clobber the selection on
+		// pointerup (rotation desync + lost selection state). The Transformer
+		// mutates the live node directly and commits via its own `transformend`.
+		if (isTransformerTarget(e.target)) return;
 		const hitId = findHitNodeId(e.target, ctx);
 		const sel = ctx.selectionStore.getState();
 		if (hitId) {
@@ -140,11 +176,19 @@ export const selectTool: Tool = {
 				ctx.guidesStore.getState().setGuides(snapped.guides);
 			}
 			// Direct Konva mutation during interaction (PRD FR-011) — no commits.
+			// Apply each node's render offset so centered shapes (Konva.Ellipse,
+			// whose `position()` is its center, not its top-left) track the cursor
+			// instead of drifting by half their bounds. See `nodeRenderOffset`.
+			const page = ctx.getIR().pages.find((p) => p.id === ctx.activePageId);
 			for (const start of draft.nodeStarts) {
 				const konvaNode = ctx.stage.findOne(`.${start.id}`);
-				if (konvaNode) {
-					konvaNode.position({ x: start.x + dx, y: start.y + dy });
-				}
+				if (!konvaNode) continue;
+				const node = page?.root.children.find((c) => c.id === start.id);
+				const offset = node ? nodeRenderOffset(node) : { x: 0, y: 0 };
+				konvaNode.position({
+					x: start.x + dx + offset.x,
+					y: start.y + dy + offset.y,
+				});
 			}
 			ctx.draftStore.getState().setDraft({
 				...draft,

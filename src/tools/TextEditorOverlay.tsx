@@ -48,9 +48,12 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 		return null;
 	}
 
-	const containerFn = (stage as unknown as { container?: () => HTMLElement })
-		.container;
-	const container = typeof containerFn === "function" ? containerFn() : null;
+	// Call `container()` AS A METHOD on the stage — Konva's `container()`
+	// delegates to `this.getContainer()`, so an unbound `const fn =
+	// stage.container; fn()` crashes ("reading 'getContainer'") against a real
+	// Konva stage (fake test stages use a `this`-less function, so tests pass).
+	const container =
+		typeof stage.container === "function" ? stage.container() : null;
 	const rect = container?.getBoundingClientRect?.();
 	const vp = viewportStore.getState();
 	const left = (rect?.left ?? 0) + editingNode.transform.x * vp.zoom + vp.panX;

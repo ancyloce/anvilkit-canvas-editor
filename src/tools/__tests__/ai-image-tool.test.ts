@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { AiImageMarqueeIntent } from "../ai-intent.js";
 import { aiImageTool } from "../ai-image-tool.js";
+import type { AiImageMarqueeIntent } from "../ai-intent.js";
 import { makeHarness, pointerEvent } from "./_tool-test-helpers.js";
 
 describe("aiImageTool", () => {
