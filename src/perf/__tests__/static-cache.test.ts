@@ -221,15 +221,15 @@ describe("useStaticGroupCache", () => {
 });
 
 describe("selectDraggedIds", () => {
-	it("returns ids from a move draft, [] otherwise", () => {
+	it("returns ids from a MOVED move draft, [] otherwise", () => {
 		expect(selectDraggedIds(null)).toEqual([]);
 		expect(
 			selectDraggedIds({
 				type: "move",
 				startX: 0,
 				startY: 0,
-				currentX: 0,
-				currentY: 0,
+				currentX: 12,
+				currentY: 8,
 				nodeStarts: [
 					{ id: "a", x: 0, y: 0 },
 					{ id: "b", x: 0, y: 0 },
@@ -243,6 +243,33 @@ describe("selectDraggedIds", () => {
 				startY: 0,
 				currentX: 1,
 				currentY: 1,
+			}),
+		).toEqual([]);
+	});
+
+	it("is NOT dragging for a zero-distance move draft (a pure selection click)", () => {
+		// Regression: selectTool opens a move draft on every click. A click that
+		// never moves must not promote the node onto the drag layer — that
+		// remount detaches it from the selection Transformer and breaks resize.
+		expect(
+			selectDraggedIds({
+				type: "move",
+				startX: 40,
+				startY: 40,
+				currentX: 40,
+				currentY: 40,
+				nodeStarts: [{ id: "a", x: 0, y: 0 }],
+			}),
+		).toEqual([]);
+		// Sub-threshold jitter (< 0.5px) also stays a click, not a drag.
+		expect(
+			selectDraggedIds({
+				type: "move",
+				startX: 40,
+				startY: 40,
+				currentX: 40.3,
+				currentY: 40.1,
+				nodeStarts: [{ id: "a", x: 0, y: 0 }],
 			}),
 		).toEqual([]);
 	});
@@ -270,7 +297,9 @@ describe("draggedIdsKey", () => {
 	});
 
 	it("is order-independent (sorted) and empty when not dragging", () => {
-		expect(draggedIdsKey(moveDraft(0, 0))).toBe("a,b");
+		// A moved draft sorts its ids; an unmoved draft / null is not a drag.
+		expect(draggedIdsKey(moveDraft(10, 20))).toBe("a,b");
+		expect(draggedIdsKey(moveDraft(0, 0))).toBe("");
 		expect(draggedIdsKey(null)).toBe("");
 	});
 });
