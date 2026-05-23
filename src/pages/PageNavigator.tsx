@@ -1,5 +1,8 @@
 "use client";
 
+import { Button } from "@anvilkit/ui/button";
+import { cn } from "@anvilkit/ui/lib/utils";
+import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
 	useCallback,
@@ -18,89 +21,6 @@ import {
 	reorderPage,
 	switchToPage,
 } from "./page-actions.js";
-
-const ROW_HEIGHT = 32;
-const PADDING_X = 8;
-const TAB_GAP = 4;
-const TAB_HEIGHT = 24;
-
-const styles = {
-	root: {
-		display: "flex",
-		alignItems: "center",
-		gap: TAB_GAP,
-		height: ROW_HEIGHT,
-		padding: `0 ${PADDING_X}px`,
-		borderBottom: "1px solid #e5e7eb",
-		background: "#f9fafb",
-		fontFamily:
-			"ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-		fontSize: 12,
-		userSelect: "none",
-	} as const,
-	tablist: {
-		display: "inline-flex",
-		alignItems: "center",
-		gap: TAB_GAP,
-	} as const,
-	tab: {
-		height: TAB_HEIGHT,
-		padding: `0 ${PADDING_X}px`,
-		display: "inline-flex",
-		alignItems: "center",
-		background: "transparent",
-		border: "1px solid #d1d5db",
-		borderRadius: 4,
-		cursor: "pointer",
-		color: "#374151",
-		font: "inherit",
-	} as const,
-	tabActive: {
-		background: "#ffffff",
-		border: "1px solid #3b82f6",
-		color: "#1f2937",
-		boxShadow: "0 0 0 1px #3b82f6 inset",
-	} as const,
-	thumb: {
-		height: TAB_HEIGHT - 8,
-		width: "auto",
-		maxWidth: 32,
-		marginRight: 4,
-		borderRadius: 2,
-		objectFit: "contain",
-		verticalAlign: "middle",
-	} as const,
-	renameInput: {
-		height: TAB_HEIGHT - 4,
-		padding: `0 ${PADDING_X / 2}px`,
-		background: "#ffffff",
-		border: "1px solid #3b82f6",
-		borderRadius: 4,
-		color: "#1f2937",
-		font: "inherit",
-		minWidth: 80,
-	} as const,
-	actions: {
-		marginLeft: "auto",
-		display: "inline-flex",
-		gap: TAB_GAP,
-	} as const,
-	actionButton: {
-		height: TAB_HEIGHT,
-		minWidth: TAB_HEIGHT,
-		padding: `0 ${PADDING_X}px`,
-		background: "#ffffff",
-		border: "1px solid #d1d5db",
-		borderRadius: 4,
-		cursor: "pointer",
-		color: "#374151",
-		font: "inherit",
-	} as const,
-	actionButtonDisabled: {
-		opacity: 0.4,
-		cursor: "not-allowed",
-	} as const,
-} as const;
 
 function tabLabel(name: string | undefined, id: string): string {
 	if (name && name.length > 0) return name;
@@ -183,21 +103,18 @@ export function PageNavigator({
 	return (
 		<div
 			data-testid="page-navigator"
-			style={styles.root}
+			className="flex h-10 items-center gap-1.5 border-b border-border bg-card px-2 select-none"
 			{...(id !== undefined ? { id } : {})}
 		>
 			<div
 				role="tablist"
 				aria-label="Artboards"
 				data-testid="page-tablist"
-				style={styles.tablist}
+				className="inline-flex items-center gap-1.5 overflow-x-auto"
 			>
 				{pages.map((p) => {
 					const isActive = p.id === activePageId;
 					const isRenaming = p.id === renamingPageId;
-					const tabStyle = isActive
-						? { ...styles.tab, ...styles.tabActive }
-						: styles.tab;
 					if (isRenaming) {
 						return (
 							<input
@@ -206,7 +123,7 @@ export function PageNavigator({
 								type="text"
 								data-page-id={p.id}
 								data-testid={`page-rename-input-${p.id}`}
-								style={styles.renameInput}
+								className="h-6 min-w-20 rounded-md border border-ring bg-background px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
 								value={renamingValue}
 								onChange={(e) => setRenamingValue(e.target.value)}
 								onKeyDown={onRenameKeyDown}
@@ -224,7 +141,12 @@ export function PageNavigator({
 							data-page-id={p.id}
 							data-active={isActive ? "true" : "false"}
 							data-testid={`page-tab-${p.id}`}
-							style={tabStyle}
+							className={cn(
+								"inline-flex h-6 items-center gap-1.5 rounded-md border px-2 text-xs whitespace-nowrap transition-colors",
+								isActive
+									? "border-primary bg-primary/10 text-foreground ring-1 ring-primary"
+									: "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+							)}
 							onClick={() => switchToPage(ctx, p.id)}
 							onDoubleClick={() => {
 								setRenamingPageId(p.id);
@@ -236,7 +158,7 @@ export function PageNavigator({
 									src={thumbnails.get(p.id)}
 									alt=""
 									data-testid={`page-thumb-${p.id}`}
-									style={styles.thumb}
+									className="h-4 max-w-8 rounded-xs object-contain align-middle"
 								/>
 							) : null}
 							{tabLabel(p.name, p.id)}
@@ -244,70 +166,65 @@ export function PageNavigator({
 					);
 				})}
 			</div>
-			<div style={styles.actions}>
-				<button
+			<div className="ml-auto inline-flex items-center gap-1">
+				<Button
 					type="button"
+					variant="ghost"
+					size="icon-xs"
 					data-testid="page-reorder-left"
-					style={
-						reorderLeftDisabled
-							? { ...styles.actionButton, ...styles.actionButtonDisabled }
-							: styles.actionButton
-					}
 					disabled={reorderLeftDisabled}
 					onClick={() => reorderPage(ctx, activePageId, activeIndex - 1)}
 					aria-label="Move page left"
 					title="Move page left"
 				>
-					{"←"}
-				</button>
-				<button
+					<ChevronLeft aria-hidden />
+				</Button>
+				<Button
 					type="button"
+					variant="ghost"
+					size="icon-xs"
 					data-testid="page-reorder-right"
-					style={
-						reorderRightDisabled
-							? { ...styles.actionButton, ...styles.actionButtonDisabled }
-							: styles.actionButton
-					}
 					disabled={reorderRightDisabled}
 					onClick={() => reorderPage(ctx, activePageId, activeIndex + 1)}
 					aria-label="Move page right"
 					title="Move page right"
 				>
-					{"→"}
-				</button>
-				<button
+					<ChevronRight aria-hidden />
+				</Button>
+				<Button
 					type="button"
+					variant="ghost"
+					size="icon-xs"
 					data-testid="page-add"
-					style={styles.actionButton}
 					onClick={() => addPage(ctx)}
 					aria-label="Add page"
 					title="Add page"
 				>
-					+
-				</button>
-				<button
+					<Plus aria-hidden />
+				</Button>
+				<Button
 					type="button"
+					variant="ghost"
+					size="icon-xs"
 					data-testid="page-duplicate"
-					style={styles.actionButton}
 					onClick={() => duplicateCurrentPage(ctx)}
+					aria-label="Duplicate page"
 					title="Duplicate page"
 				>
-					Duplicate
-				</button>
-				<button
+					<Copy aria-hidden />
+				</Button>
+				<Button
 					type="button"
+					variant="ghost"
+					size="icon-xs"
 					data-testid="page-delete"
-					style={
-						deleteDisabled
-							? { ...styles.actionButton, ...styles.actionButtonDisabled }
-							: styles.actionButton
-					}
 					disabled={deleteDisabled}
 					onClick={() => deletePage(ctx, activePageId)}
+					aria-label="Delete page"
 					title={deleteDisabled ? "Cannot delete the only page" : "Delete page"}
 				>
-					Delete
-				</button>
+					<Trash2 aria-hidden />
+				</Button>
 			</div>
 		</div>
 	);
