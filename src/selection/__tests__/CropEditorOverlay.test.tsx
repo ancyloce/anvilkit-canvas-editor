@@ -6,6 +6,7 @@ import {
 	createPage,
 } from "@anvilkit/canvas-core";
 import { fireEvent, render } from "@testing-library/react";
+import type Konva from "konva";
 import { describe, expect, it } from "vitest";
 import {
 	CanvasStudioContext,
@@ -41,6 +42,24 @@ function mount(ctx: CanvasStudioContextValue) {
 			<CropEditorOverlay />
 		</CanvasStudioContext.Provider>,
 	);
+}
+
+/**
+ * A stage whose `container()` reads `this` (like real Konva, which delegates to
+ * `this.getContainer()`). Calling it unbound — `const fn = stage.container;
+ * fn()` — sets `this` to undefined and throws "reading 'getContainer'". The
+ * default fake stage uses a `this`-less arrow, which is why it never caught the
+ * binding bug.
+ */
+function konvaLikeStage(): Konva.Stage {
+	const el = document.createElement("div");
+	return {
+		findOne: () => null,
+		container(this: { getContainer: () => HTMLElement }) {
+			return this.getContainer();
+		},
+		getContainer: () => el,
+	} as unknown as Konva.Stage;
 }
 
 describe("CropEditorOverlay", () => {
@@ -106,6 +125,23 @@ describe("CropEditorOverlay", () => {
 			height: 100,
 		});
 		expect(h.studioCtx.cropStore?.getState().cropNodeId).toBeNull();
+	});
+
+	it("calls stage.container() bound to the stage (no 'getContainer' crash)", () => {
+		// Regression: the overlay used to extract `const fn = stage.container`
+		// and call `fn()`, dropping the `this` binding. Against a real Konva
+		// stage (whose container() reads `this`), that threw
+		// "Cannot read properties of undefined (reading 'getContainer')".
+		const h = makeHarness({ ir: imageIR() });
+		h.studioCtx.cropStore?.getState().begin("img-a");
+		h.studioCtx.stage = konvaLikeStage();
+		let result: ReturnType<typeof mount> | undefined;
+		expect(() => {
+			result = mount(h.studioCtx);
+		}).not.toThrow();
+		expect(
+			result?.container.querySelector("[data-testid='crop-editor-overlay']"),
+		).not.toBeNull();
 	});
 
 	it("Escape cancels without committing", () => {

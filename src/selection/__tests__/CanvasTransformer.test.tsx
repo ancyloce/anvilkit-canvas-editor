@@ -1,11 +1,14 @@
 import type {
+	CanvasAnyNodeUpdateCommand,
 	CanvasIR,
 	CanvasNodeResizeCommand,
 	CanvasNodeRotateCommand,
 } from "@anvilkit/canvas-core";
 import {
 	createCanvasIR,
+	createEllipse,
 	createGroup,
+	createLine,
 	createPage,
 	createRect,
 } from "@anvilkit/canvas-core";
@@ -273,5 +276,94 @@ describe("CanvasTransformer", () => {
 			transformerProps.onTransformEnd();
 		});
 		expect(commits).toHaveLength(0);
+	});
+
+	it("ellipse resize commits the top-left (Konva center → IR transform), no drift", () => {
+		transformerCalls.length = 0;
+		const page = createPage({ id: "p1" });
+		page.root = createGroup({
+			id: "p1-root",
+			bounds: page.root.bounds,
+			children: [
+				createEllipse({
+					id: "ellA",
+					bounds: { width: 100, height: 50 },
+					transform: { x: 10, y: 20 },
+				}),
+			],
+		});
+		const ir = createCanvasIR({
+			id: "ir-e",
+			pages: [page],
+			now: () => FIXED_TS,
+		});
+		// Konva.Ellipse position is its CENTER. After a 2× resize the center sits
+		// at (110, 70); the top-left of the 200×100 box is (10, 20).
+		const node = makeNode({ x: 110, y: 70, scaleX: 2, scaleY: 2 });
+		const stage = makeFakeStage({ ellA: node });
+		const { ctx, commits } = makeCtx(stage, ir);
+		ctx.selectionStore.getState().setSelection(["ellA"]);
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<CanvasTransformer />
+			</CanvasStudioContext.Provider>,
+		);
+		const transformerProps = transformerCalls[0]?.props as {
+			onTransformEnd: () => void;
+		};
+		act(() => {
+			transformerProps.onTransformEnd();
+		});
+		const resizeCmds = commits.filter((c) => c.type === "node.resize");
+		expect(resizeCmds).toHaveLength(1);
+		const cmd = resizeCmds[0] as CanvasNodeResizeCommand;
+		// Without the center→top-left correction this would be {x:110,y:70,...}.
+		expect(cmd.to).toEqual({ x: 10, y: 20, width: 200, height: 100 });
+	});
+
+	it("line/path resize persists scale via node.update (bounds-baking would revert)", () => {
+		transformerCalls.length = 0;
+		const page = createPage({ id: "p1" });
+		page.root = createGroup({
+			id: "p1-root",
+			bounds: page.root.bounds,
+			children: [
+				createLine({
+					id: "lineA",
+					points: [0, 0, 100, 0],
+					transform: { x: 10, y: 20 },
+				}),
+			],
+		});
+		const ir = createCanvasIR({
+			id: "ir-l",
+			pages: [page],
+			now: () => FIXED_TS,
+		});
+		const node = makeNode({ x: 10, y: 20, scaleX: 2, scaleY: 2 });
+		const stage = makeFakeStage({ lineA: node });
+		const { ctx, commits } = makeCtx(stage, ir);
+		ctx.selectionStore.getState().setSelection(["lineA"]);
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<CanvasTransformer />
+			</CanvasStudioContext.Provider>,
+		);
+		const transformerProps = transformerCalls[0]?.props as {
+			onTransformEnd: () => void;
+		};
+		act(() => {
+			transformerProps.onTransformEnd();
+		});
+		// Geometry-sized nodes persist the scale (the renderer ignores bounds), so
+		// the resize is a node.update on the transform — not a node.resize.
+		expect(commits.some((c) => c.type === "node.resize")).toBe(false);
+		const updates = commits.filter((c) => c.type === "node.update");
+		expect(updates).toHaveLength(1);
+		const cmd = updates[0] as CanvasAnyNodeUpdateCommand;
+		expect(cmd.kind).toBe("line");
+		const transform = (cmd.patch as { transform?: Record<string, number> })
+			.transform;
+		expect(transform).toMatchObject({ x: 10, y: 20, scaleX: 2, scaleY: 2 });
 	});
 });

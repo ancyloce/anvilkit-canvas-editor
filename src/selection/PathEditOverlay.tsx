@@ -9,8 +9,8 @@ import type { PathEditStoreApi } from "../stores/path-edit-store.js";
 import {
 	movePathControl,
 	type ParsedPath,
-	parsePathD,
 	type Pt,
+	parsePathD,
 	pathControlPoints,
 	serializeParsedPath,
 } from "../tools/path-edit-geometry.js";

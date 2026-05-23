@@ -10,9 +10,9 @@ import {
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import type { CropRect, CropStoreApi } from "../stores/crop-store.js";
 import {
+	type CropDragMode,
 	cancelCrop,
 	commitCrop,
-	type CropDragMode,
 	computeCropDrag,
 } from "./crop-actions.js";
 
@@ -110,9 +110,14 @@ function CropEditorOverlayInner({
 	if (!cropNodeId || !node || !draft || !stage) return null;
 
 	const vp = viewportStore.getState();
-	const containerFn = (stage as unknown as { container?: () => HTMLElement })
-		.container;
-	const container = typeof containerFn === "function" ? containerFn() : null;
+	// Call `container()` AS A METHOD on the stage. Konva's `container()`
+	// delegates to `this.getContainer()`, so extracting it to a local
+	// (`const fn = stage.container; fn()`) drops the `this` binding and crashes
+	// with "Cannot read properties of undefined (reading 'getContainer')"
+	// against a real Konva stage. Unit tests miss it because their fake
+	// `container` is a plain `this`-less function.
+	const container =
+		typeof stage.container === "function" ? stage.container() : null;
 	const cr = container?.getBoundingClientRect?.();
 	const boxLeft = (cr?.left ?? 0) + node.transform.x * vp.zoom + vp.panX;
 	const boxTop = (cr?.top ?? 0) + node.transform.y * vp.zoom + vp.panY;
