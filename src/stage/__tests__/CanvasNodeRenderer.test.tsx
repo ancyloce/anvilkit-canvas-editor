@@ -206,6 +206,48 @@ describe("CanvasNodeRenderer", () => {
 		expect(callsOfType("Image")[0]?.props.image).toBe(fakeImg);
 	});
 
+	it("passes the crop rect to Image when the node has a crop", () => {
+		const fakeImg = { src: "data:image/png;base64,XXX" } as HTMLImageElement;
+		useImageMock.mockReturnValueOnce([fakeImg, "loaded"]);
+		const image = createImage({
+			id: "i1",
+			bounds: { width: 100, height: 100 },
+			assetId: "a1",
+			crop: { x: 10, y: 20, width: 30, height: 40 },
+		});
+		render(
+			<CanvasAssetsContext.Provider
+				value={{ a1: { id: "a1", uri: "data:image/png;base64,XXX" } }}
+			>
+				<CanvasNodeRenderer node={image} />
+			</CanvasAssetsContext.Provider>,
+		);
+		expect(callsOfType("Image")[0]?.props.crop).toEqual({
+			x: 10,
+			y: 20,
+			width: 30,
+			height: 40,
+		});
+	});
+
+	it("omits the crop prop when the node has no crop", () => {
+		const fakeImg = { src: "data:image/png;base64,XXX" } as HTMLImageElement;
+		useImageMock.mockReturnValueOnce([fakeImg, "loaded"]);
+		const image = createImage({
+			id: "i1",
+			bounds: { width: 100, height: 100 },
+			assetId: "a1",
+		});
+		render(
+			<CanvasAssetsContext.Provider
+				value={{ a1: { id: "a1", uri: "data:image/png;base64,XXX" } }}
+			>
+				<CanvasNodeRenderer node={image} />
+			</CanvasAssetsContext.Provider>,
+		);
+		expect(callsOfType("Image")[0]?.props.crop).toBeUndefined();
+	});
+
 	const placeholderFixture = (
 		status: "pending" | "complete" | "error",
 		jobId = "job-1",

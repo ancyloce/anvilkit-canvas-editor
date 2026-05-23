@@ -151,6 +151,7 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 			image={image}
 			width={node.bounds.width}
 			height={node.bounds.height}
+			{...(node.crop ? { crop: node.crop } : {})}
 		/>
 	);
 }
