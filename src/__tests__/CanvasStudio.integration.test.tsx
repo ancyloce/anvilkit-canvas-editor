@@ -6,8 +6,8 @@ import {
 	createRect,
 	createText,
 } from "@anvilkit/canvas-core";
-import { render } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { act, render } from "@testing-library/react";
+import { type ReactNode, useSyncExternalStore } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type ElementCall = { type: string; props: Record<string, unknown> };
@@ -83,7 +83,7 @@ vi.mock("../render/rasterize-page.js", () => ({
 	})),
 }));
 
-import { CanvasStudio, type Tool } from "../index.js";
+import { CanvasStudio, type Tool, useCanvasStudio } from "../index.js";
 
 function layerCalls() {
 	return calls.filter((c) => c.type === "Layer");
@@ -255,7 +255,10 @@ describe("CanvasStudio integration", () => {
 		expect(getByTestId("canvas-empty")).toBeTruthy();
 	});
 
-	it("calls stage.destroy() on unmount", () => {
+	it("does not manually destroy the stage on unmount (react-konva owns it)", () => {
+		// react-konva's <Stage> destroys its own Konva.Stage on unmount.
+		// CanvasStage must not call destroy() itself — the manual call also fired
+		// on StrictMode's mount→cleanup→mount probe and blanked the canvas.
 		const ir = createCanvasIR({
 			pages: [createPage({ id: "p1" })],
 			now: () => "2026-01-01T00:00:00.000Z",
@@ -263,9 +266,8 @@ describe("CanvasStudio integration", () => {
 		const { unmount } = render(
 			<CanvasStudio initialIR={ir} initialActivePageId="p1" />,
 		);
-		expect(destroyMock).not.toHaveBeenCalled();
 		unmount();
-		expect(destroyMock).toHaveBeenCalledTimes(1);
+		expect(destroyMock).not.toHaveBeenCalled();
 	});
 
 	it("uses the active page's size for the Stage when width/height props are omitted", () => {
@@ -416,6 +418,48 @@ describe("CanvasStudio integration", () => {
 		).not.toThrow();
 	});
 
+	it("renders children inside the context provider, giving host UI live useCanvasStudio() access (I3-5)", () => {
+		// A host toolbar/panel passed via `children` must resolve the SAME
+		// per-instance context as the editor — read the live active page and
+		// drive tool selection without recomposing the stage.
+		function HostProbe() {
+			const ctx = useCanvasStudio();
+			const tool = useSyncExternalStore(
+				ctx.toolStore.subscribe,
+				() => ctx.toolStore.getState().activeTool,
+				() => ctx.toolStore.getState().activeTool,
+			);
+			return (
+				<div>
+					<span data-testid="probe-active-page">{ctx.activePageId}</span>
+					<span data-testid="probe-tool">{tool}</span>
+					<button
+						type="button"
+						data-testid="probe-set-rect"
+						onClick={() => ctx.toolStore.getState().setActiveTool("rect")}
+					>
+						rect
+					</button>
+				</div>
+			);
+		}
+		const ir = createCanvasIR({
+			pages: [createPage({ id: "p1" })],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		const { getByTestId } = render(
+			<CanvasStudio initialIR={ir} initialActivePageId="p1">
+				<HostProbe />
+			</CanvasStudio>,
+		);
+		expect(getByTestId("probe-active-page").textContent).toBe("p1");
+		expect(getByTestId("probe-tool").textContent).toBe("select");
+		act(() => {
+			getByTestId("probe-set-rect").click();
+		});
+		expect(getByTestId("probe-tool").textContent).toBe("rect");
+	});
+
 	it("hidePageNavigator hides the built-in nav", () => {
 		const ir = createCanvasIR({
 			pages: [createPage({ id: "p1" })],
@@ -431,5 +475,47 @@ describe("CanvasStudio integration", () => {
 		expect(
 			container.querySelector("[data-testid='page-navigator']"),
 		).toBeNull();
+	});
+
+	it("renderShell replaces the bare layout and slots the stage, with chrome resolving context (I3-5)", () => {
+		// A chrome component returned by renderShell is a provider child, so it
+		// resolves the SAME per-instance context as the stage it sits beside.
+		function RailProbe() {
+			const ctx = useCanvasStudio();
+			return <div data-testid="rail-probe">{ctx.activePageId}</div>;
+		}
+		const ir = createCanvasIR({
+			pages: [createPage({ id: "p1" })],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		// Scope every assertion to this render's container — RTL auto-cleanup is
+		// off in this preset, so document-wide queries collide with leaked trees.
+		const { container } = render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				renderShell={(stage) => (
+					<div data-testid="shell-root">
+						<RailProbe />
+						{stage}
+					</div>
+				)}
+			/>,
+		);
+		// Shell wrapper + chrome render; the legacy bare root does NOT.
+		expect(
+			container.querySelector("[data-testid='shell-root']"),
+		).not.toBeNull();
+		expect(
+			container.querySelector("[data-testid='rail-probe']")?.textContent,
+		).toBe("p1");
+		expect(
+			container.querySelector("[data-testid='canvas-studio-root']"),
+		).toBeNull();
+		expect(
+			container.querySelector("[data-testid='page-navigator']"),
+		).toBeNull();
+		// The Konva stage node passed to renderShell is mounted inside the shell.
+		expect(container.querySelector("[data-testid='stage']")).not.toBeNull();
 	});
 });
