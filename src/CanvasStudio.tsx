@@ -2,6 +2,7 @@
 
 import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
+import type { BrandKit } from "./brand/brand-kit.js";
 import {
 	useCallback,
 	useEffect,
@@ -10,6 +11,7 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
@@ -25,18 +27,26 @@ import { Grid } from "./stage/Grid.js";
 import { RemoteCursors } from "./stage/RemoteCursors.js";
 import { RemoteSelections } from "./stage/RemoteSelections.js";
 import { RenderLayer } from "./stage/RenderLayer.js";
+import { CropEditorOverlay } from "./selection/CropEditorOverlay.js";
+import { PathEditOverlay } from "./selection/PathEditOverlay.js";
 import { createAiJobStore } from "./stores/ai-job-store.js";
+import { createCropStore } from "./stores/crop-store.js";
 import { createDraftStore } from "./stores/draft-store.js";
 import { createEditingStore } from "./stores/editing-store.js";
+import { createPathEditStore } from "./stores/path-edit-store.js";
+import { createPenStore } from "./stores/pen-store.js";
 import { createGuidesStore } from "./stores/guides-store.js";
 import { createHistoryStore } from "./stores/history-store.js";
 import { createPagesStore } from "./stores/pages-store.js";
+import { createSceneStore } from "./stores/scene-store.js";
 import { createSelectionStore } from "./stores/selection-store.js";
 import { createToolStore, type ToolId } from "./stores/tool-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
 import { draggedIdsKey } from "./perf/active-nodes.js";
 import { useStaticGroupCache } from "./perf/static-cache.js";
 import { DraftRenderer } from "./tools/DraftRenderer.js";
+import { PenPreview } from "./tools/PenPreview.js";
+import { PenToolOverlay } from "./tools/PenToolOverlay.js";
 import { TextEditorOverlay } from "./tools/TextEditorOverlay.js";
 import { ToolInteractionLayer } from "./tools/ToolInteractionLayer.js";
 import type { AiToolIntent } from "./tools/ai-intent.js";
@@ -85,6 +95,12 @@ export interface CanvasStudioProps {
 	toolRegistry?: ToolRegistry;
 	/** Suppress the built-in `<PageNavigator>` (e.g. hosts that bring their own). */
 	hidePageNavigator?: boolean;
+	/**
+	 * Shared brand colors + fonts (I3-4). Hosts map their Studio config to a
+	 * {@link BrandKit} and pass it here; the editor surfaces it via
+	 * {@link useBrandKit}. Omit to run with no brand kit.
+	 */
+	brandKit?: BrandKit;
 }
 
 export function CanvasStudio({
@@ -100,9 +116,14 @@ export function CanvasStudio({
 	onStageReady,
 	toolRegistry,
 	hidePageNavigator,
+	brandKit,
 }: CanvasStudioProps): React.JSX.Element {
-	const [ir, setIR] = useState<CanvasIR>(initialIR);
-	const irRef = useRef<CanvasIR>(ir);
+	const [sceneStore] = useState(() => createSceneStore({ initialIR }));
+	const ir = useSyncExternalStore(
+		sceneStore.subscribe,
+		() => sceneStore.getState().ir,
+		() => sceneStore.getState().ir,
+	);
 	const [stage, setStage] = useState<Konva.Stage | null>(null);
 	const onStageReadyRef = useRef(onStageReady);
 	useEffect(() => {
@@ -162,6 +183,9 @@ export function CanvasStudio({
 	const [draftStore] = useState(() => createDraftStore());
 	const [editingStore] = useState(() => createEditingStore());
 	const [aiJobStore] = useState(() => createAiJobStore());
+	const [cropStore] = useState(() => createCropStore());
+	const [penStore] = useState(() => createPenStore());
+	const [pathEditStore] = useState(() => createPathEditStore());
 
 	const onChangeRef = useRef(onChange);
 	const onPickAssetRef = useRef(onPickAsset);
@@ -178,16 +202,17 @@ export function CanvasStudio({
 
 	const commit = useCallback(
 		(cmd: CanvasCommand): CanvasIR => {
-			const next = historyStore.getState().commit(irRef.current, cmd);
-			irRef.current = next;
-			setIR(next);
+			const next = historyStore
+				.getState()
+				.commit(sceneStore.getState().ir, cmd);
+			sceneStore.getState().setIR(next);
 			onChangeRef.current?.(next, cmd);
 			return next;
 		},
-		[historyStore],
+		[historyStore, sceneStore],
 	);
 
-	const getIR = useCallback(() => irRef.current, []);
+	const getIR = useCallback(() => sceneStore.getState().ir, [sceneStore]);
 
 	const pickAsset = useCallback(async () => {
 		const fn = onPickAssetRef.current;
@@ -240,11 +265,16 @@ export function CanvasStudio({
 			draftStore,
 			editingStore,
 			pagesStore,
+			sceneStore,
 			aiJobStore,
+			cropStore,
+			penStore,
+			pathEditStore,
 			getIR,
 			commit,
 			pickAsset,
 			requestAiIntent,
+			brandKit,
 			stage,
 			activePageId,
 			ir,
@@ -258,11 +288,16 @@ export function CanvasStudio({
 			draftStore,
 			editingStore,
 			pagesStore,
+			sceneStore,
 			aiJobStore,
+			cropStore,
+			penStore,
+			pathEditStore,
 			getIR,
 			commit,
 			pickAsset,
 			requestAiIntent,
+			brandKit,
 			stage,
 			activePageId,
 			ir,
@@ -285,6 +320,7 @@ export function CanvasStudio({
 				data-testid="canvas-studio-root"
 				style={{ display: "flex", flexDirection: "column" }}
 			>
+				<ToolAnnouncer />
 				{!hidePageNavigator && <PageNavigator />}
 				<CanvasAssetsContext.Provider value={ir.assets}>
 					<CanvasStage
@@ -318,6 +354,8 @@ export function CanvasStudio({
 						<RenderLayer name="selection">
 							<DraftRenderer />
 							<SmartGuideOverlay />
+							<PenPreview />
+							<PathEditOverlay />
 							<CanvasTransformer />
 						</RenderLayer>
 						<RenderLayer name="presence" listening={false}>
@@ -327,6 +365,8 @@ export function CanvasStudio({
 					</CanvasStage>
 					<ToolInteractionLayer registry={toolRegistry} />
 					<TextEditorOverlay />
+					<CropEditorOverlay />
+					<PenToolOverlay />
 				</CanvasAssetsContext.Provider>
 			</div>
 		</CanvasStudioContext.Provider>
