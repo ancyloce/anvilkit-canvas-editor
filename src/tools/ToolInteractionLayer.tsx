@@ -31,13 +31,14 @@ export function ToolInteractionLayer({
 		guidesStore,
 		draftStore,
 		editingStore,
+		penStore,
 		pickAsset,
 		activePageId,
 		requestAiIntent,
 	} = useCanvasStudio();
 
 	const ctx = useMemo<ToolContext | null>(() => {
-		if (!stage) return null;
+		if (!stage || !penStore) return null;
 		return {
 			stage,
 			getIR,
@@ -48,6 +49,7 @@ export function ToolInteractionLayer({
 			guidesStore,
 			draftStore,
 			editingStore,
+			penStore,
 			pickAsset,
 			activePageId,
 			requestAiIntent,
@@ -62,6 +64,7 @@ export function ToolInteractionLayer({
 		guidesStore,
 		draftStore,
 		editingStore,
+		penStore,
 		pickAsset,
 		activePageId,
 		requestAiIntent,

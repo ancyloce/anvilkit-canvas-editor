@@ -4,6 +4,7 @@ import { ellipseTool } from "./ellipse-tool.js";
 import { handTool } from "./hand-tool.js";
 import { imageTool } from "./image-tool.js";
 import { lineTool } from "./line-tool.js";
+import { penTool } from "./pen-tool.js";
 import { rectTool } from "./rect-tool.js";
 import { selectTool } from "./select-tool.js";
 import { textTool } from "./text-tool.js";
@@ -18,6 +19,7 @@ export const defaultToolRegistry: ToolRegistry = {
 	rect: rectTool,
 	ellipse: ellipseTool,
 	line: lineTool,
+	path: penTool,
 	text: textTool,
 	image: imageTool,
 	hand: handTool,

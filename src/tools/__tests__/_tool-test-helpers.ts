@@ -5,9 +5,12 @@ import { vi } from "vitest";
 import type { CanvasStudioContextValue } from "../../context/canvas-studio-context.js";
 import { createDraftStore } from "../../stores/draft-store.js";
 import { createEditingStore } from "../../stores/editing-store.js";
+import { createCropStore } from "../../stores/crop-store.js";
 import { createGuidesStore } from "../../stores/guides-store.js";
 import { createHistoryStore } from "../../stores/history-store.js";
 import { createPagesStore } from "../../stores/pages-store.js";
+import { createPathEditStore } from "../../stores/path-edit-store.js";
+import { createPenStore } from "../../stores/pen-store.js";
 import { createSelectionStore } from "../../stores/selection-store.js";
 import { createToolStore } from "../../stores/tool-store.js";
 import { createViewportStore } from "../../stores/viewport-store.js";
@@ -68,6 +71,9 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 	const guidesStore = createGuidesStore();
 	const draftStore = createDraftStore();
 	const editingStore = createEditingStore();
+	const cropStore = createCropStore();
+	const penStore = createPenStore();
+	const pathEditStore = createPathEditStore();
 	const pagesStore = createPagesStore({
 		initialActivePageId: opts.ir ? (opts.ir.pages[0]?.id ?? pageId) : pageId,
 	});
@@ -99,6 +105,7 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 		guidesStore,
 		draftStore,
 		editingStore,
+		penStore,
 		pickAsset,
 		activePageId: pagesStore.getState().activePageId,
 		requestAiIntent,
@@ -113,6 +120,9 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 		draftStore,
 		editingStore,
 		pagesStore,
+		cropStore,
+		penStore,
+		pathEditStore,
 		getIR,
 		commit,
 		pickAsset,
