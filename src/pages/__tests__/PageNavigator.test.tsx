@@ -104,6 +104,31 @@ describe("PageNavigator — render", () => {
 	});
 });
 
+describe("PageNavigator — a11y", () => {
+	it("exposes the tab strip as a labeled tablist of tabs", () => {
+		const h = makeHarness({ ir: multiPage() });
+		const { container } = mount(h.studioCtx);
+		const tablist = container.querySelector("[role='tablist']") as HTMLElement;
+		expect(tablist).not.toBeNull();
+		expect(tablist.getAttribute("aria-label")).toBe("Artboards");
+		expect(tablist.querySelectorAll("[role='tab']")).toHaveLength(2);
+	});
+
+	it("flags the active page tab with aria-selected", () => {
+		const h = makeHarness({ ir: multiPage() });
+		const { container } = mount(h.studioCtx);
+		const active = container.querySelector(
+			"[data-testid='page-tab-p1']",
+		) as HTMLElement;
+		const inactive = container.querySelector(
+			"[data-testid='page-tab-p2']",
+		) as HTMLElement;
+		expect(active.getAttribute("role")).toBe("tab");
+		expect(active.getAttribute("aria-selected")).toBe("true");
+		expect(inactive.getAttribute("aria-selected")).toBe("false");
+	});
+});
+
 describe("PageNavigator — switch page", () => {
 	it("clicking an inactive tab updates active page id", () => {
 		const h = makeHarness({ ir: multiPage() });

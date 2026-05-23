@@ -38,6 +38,11 @@ const styles = {
 		fontSize: 12,
 		userSelect: "none",
 	} as const,
+	tablist: {
+		display: "inline-flex",
+		alignItems: "center",
+		gap: TAB_GAP,
+	} as const,
 	tab: {
 		height: TAB_HEIGHT,
 		padding: `0 ${PADDING_X}px`,
@@ -181,55 +186,64 @@ export function PageNavigator({
 			style={styles.root}
 			{...(id !== undefined ? { id } : {})}
 		>
-			{pages.map((p) => {
-				const isActive = p.id === activePageId;
-				const isRenaming = p.id === renamingPageId;
-				const tabStyle = isActive
-					? { ...styles.tab, ...styles.tabActive }
-					: styles.tab;
-				if (isRenaming) {
-					return (
-						<input
-							key={p.id}
-							ref={renameInputRef}
-							type="text"
-							data-page-id={p.id}
-							data-testid={`page-rename-input-${p.id}`}
-							style={styles.renameInput}
-							value={renamingValue}
-							onChange={(e) => setRenamingValue(e.target.value)}
-							onKeyDown={onRenameKeyDown}
-							onBlur={commitRename}
-							aria-label={`Rename page ${tabLabel(p.name, p.id)}`}
-						/>
-					);
-				}
-				return (
-					<button
-						type="button"
-						key={p.id}
-						data-page-id={p.id}
-						data-active={isActive ? "true" : "false"}
-						data-testid={`page-tab-${p.id}`}
-						style={tabStyle}
-						onClick={() => switchToPage(ctx, p.id)}
-						onDoubleClick={() => {
-							setRenamingPageId(p.id);
-							setRenamingValue(p.name ?? "");
-						}}
-					>
-						{thumbnails.has(p.id) ? (
-							<img
-								src={thumbnails.get(p.id)}
-								alt=""
-								data-testid={`page-thumb-${p.id}`}
-								style={styles.thumb}
+			<div
+				role="tablist"
+				aria-label="Artboards"
+				data-testid="page-tablist"
+				style={styles.tablist}
+			>
+				{pages.map((p) => {
+					const isActive = p.id === activePageId;
+					const isRenaming = p.id === renamingPageId;
+					const tabStyle = isActive
+						? { ...styles.tab, ...styles.tabActive }
+						: styles.tab;
+					if (isRenaming) {
+						return (
+							<input
+								key={p.id}
+								ref={renameInputRef}
+								type="text"
+								data-page-id={p.id}
+								data-testid={`page-rename-input-${p.id}`}
+								style={styles.renameInput}
+								value={renamingValue}
+								onChange={(e) => setRenamingValue(e.target.value)}
+								onKeyDown={onRenameKeyDown}
+								onBlur={commitRename}
+								aria-label={`Rename page ${tabLabel(p.name, p.id)}`}
 							/>
-						) : null}
-						{tabLabel(p.name, p.id)}
-					</button>
-				);
-			})}
+						);
+					}
+					return (
+						<button
+							type="button"
+							key={p.id}
+							role="tab"
+							aria-selected={isActive}
+							data-page-id={p.id}
+							data-active={isActive ? "true" : "false"}
+							data-testid={`page-tab-${p.id}`}
+							style={tabStyle}
+							onClick={() => switchToPage(ctx, p.id)}
+							onDoubleClick={() => {
+								setRenamingPageId(p.id);
+								setRenamingValue(p.name ?? "");
+							}}
+						>
+							{thumbnails.has(p.id) ? (
+								<img
+									src={thumbnails.get(p.id)}
+									alt=""
+									data-testid={`page-thumb-${p.id}`}
+									style={styles.thumb}
+								/>
+							) : null}
+							{tabLabel(p.name, p.id)}
+						</button>
+					);
+				})}
+			</div>
 			<div style={styles.actions}>
 				<button
 					type="button"
