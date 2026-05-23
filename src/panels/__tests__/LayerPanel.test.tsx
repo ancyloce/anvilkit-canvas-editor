@@ -1,9 +1,12 @@
 import {
 	type CanvasIR,
 	type CanvasNodeDeleteCommand,
+	type CanvasNodeGroupCommand,
 	type CanvasNodeKind,
+	type CanvasNodeUngroupCommand,
 	type CanvasNodeUpdateCommand,
 	createCanvasIR,
+	createGroup,
 	createPage,
 	createRect,
 	createText,
@@ -69,6 +72,33 @@ describe("LayerPanel — render", () => {
 		expect(
 			container.querySelector("[data-testid='layer-panel-empty']"),
 		).not.toBeNull();
+	});
+});
+
+describe("LayerPanel — a11y", () => {
+	it("exposes the layer list as a labeled tree of treeitems", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		const { container } = mount(h.studioCtx);
+		const tree = container.querySelector("[role='tree']") as HTMLElement;
+		expect(tree).not.toBeNull();
+		expect(tree.getAttribute("aria-label")).toBe("Layers");
+		// Rows inside the tree are treeitems with aria-selected.
+		const items = tree.querySelectorAll("[role='treeitem']");
+		expect(items.length).toBe(2);
+		for (const item of items) {
+			expect(item.getAttribute("aria-selected")).not.toBeNull();
+		}
+	});
+
+	it("does not suppress the keyboard focus ring on the focusable root", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		const { container } = mount(h.studioCtx);
+		const panel = container.querySelector(
+			"[data-testid='layer-panel']",
+		) as HTMLElement;
+		// Root is keyboard-focusable; it must not hide its focus outline (2.4.7).
+		expect(panel.tabIndex).toBe(0);
+		expect(panel.style.outline).not.toBe("none");
 	});
 });
 
@@ -158,5 +188,107 @@ describe("LayerPanel — keyboard", () => {
 		expect(h.studioCtx.selectionStore.getState().selectedIds).toEqual([
 			"rect-a",
 		]);
+	});
+});
+
+/** root: [rect-a, text-b, g(=[gx, gy])] on page "p1". */
+function withGroupIR(): CanvasIR {
+	const ir = createCanvasIR({
+		id: "ir-1",
+		pages: [createPage({ id: "p1" })],
+		now: () => FIXED_TS,
+	});
+	const firstPage = ir.pages[0];
+	if (!firstPage) throw new Error("expected at least one page");
+	firstPage.root.children = [
+		createRect({ id: "rect-a", bounds: { width: 50, height: 50 } }),
+		createText({
+			id: "text-b",
+			text: "Hello",
+			bounds: { width: 100, height: 20 },
+		}),
+		createGroup({
+			id: "g",
+			bounds: { width: 60, height: 60 },
+			children: [
+				createRect({ id: "gx", bounds: { width: 10, height: 10 } }),
+				createRect({ id: "gy", bounds: { width: 10, height: 10 } }),
+			],
+		}),
+	];
+	return ir;
+}
+
+describe("LayerPanel — group / ungroup", () => {
+	it("group button is disabled with no multi-selection and enabled with one", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		const { container, rerender } = mount(h.studioCtx);
+		const groupBtn = () =>
+			container.querySelector(
+				"[data-testid='layer-group-btn']",
+			) as HTMLButtonElement;
+		expect(groupBtn().disabled).toBe(true);
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a", "text-b"]);
+		rerender(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<LayerPanel />
+			</CanvasStudioContext.Provider>,
+		);
+		expect(groupBtn().disabled).toBe(false);
+	});
+
+	it("group button dispatches node.group for the selection", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a", "text-b"]);
+		const { container } = mount(h.studioCtx);
+		const btn = container.querySelector(
+			"[data-testid='layer-group-btn']",
+		) as HTMLButtonElement;
+		fireEvent.click(btn);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasNodeGroupCommand;
+		expect(cmd.type).toBe("node.group");
+		expect(cmd.childIds).toEqual(["rect-a", "text-b"]);
+	});
+
+	it("ungroup button dispatches node.ungroup for a selected group", () => {
+		const h = makeHarness({ ir: withGroupIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["g"]);
+		const { container } = mount(h.studioCtx);
+		const btn = container.querySelector(
+			"[data-testid='layer-ungroup-btn']",
+		) as HTMLButtonElement;
+		expect(btn.disabled).toBe(false);
+		fireEvent.click(btn);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasNodeUngroupCommand;
+		expect(cmd.type).toBe("node.ungroup");
+		expect(cmd.groupId).toBe("g");
+	});
+
+	it("Cmd/Ctrl+G fires node.group", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a", "text-b"]);
+		const { container } = mount(h.studioCtx);
+		const panel = container.querySelector(
+			"[data-testid='layer-panel']",
+		) as HTMLElement;
+		fireEvent.keyDown(panel, { key: "g", ctrlKey: true });
+		expect(h.commits).toHaveLength(1);
+		expect((h.commits[0] as CanvasNodeGroupCommand).type).toBe("node.group");
+	});
+
+	it("Cmd/Ctrl+Shift+G fires node.ungroup", () => {
+		const h = makeHarness({ ir: withGroupIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["g"]);
+		const { container } = mount(h.studioCtx);
+		const panel = container.querySelector(
+			"[data-testid='layer-panel']",
+		) as HTMLElement;
+		fireEvent.keyDown(panel, { key: "G", ctrlKey: true, shiftKey: true });
+		expect(h.commits).toHaveLength(1);
+		expect((h.commits[0] as CanvasNodeUngroupCommand).type).toBe(
+			"node.ungroup",
+		);
 	});
 });

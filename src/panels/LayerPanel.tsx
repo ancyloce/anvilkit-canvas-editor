@@ -10,6 +10,12 @@ import {
 } from "@anvilkit/canvas-core";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import {
+	canGroupSelection,
+	canUngroupSelection,
+	groupSelection,
+	ungroupSelection,
+} from "../selection/group-actions.js";
 
 const ROW_HEIGHT = 28;
 const INDENT_PX = 14;
@@ -28,7 +34,6 @@ const styles = {
 			"ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
 		fontSize: 12,
 		userSelect: "none",
-		outline: "none",
 	} as const,
 	header: {
 		display: "flex",
@@ -39,6 +44,10 @@ const styles = {
 		background: "#f9fafb",
 		fontWeight: 600,
 		color: "#374151",
+		gap: 4,
+	} as const,
+	headerLabel: {
+		flex: 1,
 	} as const,
 	list: {
 		flex: 1,
@@ -147,6 +156,14 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 		[activePage],
 	);
 	const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+	const canGroup = useMemo(
+		() => canGroupSelection(ctx.ir, selectedIds),
+		[ctx.ir, selectedIds],
+	);
+	const canUngroup = useMemo(
+		() => canUngroupSelection(ctx.ir, selectedIds),
+		[ctx.ir, selectedIds],
+	);
 
 	const handleSelect = useCallback(
 		(nodeId: string, event: React.MouseEvent) => {
@@ -188,6 +205,17 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 
 	const handleKeyDown = useCallback(
 		(event: React.KeyboardEvent) => {
+			if (event.metaKey || event.ctrlKey) {
+				if (event.key === "g" || event.key === "G") {
+					event.preventDefault();
+					if (event.shiftKey) {
+						ungroupSelection(ctx);
+					} else {
+						groupSelection(ctx);
+					}
+					return;
+				}
+			}
 			if (rows.length === 0) return;
 			const currentIndex = selectedIds[0]
 				? rows.findIndex((r) => r.node.id === selectedIds[0])
@@ -219,8 +247,38 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 			onKeyDown={handleKeyDown}
 			{...(id !== undefined ? { id } : {})}
 		>
-			<div style={styles.header}>Layers</div>
-			<div style={styles.list}>
+			<div style={styles.header}>
+				<span style={styles.headerLabel}>Layers</span>
+				<button
+					type="button"
+					style={{
+						...styles.iconButton,
+						...(canGroup ? {} : styles.iconButtonDim),
+					}}
+					data-testid="layer-group-btn"
+					aria-label="Group selection"
+					title="Group selection (⌘G)"
+					disabled={!canGroup}
+					onClick={() => groupSelection(ctx)}
+				>
+					⊞
+				</button>
+				<button
+					type="button"
+					style={{
+						...styles.iconButton,
+						...(canUngroup ? {} : styles.iconButtonDim),
+					}}
+					data-testid="layer-ungroup-btn"
+					aria-label="Ungroup"
+					title="Ungroup (⌘⇧G)"
+					disabled={!canUngroup}
+					onClick={() => ungroupSelection(ctx)}
+				>
+					⊟
+				</button>
+			</div>
+			<div style={styles.list} role="tree" aria-label="Layers">
 				{rows.length === 0 ? (
 					<div style={styles.empty} data-testid="layer-panel-empty">
 						No layers on this page yet.

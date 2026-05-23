@@ -13,7 +13,10 @@ import {
 	findNode,
 } from "@anvilkit/canvas-core";
 import { useCallback, useSyncExternalStore } from "react";
+import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import { beginCrop } from "../selection/crop-actions.js";
+import { beginPathEdit } from "../selection/path-edit-actions.js";
 
 const ROW_HEIGHT = 28;
 const PADDING_X = 8;
@@ -113,6 +116,7 @@ function NumberField({
 			<span style={styles.label}>{label}</span>
 			<input
 				type="number"
+				aria-label={label}
 				defaultValue={value}
 				step={step ?? 1}
 				{...(min !== undefined ? { min } : {})}
@@ -146,6 +150,7 @@ function TextField({
 			<span style={styles.label}>{label}</span>
 			<input
 				type="text"
+				aria-label={label}
 				defaultValue={value}
 				style={styles.input}
 				data-testid={dataTestId}
@@ -175,6 +180,7 @@ function ColorField({
 			<span style={styles.label}>{label}</span>
 			<input
 				type="color"
+				aria-label={label}
 				defaultValue={value ?? "#000000"}
 				style={{ ...styles.input, padding: 0, height: 24 }}
 				data-testid={dataTestId}
@@ -220,6 +226,8 @@ export function PropertyInspector({
 		return (
 			<div
 				data-testid="property-inspector"
+				role="region"
+				aria-label="Properties"
 				style={styles.root}
 				{...(id !== undefined ? { id } : {})}
 			>
@@ -235,6 +243,8 @@ export function PropertyInspector({
 		<div
 			data-testid="property-inspector"
 			data-node-id={node.id}
+			role="region"
+			aria-label="Properties"
 			style={styles.root}
 			{...(id !== undefined ? { id } : {})}
 		>
@@ -314,7 +324,7 @@ export function PropertyInspector({
 						}
 					/>
 				</div>
-				{renderTypeSpecificFields(node, commitPatch)}
+				{renderTypeSpecificFields(node, commitPatch, ctx)}
 			</div>
 		</div>
 	);
@@ -323,6 +333,7 @@ export function PropertyInspector({
 function renderTypeSpecificFields(
 	node: CanvasNode,
 	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
+	ctx: CanvasStudioContextValue,
 ): React.JSX.Element | null {
 	switch (node.type) {
 		case "rect":
@@ -334,9 +345,9 @@ function renderTypeSpecificFields(
 		case "text":
 			return renderTextFields(node, commitPatch);
 		case "image":
-			return renderImageFields(node);
+			return renderImageFields(node, commitPatch, ctx);
 		case "path":
-			return renderPathFields(node, commitPatch);
+			return renderPathFields(node, commitPatch, ctx);
 		case "group":
 			return renderGroupFields(node);
 		case "ai-placeholder":
@@ -473,23 +484,87 @@ function renderTextFields(
 	);
 }
 
-function renderImageFields(node: CanvasImageNode): React.JSX.Element {
+function renderImageFields(
+	node: CanvasImageNode,
+	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
+	ctx: CanvasStudioContextValue,
+): React.JSX.Element {
+	const crop = node.crop;
+	const c = crop ?? { x: 0, y: 0, width: 0, height: 0 };
+	const setCrop = (patch: Partial<typeof c>) =>
+		commitPatch(node, { crop: { ...c, ...patch } });
 	return (
-		<div style={styles.group}>
-			<div style={styles.groupTitle}>Image</div>
-			<div style={styles.field}>
-				<span style={styles.label}>Asset</span>
-				<span data-testid="prop-asset-id" style={{ color: "#1f2937" }}>
-					{node.assetId}
-				</span>
+		<>
+			<div style={styles.group}>
+				<div style={styles.groupTitle}>Image</div>
+				<div style={styles.field}>
+					<span style={styles.label}>Asset</span>
+					<span data-testid="prop-asset-id" style={{ color: "#1f2937" }}>
+						{node.assetId}
+					</span>
+				</div>
 			</div>
-		</div>
+			<div style={styles.group}>
+				<div style={styles.groupTitle}>Crop</div>
+				<button
+					type="button"
+					data-testid="prop-crop-begin"
+					style={{ ...styles.input, cursor: "pointer", background: "#f9fafb" }}
+					onClick={() => beginCrop(ctx, node.id)}
+				>
+					Crop image
+				</button>
+				<NumberField
+					label="Crop X"
+					value={c.x}
+					min={0}
+					dataTestId="prop-crop-x"
+					onCommit={(v) => setCrop({ x: v })}
+				/>
+				<NumberField
+					label="Crop Y"
+					value={c.y}
+					min={0}
+					dataTestId="prop-crop-y"
+					onCommit={(v) => setCrop({ y: v })}
+				/>
+				<NumberField
+					label="Crop W"
+					value={c.width}
+					min={0}
+					dataTestId="prop-crop-width"
+					onCommit={(v) => setCrop({ width: v })}
+				/>
+				<NumberField
+					label="Crop H"
+					value={c.height}
+					min={0}
+					dataTestId="prop-crop-height"
+					onCommit={(v) => setCrop({ height: v })}
+				/>
+				{crop ? (
+					<button
+						type="button"
+						data-testid="prop-crop-clear"
+						style={{
+							...styles.input,
+							cursor: "pointer",
+							background: "#f9fafb",
+						}}
+						onClick={() => commitPatch(node, { crop: undefined })}
+					>
+						Clear crop
+					</button>
+				) : null}
+			</div>
+		</>
 	);
 }
 
 function renderPathFields(
 	node: CanvasPathNode,
 	commitPatch: (n: CanvasNode, patch: Record<string, unknown>) => void,
+	ctx: CanvasStudioContextValue,
 ): React.JSX.Element {
 	return (
 		<div style={styles.group}>
@@ -506,6 +581,27 @@ function renderPathFields(
 				dataTestId="prop-stroke"
 				onCommit={(v) => commitPatch(node, { stroke: v })}
 			/>
+			<NumberField
+				label="Stroke W"
+				value={node.strokeWidth ?? 1}
+				min={0}
+				dataTestId="prop-stroke-width"
+				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
+			/>
+			<TextField
+				label="Path d"
+				value={node.d}
+				dataTestId="prop-path-d"
+				onCommit={(v) => commitPatch(node, { d: v })}
+			/>
+			<button
+				type="button"
+				data-testid="prop-path-edit"
+				style={{ ...styles.input, cursor: "pointer", background: "#f9fafb" }}
+				onClick={() => beginPathEdit(ctx, node.id)}
+			>
+				Edit points
+			</button>
 		</div>
 	);
 }

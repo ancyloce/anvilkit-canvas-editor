@@ -1,9 +1,12 @@
 import {
+	type CanvasImageCrop,
 	type CanvasIR,
 	type CanvasNodeKind,
 	type CanvasNodeUpdateCommand,
 	createCanvasIR,
+	createImage,
 	createPage,
+	createPath,
 	createRect,
 	createText,
 } from "@anvilkit/canvas-core";
@@ -70,6 +73,54 @@ describe("PropertyInspector — empty state", () => {
 		expect(
 			container.querySelector("[data-testid='property-inspector-empty']"),
 		).not.toBeNull();
+	});
+
+	it("exposes the panel as a labeled region even when empty", () => {
+		const h = makeHarness();
+		const { container } = mount(h.studioCtx);
+		const panel = container.querySelector(
+			"[data-testid='property-inspector']",
+		) as HTMLElement;
+		expect(panel.getAttribute("role")).toBe("region");
+		expect(panel.getAttribute("aria-label")).toBe("Properties");
+	});
+});
+
+describe("PropertyInspector — a11y labels", () => {
+	it("exposes the populated panel as a labeled region", () => {
+		const h = makeHarness({ ir: withRectIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		const panel = container.querySelector(
+			"[data-testid='property-inspector']",
+		) as HTMLElement;
+		expect(panel.getAttribute("role")).toBe("region");
+		expect(panel.getAttribute("aria-label")).toBe("Properties");
+	});
+
+	it("gives every property input an accessible name via aria-label", () => {
+		const h = makeHarness({ ir: withRectIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		// number, text, and color inputs each carry their visible label.
+		const width = container.querySelector(
+			"[data-testid='prop-width']",
+		) as HTMLInputElement;
+		expect(width.getAttribute("aria-label")).toBe("Width");
+		const name = container.querySelector(
+			"[data-testid='prop-name']",
+		) as HTMLInputElement;
+		expect(name.getAttribute("aria-label")).toBe("Name");
+		const fill = container.querySelector(
+			"[data-testid='prop-fill']",
+		) as HTMLInputElement;
+		expect(fill.getAttribute("aria-label")).toBe("Fill");
+		// No control should be left without an accessible name.
+		const inputs = Array.from(container.querySelectorAll("input"));
+		expect(inputs.length).toBeGreaterThan(0);
+		for (const input of inputs) {
+			expect(input.getAttribute("aria-label")).toBeTruthy();
+		}
 	});
 });
 
@@ -148,5 +199,146 @@ describe("PropertyInspector — text selected", () => {
 		expect(h.commits).toHaveLength(1);
 		const cmd = h.commits[0] as CanvasNodeUpdateCommand<CanvasNodeKind>;
 		expect((cmd.patch as { text?: string }).text).toBe("World");
+	});
+});
+
+function withImageIR(crop?: CanvasImageCrop): CanvasIR {
+	const ir = createCanvasIR({
+		id: "ir-1",
+		pages: [createPage({ id: "p1" })],
+		now: () => FIXED_TS,
+	});
+	const image = createImage({
+		id: "img-a",
+		bounds: { width: 200, height: 100 },
+		assetId: "asset-1",
+		...(crop ? { crop } : {}),
+	});
+	const firstPage = ir.pages[0];
+	if (!firstPage) throw new Error("expected at least one page");
+	firstPage.root.children = [image];
+	return ir;
+}
+
+describe("PropertyInspector — image crop", () => {
+	it("renders crop fields seeded from the node's crop", () => {
+		const h = makeHarness({
+			ir: withImageIR({ x: 5, y: 6, width: 70, height: 80 }),
+		});
+		h.studioCtx.selectionStore.getState().setSelection(["img-a"]);
+		const { container } = mount(h.studioCtx);
+		const w = container.querySelector(
+			"[data-testid='prop-crop-width']",
+		) as HTMLInputElement;
+		expect(w.defaultValue).toBe("70");
+		const x = container.querySelector(
+			"[data-testid='prop-crop-x']",
+		) as HTMLInputElement;
+		expect(x.defaultValue).toBe("5");
+	});
+
+	it("editing a crop field commits node.update merging the crop rect", () => {
+		const h = makeHarness({
+			ir: withImageIR({ x: 5, y: 6, width: 70, height: 80 }),
+		});
+		h.studioCtx.selectionStore.getState().setSelection(["img-a"]);
+		const { container } = mount(h.studioCtx);
+		const w = container.querySelector(
+			"[data-testid='prop-crop-width']",
+		) as HTMLInputElement;
+		fireEvent.input(w, { target: { value: "120" } });
+		fireEvent.blur(w);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasNodeUpdateCommand<CanvasNodeKind>;
+		expect(cmd.type).toBe("node.update");
+		expect((cmd.patch as { crop?: CanvasImageCrop }).crop).toEqual({
+			x: 5,
+			y: 6,
+			width: 120,
+			height: 80,
+		});
+	});
+
+	it("shows a Clear crop control only when a crop exists and clears it", () => {
+		const h = makeHarness({
+			ir: withImageIR({ x: 5, y: 6, width: 70, height: 80 }),
+		});
+		h.studioCtx.selectionStore.getState().setSelection(["img-a"]);
+		const { container } = mount(h.studioCtx);
+		const clear = container.querySelector(
+			"[data-testid='prop-crop-clear']",
+		) as HTMLButtonElement;
+		expect(clear).not.toBeNull();
+		fireEvent.click(clear);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasNodeUpdateCommand<CanvasNodeKind>;
+		expect("crop" in cmd.patch).toBe(true);
+		expect((cmd.patch as { crop?: CanvasImageCrop }).crop).toBeUndefined();
+	});
+
+	it("hides the Clear crop control when there is no crop", () => {
+		const h = makeHarness({ ir: withImageIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["img-a"]);
+		const { container } = mount(h.studioCtx);
+		expect(
+			container.querySelector("[data-testid='prop-crop-clear']"),
+		).toBeNull();
+	});
+
+	it("the Crop image button opens the interactive crop editor", () => {
+		const h = makeHarness({ ir: withImageIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["img-a"]);
+		const { container } = mount(h.studioCtx);
+		const btn = container.querySelector(
+			"[data-testid='prop-crop-begin']",
+		) as HTMLButtonElement;
+		fireEvent.click(btn);
+		expect(h.studioCtx.cropStore?.getState().cropNodeId).toBe("img-a");
+	});
+});
+
+function withPathIR(): CanvasIR {
+	const ir = createCanvasIR({
+		id: "ir-1",
+		pages: [createPage({ id: "p1" })],
+		now: () => FIXED_TS,
+	});
+	const firstPage = ir.pages[0];
+	if (!firstPage) throw new Error("expected at least one page");
+	firstPage.root.children = [
+		createPath({
+			id: "path-a",
+			bounds: { width: 10, height: 10 },
+			d: "M 0 0 L 10 0",
+		}),
+	];
+	return ir;
+}
+
+describe("PropertyInspector — path", () => {
+	it("edits the raw d via node.update", () => {
+		const h = makeHarness({ ir: withPathIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["path-a"]);
+		const { container } = mount(h.studioCtx);
+		const input = container.querySelector(
+			"[data-testid='prop-path-d']",
+		) as HTMLInputElement;
+		expect(input.defaultValue).toBe("M 0 0 L 10 0");
+		fireEvent.input(input, { target: { value: "M 0 0 L 20 0 Z" } });
+		fireEvent.blur(input);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasNodeUpdateCommand<CanvasNodeKind>;
+		expect((cmd.patch as { d?: string }).d).toBe("M 0 0 L 20 0 Z");
+	});
+
+	it("the Edit points button enters path point-editing mode", () => {
+		const h = makeHarness({ ir: withPathIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["path-a"]);
+		const { container } = mount(h.studioCtx);
+		const btn = container.querySelector(
+			"[data-testid='prop-path-edit']",
+		) as HTMLButtonElement;
+		fireEvent.click(btn);
+		expect(h.studioCtx.pathEditStore?.getState().editNodeId).toBe("path-a");
 	});
 });
