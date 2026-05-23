@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { type ReactNode, StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 const destroyMock = vi.fn();
@@ -80,16 +80,35 @@ describe("CanvasStage", () => {
 		expect(stage?.y).toBe(0);
 	});
 
-	it("calls stage.destroy() on unmount", () => {
+	it("does not manually destroy the stage (react-konva owns unmount)", () => {
+		// react-konva's <Stage> destroys its own Konva.Stage on real unmount.
+		// CanvasStage must NOT call destroy() itself: doing so also fired on
+		// React StrictMode's mount→cleanup→mount probe, tearing down the live
+		// stage between the double-invoke and leaving the canvas blank.
 		destroyMock.mockClear();
 		const { unmount } = render(
 			<CanvasStage width={100} height={100}>
 				<div />
 			</CanvasStage>,
 		);
+		unmount();
+		expect(destroyMock).not.toHaveBeenCalled();
+	});
+
+	it("survives StrictMode double-invoke without destroying the stage", () => {
+		// Regression for the blank-canvas bug: under StrictMode the old
+		// destroy-in-cleanup ran during the simulated unmount. Assert the
+		// mount→cleanup→mount probe never destroys the stage.
+		destroyMock.mockClear();
+		const { unmount } = render(
+			<StrictMode>
+				<CanvasStage width={100} height={100}>
+					<div />
+				</CanvasStage>
+			</StrictMode>,
+		);
 		expect(destroyMock).not.toHaveBeenCalled();
 		unmount();
-		expect(destroyMock).toHaveBeenCalledTimes(1);
 	});
 
 	it("fires onReady once the stage is mounted", () => {

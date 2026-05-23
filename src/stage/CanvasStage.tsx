@@ -31,10 +31,13 @@ export function CanvasStage({
 			onReady(stage);
 		}
 		return () => {
-			// Per PRD §4.3: Konva.Stage MUST be destroyed on unmount.
-			// destroy() also detaches its container element and releases the
-			// image cache associated with the stage.
-			stageRef.current?.destroy();
+			// react-konva's <Stage> already destroys its Konva.Stage on real
+			// unmount (detaching the container + releasing the image cache, per
+			// PRD §4.3). Calling destroy() here ALSO fires on React StrictMode's
+			// mount→cleanup→mount probe (Next dev default), tearing down the live
+			// stage between the double-invoke; react-konva does not rebuild it, so
+			// the canvas renders blank (0 <canvas>, 0 .konvajs-content). Just drop
+			// our ref and let react-konva own the stage's lifecycle.
 			stageRef.current = null;
 		};
 	}, [onReady]);
