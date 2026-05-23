@@ -8,6 +8,20 @@ export {
 } from "./brand/use-brand-kit.js";
 export type { CanvasStudioProps } from "./CanvasStudio.js";
 export { CanvasStudio } from "./CanvasStudio.js";
+export type { CanvasEditorProps } from "./chrome/CanvasEditor.js";
+export { CanvasEditor } from "./chrome/CanvasEditor.js";
+export type { EditorContextPanelProps } from "./chrome/EditorContextPanel.js";
+export { EditorContextPanel } from "./chrome/EditorContextPanel.js";
+export type { EditorStageBarProps } from "./chrome/EditorStageBar.js";
+export { EditorStageBar } from "./chrome/EditorStageBar.js";
+export type { FloatingSelectionToolbarProps } from "./chrome/FloatingSelectionToolbar.js";
+export { FloatingSelectionToolbar } from "./chrome/FloatingSelectionToolbar.js";
+export type { ChromeIcon, ToolDescriptor } from "./chrome/icons.js";
+export { ChromeIcons, TOOL_RAIL_ITEMS } from "./chrome/icons.js";
+export type { ToolRailProps } from "./chrome/ToolRail.js";
+export { ToolRail } from "./chrome/ToolRail.js";
+export type { ZoomControlProps } from "./chrome/ZoomControl.js";
+export { ZoomControl } from "./chrome/ZoomControl.js";
 export type {
 	CanvasIRGetter,
 	CanvasStudioContextValue,

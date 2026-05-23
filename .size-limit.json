@@ -11,7 +11,9 @@
 			"react/jsx-dev-runtime",
 			"konva",
 			"react-konva",
-			"@anvilkit/canvas-core"
+			"@anvilkit/canvas-core",
+			"@anvilkit/ui",
+			"lucide-react"
 		]
 	}
 ]

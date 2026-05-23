@@ -96,11 +96,32 @@ export interface CanvasStudioProps {
 	/** Suppress the built-in `<PageNavigator>` (e.g. hosts that bring their own). */
 	hidePageNavigator?: boolean;
 	/**
+	 * Opt-in chrome composition (I3-5). When provided, `<CanvasStudio>` renders
+	 * `renderShell(stage)` *inside* its context provider instead of the bare
+	 * stacked layout — so any rail/panel/inspector returned by the shell is a
+	 * provider child and can call {@link useCanvasStudio}. The callback is a
+	 * pure composition seam (no hooks) that receives the ready-to-mount Konva
+	 * stage node and decides where to place it (e.g. the centre column of a
+	 * grid). Omit it to keep the legacy bare-stage layout. `<CanvasEditor>`
+	 * wraps this with the full reference shell.
+	 */
+	renderShell?: (stage: React.ReactNode) => React.ReactNode;
+	/**
 	 * Shared brand colors + fonts (I3-4). Hosts map their Studio config to a
 	 * {@link BrandKit} and pass it here; the editor surfaces it via
 	 * {@link useBrandKit}. Omit to run with no brand kit.
 	 */
 	brandKit?: BrandKit;
+	/**
+	 * Optional host UI rendered *inside* the editor's context provider, so it
+	 * can call {@link useCanvasStudio} to drive tool selection, read the live
+	 * selection/IR, or mount the exported `<LayerPanel>` / `<PropertyInspector>`
+	 * against this instance's stores. The editor ships no toolbar of its own
+	 * (tool selection is host-driven, PRD §3.4); this slot is how a host wires
+	 * one without recomposing the stage. Rendered as a sibling of the stage
+	 * root so the host owns its own layout.
+	 */
+	children?: React.ReactNode;
 }
 
 export function CanvasStudio({
@@ -117,6 +138,8 @@ export function CanvasStudio({
 	toolRegistry,
 	hidePageNavigator,
 	brandKit,
+	renderShell,
+	children,
 }: CanvasStudioProps): React.JSX.Element {
 	const [sceneStore] = useState(() => createSceneStore({ initialIR }));
 	const ir = useSyncExternalStore(
@@ -314,61 +337,72 @@ export function CanvasStudio({
 	}
 	const stageWidth = width ?? activePage.size.width;
 	const stageHeight = height ?? activePage.size.height;
+	// The Konva stage + its overlays. Computed once so it can be slotted either
+	// into the legacy bare layout or anywhere a `renderShell` decides to place
+	// it (e.g. the centre column of the reference editor grid).
+	const stageNode = (
+		<CanvasAssetsContext.Provider value={ir.assets}>
+			<CanvasStage
+				width={stageWidth}
+				height={stageHeight}
+				zoom={zoom}
+				panX={panX}
+				panY={panY}
+				onReady={handleStageReady}
+			>
+				<RenderLayer name="background" listening={false}>
+					<DesignBackground />
+					<Grid />
+				</RenderLayer>
+				<RenderLayer name="objects">
+					{activePage.root.children
+						.filter((node) => !draggedIds.has(node.id))
+						.map((node) => (
+							<CanvasNodeRenderer key={node.id} node={node} />
+						))}
+				</RenderLayer>
+				{/* I2-5: dragged nodes float on their own layer so only it
+				    redraws during a drag; the (cached) objects layer stays put. */}
+				<RenderLayer name="drag">
+					{activePage.root.children
+						.filter((node) => draggedIds.has(node.id))
+						.map((node) => (
+							<CanvasNodeRenderer key={node.id} node={node} />
+						))}
+				</RenderLayer>
+				<RenderLayer name="selection">
+					<DraftRenderer />
+					<SmartGuideOverlay />
+					<PenPreview />
+					<PathEditOverlay />
+					<CanvasTransformer />
+				</RenderLayer>
+				<RenderLayer name="presence" listening={false}>
+					<RemoteCursors />
+					<RemoteSelections />
+				</RenderLayer>
+			</CanvasStage>
+			<ToolInteractionLayer registry={toolRegistry} />
+			<TextEditorOverlay />
+			<CropEditorOverlay />
+			<PenToolOverlay />
+		</CanvasAssetsContext.Provider>
+	);
 	return (
 		<CanvasStudioContext.Provider value={ctxValue}>
-			<div
-				data-testid="canvas-studio-root"
-				style={{ display: "flex", flexDirection: "column" }}
-			>
-				<ToolAnnouncer />
-				{!hidePageNavigator && <PageNavigator />}
-				<CanvasAssetsContext.Provider value={ir.assets}>
-					<CanvasStage
-						width={stageWidth}
-						height={stageHeight}
-						zoom={zoom}
-						panX={panX}
-						panY={panY}
-						onReady={handleStageReady}
-					>
-						<RenderLayer name="background" listening={false}>
-							<DesignBackground />
-							<Grid />
-						</RenderLayer>
-						<RenderLayer name="objects">
-							{activePage.root.children
-								.filter((node) => !draggedIds.has(node.id))
-								.map((node) => (
-									<CanvasNodeRenderer key={node.id} node={node} />
-								))}
-						</RenderLayer>
-						{/* I2-5: dragged nodes float on their own layer so only it
-						    redraws during a drag; the (cached) objects layer stays put. */}
-						<RenderLayer name="drag">
-							{activePage.root.children
-								.filter((node) => draggedIds.has(node.id))
-								.map((node) => (
-									<CanvasNodeRenderer key={node.id} node={node} />
-								))}
-						</RenderLayer>
-						<RenderLayer name="selection">
-							<DraftRenderer />
-							<SmartGuideOverlay />
-							<PenPreview />
-							<PathEditOverlay />
-							<CanvasTransformer />
-						</RenderLayer>
-						<RenderLayer name="presence" listening={false}>
-							<RemoteCursors />
-							<RemoteSelections />
-						</RenderLayer>
-					</CanvasStage>
-					<ToolInteractionLayer registry={toolRegistry} />
-					<TextEditorOverlay />
-					<CropEditorOverlay />
-					<PenToolOverlay />
-				</CanvasAssetsContext.Provider>
-			</div>
+			{renderShell ? (
+				renderShell(stageNode)
+			) : (
+				<div
+					data-testid="canvas-studio-root"
+					style={{ display: "flex", flexDirection: "column" }}
+				>
+					<ToolAnnouncer />
+					{!hidePageNavigator && <PageNavigator />}
+					{stageNode}
+				</div>
+			)}
+			{children}
 		</CanvasStudioContext.Provider>
 	);
 }

@@ -1,0 +1,181 @@
+/**
+ * @file Self-contained CSS source for the `@anvilkit/canvas-editor` chrome.
+ *
+ * SOURCE FILE — host apps do NOT import this. Tailwind compiles it into
+ * `dist/styles.css` at package-build time
+ * (`pnpm build` → `rslib build && pnpm build:css`). Host apps import the
+ * COMPILED output:  `import "@anvilkit/canvas-editor/styles.css";`
+ *
+ * Mirrors `@anvilkit/core`'s preflight-free pipeline so a single import works
+ * with ZERO Tailwind / PostCSS config in the host. It ships:
+ *   1. The Tailwind utility classes baked into the compiled chrome — scanned
+ *      from `dist/` via the `@source` directive below.
+ *   2. shadcn design-token DEFAULTS (`--background`, `--card`, `--border`, …)
+ *      declared with `:where()` (zero specificity) so a host running its own
+ *      shadcn theme always wins. The editor maps the reference "Plume" look
+ *      onto these tokens, so dark mode + host theming work for free.
+ *
+ * Deliberately PREFLIGHT-FREE: imports `tailwindcss/theme.css` +
+ * `tailwindcss/utilities.css` only — never bare `@import "tailwindcss"` and
+ * never `tailwindcss/preflight.css`. A library stylesheet must not ship a
+ * global element reset or it would clobber the host app.
+ */
+
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+
+/*
+ * Scan the COMPILED chrome for Tailwind utility class strings. Relative to
+ * this source file. `dist/` is gitignored, so this explicit `@source` is
+ * required. Build order guarantees `dist/` exists: `rslib build` runs first.
+ */
+@source "../dist/**/*.js";
+
+/*
+ * shadcn → Tailwind theme bridge: registers `bg-card`, `text-foreground`,
+ * `border-border`, `rounded-lg`, … against the token vars below. Kept in
+ * sync with `@anvilkit/core` and `@anvilkit/tailwind-config/shadcn`.
+ */
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--radius-sm: calc(var(--radius) * 0.6);
+	--radius-md: calc(var(--radius) * 0.8);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) * 1.4);
+}
+
+/*
+ * shadcn token DEFAULTS. `:where()` keeps specificity at 0 so a host's own
+ * `:root { --background: … }` always wins; these apply only when the host
+ * defines nothing. Values mirror the light/dark presets in
+ * `@anvilkit/tailwind-config/shadcn`.
+ */
+@layer base {
+	:where(:root) {
+		--background: oklch(1 0 0);
+		--foreground: oklch(0.145 0 0);
+		--card: oklch(1 0 0);
+		--card-foreground: oklch(0.145 0 0);
+		--popover: oklch(1 0 0);
+		--popover-foreground: oklch(0.145 0 0);
+		--primary: oklch(0.205 0 0);
+		--primary-foreground: oklch(0.985 0 0);
+		--secondary: oklch(0.97 0 0);
+		--secondary-foreground: oklch(0.205 0 0);
+		--muted: oklch(0.97 0 0);
+		--muted-foreground: oklch(0.556 0 0);
+		--accent: oklch(0.97 0 0);
+		--accent-foreground: oklch(0.205 0 0);
+		--destructive: oklch(0.577 0.245 27.325);
+		--border: oklch(0.922 0 0);
+		--input: oklch(0.922 0 0);
+		--ring: oklch(0.708 0 0);
+		--radius: 0.625rem;
+	}
+	:where(.dark) {
+		--background: oklch(0.145 0 0);
+		--foreground: oklch(0.985 0 0);
+		--card: oklch(0.205 0 0);
+		--card-foreground: oklch(0.985 0 0);
+		--popover: oklch(0.205 0 0);
+		--popover-foreground: oklch(0.985 0 0);
+		--primary: oklch(0.922 0 0);
+		--primary-foreground: oklch(0.205 0 0);
+		--secondary: oklch(0.269 0 0);
+		--secondary-foreground: oklch(0.985 0 0);
+		--muted: oklch(0.269 0 0);
+		--muted-foreground: oklch(0.708 0 0);
+		--accent: oklch(0.269 0 0);
+		--accent-foreground: oklch(0.985 0 0);
+		--destructive: oklch(0.704 0.191 22.216);
+		--border: oklch(1 0 0 / 10%);
+		--input: oklch(1 0 0 / 15%);
+		--ring: oklch(0.556 0 0);
+	}
+	/*
+	 * Tailwind v4's default border color is `currentColor`; without this,
+	 * `border` utilities in the chrome would not pick up `--border`.
+	 * Universal selector at specificity 0 — any host rule wins.
+	 */
+	* {
+		border-color: var(--border);
+		outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+	}
+}
+
+/*
+ * ----------------------------------------------------------------------------
+ * Editor-grid structural rules. Only the few things that are awkward as
+ * inline utilities live here; everything else is Tailwind utilities in JSX.
+ * Scoped under `[data-ak-canvas-editor]` so they never leak into the host.
+ * ----------------------------------------------------------------------------
+ */
+@layer components {
+	/* Thin, theme-aware scrollbars inside editor panels. */
+	[data-ak-canvas-editor] *::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+	[data-ak-canvas-editor] *::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	[data-ak-canvas-editor] *::-webkit-scrollbar-thumb {
+		background: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
+		border: 2px solid transparent;
+		border-radius: 999px;
+		background-clip: content-box;
+	}
+	[data-ak-canvas-editor] *::-webkit-scrollbar-thumb:hover {
+		background: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
+		border: 2px solid transparent;
+		background-clip: content-box;
+	}
+
+	/*
+	 * Floating selection toolbar: soft horizontal fade so trailing controls
+	 * remain reachable when the pill is wider than the stage. The mask can't
+	 * be expressed as a single Tailwind utility.
+	 */
+	[data-ak-floating-toolbar] {
+		-webkit-mask-image: linear-gradient(
+			90deg,
+			transparent 0,
+			#000 14px,
+			#000 calc(100% - 14px),
+			transparent 100%
+		);
+		mask-image: linear-gradient(
+			90deg,
+			transparent 0,
+			#000 14px,
+			#000 calc(100% - 14px),
+			transparent 100%
+		);
+	}
+	[data-ak-floating-toolbar]::-webkit-scrollbar {
+		display: none;
+	}
+	[data-ak-floating-toolbar][data-docked="true"] {
+		-webkit-mask-image: none;
+		mask-image: none;
+	}
+}
