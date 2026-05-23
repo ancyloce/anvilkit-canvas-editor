@@ -145,6 +145,64 @@ describe("CanvasTransformer", () => {
 		expect(args[0]).toBe(node);
 	});
 
+	it("re-points the transformer at the live node on a move-draft change (selection follows the drag)", () => {
+		transformerCalls.length = 0;
+		const ir = fixtureIR();
+		const nodeA = makeNode({ x: 10, y: 20 });
+		// Mutable node map: simulate the drag-layer optimization swapping the
+		// Konva node instance out from under the transformer mid-drag.
+		const nodeMap: Record<string, Konva.Node> = { rectA: nodeA };
+		const stage = {
+			findOne: (sel: string) => nodeMap[sel.replace(/^\./, "")] ?? null,
+		} as unknown as Konva.Stage;
+		const { ctx } = makeCtx(stage, ir);
+		ctx.selectionStore.getState().setSelection(["rectA"]);
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<CanvasTransformer />
+			</CanvasStudioContext.Provider>,
+		);
+		// Begin a drag: nodeStarts changes draggedKey → the rebind effect runs
+		// and re-renders (the mock builds a fresh transformer each render).
+		act(() => {
+			ctx.draftStore.getState().setDraft({
+				type: "move",
+				startX: 0,
+				startY: 0,
+				currentX: 0,
+				currentY: 0,
+				nodeStarts: [{ id: "rectA", x: 10, y: 20 }],
+			});
+		});
+		// The transformer ref points at the latest mounted instance; the draft
+		// subscription reads `transformerRef.current` fresh on each move.
+		const liveTr = transformerCalls.at(-1)?.ref?.current as {
+			nodes: ReturnType<typeof vi.fn>;
+		};
+		const callsAfterStart = liveTr.nodes.mock.calls.length;
+
+		// The drag-layer remount swaps the node instance; the next pointermove
+		// (currentX/Y only) does NOT change draggedKey, so it triggers no React
+		// re-render — only the synchronous draft subscription can re-point.
+		const nodeB = makeNode({ x: 10, y: 20 });
+		nodeMap.rectA = nodeB;
+		act(() => {
+			ctx.draftStore.getState().setDraft({
+				type: "move",
+				startX: 0,
+				startY: 0,
+				currentX: 25,
+				currentY: 40,
+				nodeStarts: [{ id: "rectA", x: 10, y: 20 }],
+			});
+		});
+
+		// Without the fix, no further .nodes() call happens on a move and the
+		// transformer stays bound to the stale nodeA. With the fix it re-points.
+		expect(liveTr.nodes.mock.calls.length).toBeGreaterThan(callsAfterStart);
+		expect(liveTr.nodes.mock.calls.at(-1)?.[0]).toEqual([nodeB]);
+	});
+
 	it("transformend with scale ≠ 1 commits a node.resize", () => {
 		transformerCalls.length = 0;
 		const ir = fixtureIR();

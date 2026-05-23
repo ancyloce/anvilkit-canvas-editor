@@ -64,6 +64,33 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		tr.getLayer?.()?.batchDraw?.();
 	}, [stage, selectedIds, draggedKey]);
 
+	// During a move drag the dragged node is promoted onto the drag layer, which
+	// remounts its Konva node as a NEW instance. The drag runs on raw Konva
+	// pointer events (outside React's event system), so the rebind effect above
+	// fires asynchronously and gets starved by the move loop — leaving the
+	// Transformer bound to the stale (destroyed) node, so the selection box stops
+	// tracking the element (it stays at the original position). Subscribe to the
+	// draft store and re-point the Transformer at the live nodes *synchronously*
+	// on every move. This runs in the same tick as the node mutation (no React
+	// re-render, so the per-move drag-layer optimization is preserved).
+	useEffect(() => {
+		if (!stage) return;
+		const sync = () => {
+			const draft = draftStore.getState().draft;
+			if (!draft || draft.type !== "move") return;
+			const tr = transformerRef.current;
+			if (!tr) return;
+			const nodes: Konva.Node[] = [];
+			for (const id of selectionStore.getState().selectedIds) {
+				const n = stage.findOne(`.${id}`);
+				if (n) nodes.push(n);
+			}
+			tr.nodes(nodes);
+			tr.getLayer?.()?.batchDraw?.();
+		};
+		return draftStore.subscribe(sync);
+	}, [stage, draftStore, selectionStore]);
+
 	const onTransformEnd = useCallback(() => {
 		if (!stage) return;
 		const ir = getIR();
