@@ -12,6 +12,7 @@ export type ToolId =
 	| "rect"
 	| "ellipse"
 	| "line"
+	| "path"
 	| "image"
 	| "hand"
 	| "ai-image"
