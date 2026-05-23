@@ -17,6 +17,16 @@
 				"default": "./dist/index.cjs"
 			}
 		},
+		"./collab": {
+			"import": {
+				"types": "./dist/collab/index.d.ts",
+				"default": "./dist/collab/index.js"
+			},
+			"require": {
+				"types": "./dist/collab/index.d.cts",
+				"default": "./dist/collab/index.cjs"
+			}
+		},
 		"./*": {
 			"import": {
 				"types": "./dist/*.d.ts",
@@ -40,7 +50,17 @@
 		"konva": "^9 || ^10",
 		"react": ">=19.0.0",
 		"react-dom": ">=19.0.0",
-		"react-konva": "^19"
+		"react-konva": "^19",
+		"y-protocols": "^1.0.7",
+		"yjs": "^13.6.30"
+	},
+	"peerDependenciesMeta": {
+		"y-protocols": {
+			"optional": true
+		},
+		"yjs": {
+			"optional": true
+		}
 	},
 	"dependencies": {
 		"@anvilkit/canvas-core": "workspace:*",
@@ -76,6 +96,8 @@
 		"react-dom": "^19.2.6",
 		"react-konva": "^19.2.4",
 		"typescript": "6.0.3",
-		"vitest": "^4.1.7"
+		"vitest": "^4.1.7",
+		"y-protocols": "^1.0.7",
+		"yjs": "^13.6.30"
 	}
 }
