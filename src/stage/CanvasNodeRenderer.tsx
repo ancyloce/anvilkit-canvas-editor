@@ -26,6 +26,7 @@ import {
 import useImage from "use-image";
 import { CanvasStudioContext } from "../context/canvas-studio-context.js";
 import { useCanvasAsset } from "./CanvasAssetsContext.js";
+import { nodeRenderOffset } from "./node-render-offset.js";
 
 export interface CanvasNodeRendererProps {
 	node: CanvasNode;
@@ -82,16 +83,18 @@ function CanvasRectNodeRenderer({ node }: { node: CanvasRectNode }) {
 }
 
 function CanvasEllipseNodeRenderer({ node }: { node: CanvasEllipseNode }) {
-	// Konva.Ellipse is centered at (x, y). Translate so the bounding box's
-	// top-left aligns with the IR transform.
+	// Konva.Ellipse is centered at (x, y). Translate by the shared render offset
+	// (= half-bounds) so the bounding box's top-left aligns with the IR transform.
+	// The same offset is applied by the drag preview — see `nodeRenderOffset`.
 	const radiusX = node.bounds.width / 2;
 	const radiusY = node.bounds.height / 2;
 	const base = commonProps(node);
+	const offset = nodeRenderOffset(node);
 	return (
 		<Ellipse
 			{...base}
-			x={base.x + radiusX}
-			y={base.y + radiusY}
+			x={base.x + offset.x}
+			y={base.y + offset.y}
 			radiusX={radiusX}
 			radiusY={radiusY}
 			fill={node.fill}
