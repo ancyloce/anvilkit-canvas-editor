@@ -107,29 +107,29 @@ export function PagesCanvas({
 	}, [ctx]);
 
 	return (
-		<div
-			ref={scrollRef}
-			data-testid="pages-canvas"
-			className="min-h-0 flex-1 overflow-auto px-7 pt-16 pb-14"
-		>
-			<div className="flex flex-col items-center gap-8 pb-8">
-				{pages.map((page, index) => (
-					<PageRow
-						key={page.id}
-						page={page}
-						index={index}
-						total={pages.length}
-						zoom={zoom}
-						isActive={page.id === activePageId}
-						stage={stage}
-						elementActions={elementActions}
-						thumbnail={thumbnails.get(page.id)}
-					/>
-				))}
-				<AddPageButton width={addWidth} />
-			</div>
-		</div>
-	);
+    <div
+      ref={scrollRef}
+      data-testid="pages-canvas"
+      className="min-h-0 flex-1 overflow-auto px-7 pt-16 pb-14 dark:bg-neutral-800 bg-neutral-50"
+    >
+      <div className="flex flex-col items-center gap-8 pb-8">
+        {pages.map((page, index) => (
+          <PageRow
+            key={page.id}
+            page={page}
+            index={index}
+            total={pages.length}
+            zoom={zoom}
+            isActive={page.id === activePageId}
+            stage={stage}
+            elementActions={elementActions}
+            thumbnail={thumbnails.get(page.id)}
+          />
+        ))}
+        <AddPageButton width={addWidth} />
+      </div>
+    </div>
+  );
 }
 
 interface PageRowProps {
