@@ -102,8 +102,8 @@ export interface CanvasStudioProps {
 	 * provider child and can call {@link useCanvasStudio}. The callback is a
 	 * pure composition seam (no hooks) that receives the ready-to-mount Konva
 	 * stage node and decides where to place it (e.g. the centre column of a
-	 * grid). Omit it to keep the legacy bare-stage layout. `<CanvasEditor>`
-	 * wraps this with the full reference shell.
+	 * grid). Omit it to keep the bare-stage layout. `<CanvasWorkspace>` wraps
+	 * this with the full editor shell.
 	 */
 	renderShell?: (stage: React.ReactNode) => React.ReactNode;
 	/**
