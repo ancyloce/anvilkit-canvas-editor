@@ -18,6 +18,23 @@ export {
 	CanvasStudioContext,
 	useCanvasStudio,
 } from "./context/canvas-studio-context.js";
+export type {
+	CanvasExportArtifact,
+	CanvasExportContext,
+	CanvasExporter,
+	CanvasExportFormat,
+	CanvasExportPluginOptions,
+	CanvasExportRequest,
+	CanvasHeaderPlugin,
+} from "./header/index.js";
+export {
+	createCanvasExportPlugin,
+	DEFAULT_CANVAS_EXPORTERS,
+	downloadCanvasArtifact,
+	ExportMenu,
+	jsonExporter,
+	pngExporter,
+} from "./header/index.js";
 export type { ClonePageOptions } from "./pages/clone-page.js";
 export { clonePage, regenerateIds } from "./pages/clone-page.js";
 export type { PageNavigatorProps } from "./pages/PageNavigator.js";
