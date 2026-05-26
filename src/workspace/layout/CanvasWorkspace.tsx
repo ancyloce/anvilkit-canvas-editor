@@ -51,7 +51,7 @@ export interface CanvasWorkspaceProps
  * Panel) · Canvas (dynamic Toolbar + Page with floating Element Controls) ·
  * full-width Footer. Composed over the headless `<CanvasStudio>` via its
  * `renderShell` seam; UI state lives in a per-instance Zustand store provided
- * here. Non-breaking sibling of the legacy `CanvasEditor` shell.
+ * here. This is the editor's single top-level shell.
  */
 export function CanvasWorkspace({
 	storeId = "default",

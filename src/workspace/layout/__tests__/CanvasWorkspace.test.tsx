@@ -67,10 +67,7 @@ describe("CanvasWorkspace shell", () => {
 				`expected [data-testid='${id}']`,
 			).not.toBeNull();
 		}
-		// It is the workspace shell, not the legacy CanvasEditor / bare layout.
-		expect(
-			container.querySelector("[data-testid='canvas-editor-root']"),
-		).toBeNull();
+		// It is the workspace shell (renderShell), not the bare stacked layout.
 		expect(
 			container.querySelector("[data-testid='canvas-studio-root']"),
 		).toBeNull();
