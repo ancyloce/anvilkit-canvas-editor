@@ -21,7 +21,7 @@ export interface WorkspaceFooterProps {
 /**
  * Full-width bottom footer (Canva style): a zoom slider with ± steppers and a
  * percentage readout, then the page indicator. Bound to `viewportStore.zoom`
- * and `pagesStore` — the same sources as the floating `ZoomControl`.
+ * and `pagesStore`.
  */
 export function WorkspaceFooter({
 	className,

@@ -69,8 +69,8 @@ const REORDER_OPTIONS: readonly { dir: ReorderDirection; label: string }[] = [
  * Floating per-selection controls pinned above the selection: lock, duplicate,
  * delete, and a "⋯ more" menu. Lock + delete run through the existing command
  * pipeline; duplicate / copy-paste-style / align / layer-order are host
- * callbacks (disabled when unwired). Supersedes `FloatingSelectionToolbar` in
- * the Canva shell; the legacy toolbar stays exported for `CanvasEditor`.
+ * callbacks (disabled when unwired). These are the floating selection controls
+ * for the `CanvasWorkspace` shell.
  */
 export function ElementControls({
 	actions,

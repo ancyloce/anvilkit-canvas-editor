@@ -28,9 +28,8 @@ export interface WorkspaceHeaderProps {
 
 /**
  * Full-width top header: Back · undo/redo · editable name · avatars · Share.
- * Undo/redo reuse the exact `historyStore` → `sceneStore` wiring from
- * `EditorStageBar`. The name is click-to-edit only when `onTitleChange` is
- * wired (the host owns persistence).
+ * Undo/redo run the standard `historyStore` → `sceneStore` wiring. The name is
+ * click-to-edit only when `onTitleChange` is wired (the host owns persistence).
  */
 export function WorkspaceHeader({
 	onBack,
