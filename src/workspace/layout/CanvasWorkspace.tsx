@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { ToolAnnouncer } from "../../a11y/ToolAnnouncer.js";
 import { CanvasStudio, type CanvasStudioProps } from "../../CanvasStudio.js";
+import type { CanvasHeaderPlugin } from "../../header/types.js";
 import { PropertyInspector } from "../../panels/PropertyInspector.js";
 import {
 	type CanvasPanelRegistry,
@@ -34,6 +35,11 @@ export interface CanvasWorkspaceProps
 	onTitleChange?: (next: string) => void;
 	/** Collaborator avatars slot, rendered in the header. */
 	avatarsSlot?: ReactNode;
+	/**
+	 * Header plugins rendered in the header's right cluster. Pass the built-in
+	 * export popover via {@link createCanvasExportPlugin}.
+	 */
+	headerPlugins?: readonly CanvasHeaderPlugin[];
 	/** Share / Export / Publish slot, rendered in the header. */
 	shareSlot?: ReactNode;
 	/** Panel Dock entries, in order. Defaults to {@link DockItem}[] config. */
@@ -59,6 +65,7 @@ export function CanvasWorkspace({
 	title,
 	onTitleChange,
 	avatarsSlot,
+	headerPlugins,
 	shareSlot,
 	dockItems,
 	panels,
@@ -84,6 +91,7 @@ export function CanvasWorkspace({
 							title={title}
 							onTitleChange={onTitleChange}
 							avatarsSlot={avatarsSlot}
+							plugins={headerPlugins}
 							shareSlot={shareSlot}
 						/>
 						<div className="grid min-h-0 grid-cols-[auto_280px_minmax(0,1fr)_auto]">

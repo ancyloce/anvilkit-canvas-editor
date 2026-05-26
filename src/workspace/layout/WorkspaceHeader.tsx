@@ -5,9 +5,15 @@ import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { Separator } from "@anvilkit/ui/separator";
 import { ChevronLeft } from "lucide-react";
-import { type ReactNode, useState, useSyncExternalStore } from "react";
+import {
+	Fragment,
+	type ReactNode,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { ChromeIcons } from "../../chrome/icons.js";
 import { useCanvasStudio } from "../../context/canvas-studio-context.js";
+import type { CanvasHeaderPlugin } from "../../header/types.js";
 
 export interface WorkspaceHeaderProps {
 	/** Host back action. When omitted, the Back button is hidden. */
@@ -21,6 +27,12 @@ export interface WorkspaceHeaderProps {
 	onTitleChange?: (next: string) => void;
 	/** Collaborator avatars slot (host-rendered). */
 	avatarsSlot?: ReactNode;
+	/**
+	 * Header plugins (e.g. the built-in export popover from
+	 * {@link createCanvasExportPlugin}). Rendered between the avatars and the
+	 * host `shareSlot`, inside the studio provider so they can use hooks.
+	 */
+	plugins?: readonly CanvasHeaderPlugin[];
 	/** Share / Export / Publish slot (host-rendered). */
 	shareSlot?: ReactNode;
 	className?: string;
@@ -36,6 +48,7 @@ export function WorkspaceHeader({
 	title,
 	onTitleChange,
 	avatarsSlot,
+	plugins,
 	shareSlot,
 	className,
 }: WorkspaceHeaderProps): React.JSX.Element {
@@ -157,6 +170,9 @@ export function WorkspaceHeader({
 			<div className="flex-1" />
 
 			{avatarsSlot}
+			{plugins?.map((plugin) => (
+				<Fragment key={plugin.id}>{plugin.render()}</Fragment>
+			))}
 			{shareSlot}
 		</header>
 	);
