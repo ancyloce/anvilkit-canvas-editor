@@ -9,10 +9,8 @@ export interface BrandPanelProps {
 
 /**
  * Brand-kit panel: the host's shared palette + fonts (I3-4), sourced from
- * `useBrandColors` / `useBrandFonts`. Extracted verbatim from
- * `EditorContextPanel`'s inline brand section so both the legacy
- * `EditorContextPanel` and the new `CanvasWorkspace` Tab Panel can mount it.
- * Renders `null` when no brand kit is configured. Testids
+ * `useBrandColors` / `useBrandFonts`. Mounted by the `CanvasWorkspace` Tab
+ * Panel (brand dock). Renders `null` when no brand kit is configured. Testids
  * (`brand-section` / `brand-palette` / `brand-fonts`) are unchanged.
  */
 export function BrandPanel({

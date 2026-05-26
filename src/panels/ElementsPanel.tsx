@@ -17,8 +17,8 @@ export interface ElementsPanelProps {
 /**
  * The Canva-shell "Elements" panel — the new home for the drawing tools.
  * Renders each {@link TOOL_RAIL_ITEMS} entry as a button bound to `toolStore`;
- * the active tool is highlighted. Replaces the legacy vertical `ToolRail` in
- * the `CanvasWorkspace` shell (decision §1.3.2).
+ * the active tool is highlighted. It is the drawing-tool surface for the
+ * `CanvasWorkspace` shell (decision §1.3.2).
  */
 export function ElementsPanel({
 	search = "",
