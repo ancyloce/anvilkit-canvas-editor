@@ -27,7 +27,11 @@ import { createPagesStore } from "../../stores/pages-store.js";
 import { createSelectionStore } from "../../stores/selection-store.js";
 import { createToolStore } from "../../stores/tool-store.js";
 import { createViewportStore } from "../../stores/viewport-store.js";
-import { CanvasTransformer } from "../CanvasTransformer.js";
+import {
+	CanvasTransformer,
+	selectionBox,
+	setAnchorHovered,
+} from "../CanvasTransformer.js";
 
 type CapturedProps = {
 	props: Record<string, unknown>;
@@ -50,6 +54,11 @@ vi.mock("react-konva", () => ({
 		transformerCalls.push({ props: rest, ref: refObj });
 		return null;
 	},
+	// The size-badge nodes render inside the same layer; stub them out — the
+	// effects guard on the (null) refs, so they never touch a real Konva node.
+	Label: () => null,
+	Tag: () => null,
+	Text: () => null,
 }));
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
@@ -146,6 +155,143 @@ describe("CanvasTransformer", () => {
 		const [args] = fakeTr.nodes.mock.calls[0];
 		expect(args).toHaveLength(1);
 		expect(args[0]).toBe(node);
+	});
+
+	// Fake anchor that records setter calls and matches by name.
+	const makeAnchor = (name: string, dragging = false) => {
+		const state: Record<string, unknown> = {};
+		const setter = (key: string) => (v: unknown) => {
+			state[key] = v;
+		};
+		return {
+			state,
+			name: () => `${name} _anchor`,
+			hasName: (n: string) => n === name || n === "_anchor",
+			isDragging: () => dragging,
+			visible: setter("visible"),
+			fill: setter("fill"),
+			stroke: setter("stroke"),
+			strokeWidth: setter("strokeWidth"),
+			width: setter("width"),
+			height: setter("height"),
+			offsetX: setter("offsetX"),
+			offsetY: setter("offsetY"),
+			cornerRadius: setter("cornerRadius"),
+		};
+	};
+
+	function renderTransformer() {
+		transformerCalls.length = 0;
+		const ir = fixtureIR();
+		const node = makeNode({ x: 10, y: 20 });
+		const stage = makeFakeStage({ rectA: node });
+		const { ctx } = makeCtx(stage, ir);
+		ctx.selectionStore.getState().setSelection(["rectA"]);
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<CanvasTransformer />
+			</CanvasStudioContext.Provider>,
+		);
+		return transformerCalls[0]?.props as Record<string, unknown> & {
+			anchorStyleFunc: (a: unknown) => void;
+			onTransformStart: () => void;
+		};
+	}
+
+	it("applies the selection chrome (violet border, white circular corners, pill edges)", () => {
+		const props = renderTransformer();
+		expect(props.borderStroke).toBe("#7c3aed");
+		expect(props.anchorStroke).toBe("#7c3aed");
+		expect(props.anchorFill).toBe("#ffffff");
+		expect(props.anchorCornerRadius).toBe(6);
+		expect(props.anchorSize).toBe(12);
+		expect(props.rotateLineVisible).toBe(false);
+
+		// Rotater → white vertical pill (NOT a persistent purple block).
+		const rotater = makeAnchor("rotater");
+		props.anchorStyleFunc(rotater);
+		expect(rotater.state.fill).toBe("#ffffff");
+		expect(rotater.state.height as number).toBeGreaterThan(
+			rotater.state.width as number,
+		);
+
+		// top/bottom-center → horizontal pill (wider than tall), white at rest.
+		const topCenter = makeAnchor("top-center");
+		props.anchorStyleFunc(topCenter);
+		expect(topCenter.state.fill).toBe("#ffffff");
+		expect(topCenter.state.width as number).toBeGreaterThan(
+			topCenter.state.height as number,
+		);
+
+		// middle-left/right → vertical pill (taller than wide).
+		const middleLeft = makeAnchor("middle-left");
+		props.anchorStyleFunc(middleLeft);
+		expect(middleLeft.state.height as number).toBeGreaterThan(
+			middleLeft.state.width as number,
+		);
+
+		// Corners keep the circular global style (shape untouched), white fill.
+		const topLeft = makeAnchor("top-left");
+		props.anchorStyleFunc(topLeft);
+		expect(topLeft.state.width).toBeUndefined();
+		expect(topLeft.state.cornerRadius).toBeUndefined();
+		expect(topLeft.state.fill).toBe("#ffffff");
+	});
+
+	it("hides every dragger but the one being dragged while transforming", () => {
+		const props = renderTransformer();
+		// Enter transform mode (sets the internal `transformingRef`).
+		act(() => {
+			props.onTransformStart();
+		});
+
+		// The grabbed handle stays visible and turns violet…
+		const active = makeAnchor("bottom-center", true);
+		props.anchorStyleFunc(active);
+		expect(active.state.visible).toBe(true);
+		expect(active.state.fill).toBe("#7c3aed");
+
+		// …every other handle is hidden.
+		const idle = makeAnchor("top-left", false);
+		props.anchorStyleFunc(idle);
+		expect(idle.state.visible).toBe(false);
+	});
+
+	it("setAnchorHovered tints an anchor violet on hover and reverts on leave", () => {
+		const anchor = makeAnchor("middle-right");
+		const a = anchor as unknown as Parameters<typeof setAnchorHovered>[0];
+		setAnchorHovered(a, true);
+		expect(anchor.state.fill).toBe("#7c3aed");
+		setAnchorHovered(a, false);
+		expect(anchor.state.fill).toBe("#ffffff");
+	});
+
+	it("selectionBox unions the selected nodes' client rects in layer space", () => {
+		const rects: Record<
+			string,
+			{ x: number; y: number; w: number; h: number }
+		> = {
+			a: { x: 10, y: 20, w: 100, h: 40 },
+			b: { x: 80, y: 10, w: 60, h: 80 },
+		};
+		const stage = {
+			findOne: (sel: string) => {
+				const r = rects[sel.replace(/^\./, "")];
+				return r
+					? {
+							getClientRect: () => ({
+								x: r.x,
+								y: r.y,
+								width: r.w,
+								height: r.h,
+							}),
+						}
+					: null;
+			},
+		} as unknown as Konva.Stage;
+		const box = selectionBox(stage, ["a", "b"], null);
+		// union: x∈[10,140], y∈[10,90] → 130×80 at (10,10).
+		expect(box).toEqual({ x: 10, y: 10, width: 130, height: 80 });
 	});
 
 	it("re-points the transformer at the live node on a move-draft change (selection follows the drag)", () => {
