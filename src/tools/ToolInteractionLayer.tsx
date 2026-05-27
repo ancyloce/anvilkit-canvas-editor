@@ -73,45 +73,89 @@ export function ToolInteractionLayer({
 	// Wire pointer dispatch.
 	useEffect(() => {
 		if (!stage || !ctx) return;
-		const handle =
-			(phase: "down" | "move" | "up") =>
-			(kEvt: Konva.KonvaEventObject<PointerEvent>) => {
-				const activeId = toolStore.getState().activeTool;
-				const tool = registry[activeId];
-				if (!tool) return;
-				const hook =
-					phase === "down"
-						? tool.onPointerDown
-						: phase === "move"
-							? tool.onPointerMove
-							: tool.onPointerUp;
-				if (!hook) return;
-				const ptr = getStagePointer(stage);
-				if (!ptr) return;
-				const evt = kEvt.evt;
-				const shiftKey =
-					evt && "shiftKey" in evt
-						? Boolean((evt as PointerEvent).shiftKey)
-						: false;
-				hook(
-					{
-						evt,
-						point: ptr.world,
-						screenPoint: ptr.screen,
-						stage,
-						target: kEvt.target,
-						shiftKey,
-					},
-					ctx,
-				);
-			};
-		const onDown = handle("down");
-		const onMove = handle("move");
-		const onUp = handle("up");
+		const dispatch = (
+			phase: "down" | "move" | "up",
+			kEvt: Konva.KonvaEventObject<PointerEvent>,
+		) => {
+			const activeId = toolStore.getState().activeTool;
+			const tool = registry[activeId];
+			if (!tool) return;
+			const hook =
+				phase === "down"
+					? tool.onPointerDown
+					: phase === "move"
+						? tool.onPointerMove
+						: tool.onPointerUp;
+			if (!hook) return;
+			const ptr = getStagePointer(stage);
+			if (!ptr) return;
+			const evt = kEvt.evt;
+			const shiftKey =
+				evt && "shiftKey" in evt
+					? Boolean((evt as PointerEvent).shiftKey)
+					: false;
+			hook(
+				{
+					evt,
+					point: ptr.world,
+					screenPoint: ptr.screen,
+					stage,
+					target: kEvt.target,
+					shiftKey,
+				},
+				ctx,
+			);
+		};
+
+		// Coalesce pointermove to one dispatch per animation frame. Each move
+		// drives `draftStore`/`guidesStore` writes whose `useSyncExternalStore`
+		// subscribers (DraftRenderer, SmartGuideOverlay) re-render synchronously;
+		// high-Hz pointers (and coalesced native moves) fire far above the display
+		// rate, so an unthrottled drag schedules hundreds of synchronous store
+		// updates that React batches into one transition — tripping React 19's
+		// "large number of updates inside startTransition" warning. Reading the
+		// live pointer inside the rAF keeps the geometry current; dropped
+		// intermediate frames are invisible at ≥60Hz.
+		let moveRaf = 0;
+		let pendingMove: Konva.KonvaEventObject<PointerEvent> | null = null;
+		const hasRaf =
+			typeof requestAnimationFrame === "function" &&
+			typeof cancelAnimationFrame === "function";
+		const runPendingMove = () => {
+			moveRaf = 0;
+			const kEvt = pendingMove;
+			pendingMove = null;
+			if (kEvt) dispatch("move", kEvt);
+		};
+		// Apply the final queued move synchronously before a down/up so the
+		// gesture's last geometry lands before the commit reads the live pointer.
+		const flushPendingMove = () => {
+			if (moveRaf && hasRaf) cancelAnimationFrame(moveRaf);
+			runPendingMove();
+		};
+
+		const onDown = (kEvt: Konva.KonvaEventObject<PointerEvent>) => {
+			flushPendingMove();
+			dispatch("down", kEvt);
+		};
+		const onMove = (kEvt: Konva.KonvaEventObject<PointerEvent>) => {
+			pendingMove = kEvt;
+			if (!hasRaf) {
+				runPendingMove();
+				return;
+			}
+			if (!moveRaf) moveRaf = requestAnimationFrame(runPendingMove);
+		};
+		const onUp = (kEvt: Konva.KonvaEventObject<PointerEvent>) => {
+			flushPendingMove();
+			dispatch("up", kEvt);
+		};
 		stage.on("pointerdown", onDown);
 		stage.on("pointermove", onMove);
 		stage.on("pointerup", onUp);
 		return () => {
+			if (moveRaf && hasRaf) cancelAnimationFrame(moveRaf);
+			pendingMove = null;
 			stage.off("pointerdown", onDown);
 			stage.off("pointermove", onMove);
 			stage.off("pointerup", onUp);
