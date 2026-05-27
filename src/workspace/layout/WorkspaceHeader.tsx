@@ -106,7 +106,7 @@ export function WorkspaceHeader({
 					>
 						<ChevronLeft aria-hidden />
 					</Button>
-					<Separator orientation="vertical" className="mx-1 h-4.5" />
+					<Separator orientation="vertical" className="mx-1 h-4.5 data-vertical:self-center" />
 				</>
 			) : null}
 
@@ -135,7 +135,7 @@ export function WorkspaceHeader({
 				<ChromeIcons.redo aria-hidden />
 			</Button>
 
-			<Separator orientation="vertical" className="mx-1 h-4.5" />
+			<Separator orientation="vertical" className="mx-1 h-4.5 data-vertical:self-center" />
 
 			{editing ? (
 				<Input

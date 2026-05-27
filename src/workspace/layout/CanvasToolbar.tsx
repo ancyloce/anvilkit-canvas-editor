@@ -108,7 +108,12 @@ export function CanvasToolbar({
 }
 
 function PillDivider(): React.JSX.Element {
-	return <Separator orientation="vertical" className="mx-0.5 h-5" />;
+	return (
+		<Separator
+			orientation="vertical"
+			className="mx-0.5 h-5 data-vertical:self-center"
+		/>
+	);
 }
 
 /** Compact color control: a swatch + label that opens the native picker. */

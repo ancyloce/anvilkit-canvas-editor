@@ -92,7 +92,7 @@ export function WorkspaceFooter({
 					{percent}%
 				</span>
 			</div>
-			<Separator orientation="vertical" className="h-4" />
+			<Separator orientation="vertical" className="h-4 data-vertical:self-center" />
 			<span
 				data-testid="workspace-page-count"
 				className="text-muted-foreground"
