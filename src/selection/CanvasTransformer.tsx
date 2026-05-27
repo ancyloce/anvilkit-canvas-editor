@@ -41,8 +41,12 @@ const noopSubscribe = () => () => undefined;
 
 /** Diameter of the circular rotate-icon handle parked below the box. */
 const ROTATE_HANDLE_SIZE = 34;
-/** On-glyph size of the rotation icon (lucide 24×24 viewBox). */
-const ROTATE_ICON_SIZE = 22;
+/**
+ * Scaled size of the rotation icon's 24×24 viewBox. The lucide `refresh-cw` art
+ * only fills ~18 of those 24 units, so this is oversized past the viewBox to
+ * make the *visible* glyph (~0.75×) fill the handle like the reference design.
+ */
+const ROTATE_ICON_SIZE = 30;
 /**
  * lucide `refresh-cw` (two arrows forming a circle) in its 24×24 viewBox — the
  * rotation glyph drawn inside the rotate handle. Combined sub-paths so a single
@@ -582,7 +586,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 				<Path
 					data={ROTATE_ICON_PATH}
 					stroke={theme.onSurface}
-					strokeWidth={2.2}
+					strokeWidth={1.8}
 					lineCap="round"
 					lineJoin="round"
 					scaleX={iconScale}
