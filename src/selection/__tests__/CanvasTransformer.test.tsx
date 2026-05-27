@@ -161,8 +161,10 @@ describe("CanvasTransformer", () => {
 		expect(args[0]).toBe(node);
 	});
 
-	// Fake anchor that records setter calls and matches by name.
-	const makeAnchor = (name: string, dragging = false) => {
+	// Fake anchor that records setter calls and matches by name. `activeName`
+	// stands in for the Transformer's `_movingAnchorName` (the dragged anchor),
+	// read via getParent() in anchorStyleFunc.
+	const makeAnchor = (name: string, activeName: string | null = null) => {
 		const state: Record<string, unknown> = {};
 		const setter = (key: string) => (v: unknown) => {
 			state[key] = v;
@@ -171,7 +173,7 @@ describe("CanvasTransformer", () => {
 			state,
 			name: () => `${name} _anchor`,
 			hasName: (n: string) => n === name || n === "_anchor",
-			isDragging: () => dragging,
+			getParent: () => ({ _movingAnchorName: activeName }),
 			visible: setter("visible"),
 			fill: setter("fill"),
 			stroke: setter("stroke"),
@@ -252,14 +254,15 @@ describe("CanvasTransformer", () => {
 			props.onTransformStart();
 		});
 
-		// The grabbed handle stays visible and takes the accent fill…
-		const active = makeAnchor("bottom-center", true);
+		// The active handle (matching the Transformer's _movingAnchorName) stays
+		// visible and takes the accent fill…
+		const active = makeAnchor("bottom-center", "bottom-center");
 		props.anchorStyleFunc(active);
 		expect(active.state.visible).toBe(true);
 		expect(active.state.fill).toBe(FALLBACK_CHROME_THEME.accent);
 
 		// …every other handle is hidden.
-		const idle = makeAnchor("top-left", false);
+		const idle = makeAnchor("top-left", "bottom-center");
 		props.anchorStyleFunc(idle);
 		expect(idle.state.visible).toBe(false);
 	});

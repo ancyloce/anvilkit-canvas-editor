@@ -40,7 +40,9 @@ const SCALE_SIZED: ReadonlySet<CanvasNode["type"]> = new Set(["path", "line"]);
 const noopSubscribe = () => () => undefined;
 
 /** Diameter of the circular rotate-icon handle parked below the box. */
-const ROTATE_HANDLE_SIZE = 30;
+const ROTATE_HANDLE_SIZE = 34;
+/** On-glyph size of the rotation icon (lucide 24×24 viewBox). */
+const ROTATE_ICON_SIZE = 22;
 /**
  * lucide `refresh-cw` (two arrows forming a circle) in its 24×24 viewBox — the
  * rotation glyph drawn inside the rotate handle. Combined sub-paths so a single
@@ -255,10 +257,13 @@ export function CanvasTransformer(): React.JSX.Element | null {
 	);
 
 	// Per-anchor styling: circular corners, pill edges, a circular rotate-icon
-	// handle, and theme-aware tinting. While transforming, hide every dragger
-	// except the one under the cursor (kept accent-filled) so only the active
-	// handle + size badge show. Konva runs this last in update() (after
-	// positioning + visibility), so it has the final say each frame.
+	// handle, and theme-aware tinting. While transforming, show ONLY the active
+	// dragger (kept accent-filled) so just the direction marker + size badge
+	// show. The active handle is read from the Transformer's `_movingAnchorName`
+	// — Konva drives the resize off window mouse events and immediately
+	// `stopDrag()`s the anchor, so `anchor.isDragging()` is always false here.
+	// Konva runs this last in update() (after positioning + visibility), so it
+	// has the final say each frame.
 	const anchorStyleFunc = useCallback(
 		(anchor: Konva.Rect) => {
 			const t = themeRef.current;
@@ -270,11 +275,16 @@ export function CanvasTransformer(): React.JSX.Element | null {
 				anchor.stroke(t.border);
 			}
 			if (transformingRef.current) {
-				const dragging = anchor.isDragging?.() ?? false;
-				anchor.visible(dragging);
+				const parent = anchor.getParent?.() as
+					| (Konva.Node & { _movingAnchorName?: string | null })
+					| null
+					| undefined;
+				const active = parent?._movingAnchorName ?? null;
+				const isActive = active !== null && anchor.hasName(active);
+				anchor.visible(isActive);
 				if (isRotater) {
-					syncRotateIcon(anchor, dragging);
-				} else if (dragging) {
+					syncRotateIcon(anchor, isActive);
+				} else if (isActive) {
 					anchor.fill(t.accent);
 				}
 				return;
@@ -304,8 +314,13 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		);
 		if (!box) return;
 		text.text(`w: ${Math.round(box.width)}  h: ${Math.round(box.height)}`);
+		// Counter-scale by the stage zoom so the badge keeps a constant on-screen
+		// size (and a constant gap) regardless of canvas scaling. Position stays in
+		// layer/design coords so it still tracks the box.
+		const inv = 1 / (stage.scaleX?.() || 1);
+		label.scale({ x: inv, y: inv });
 		// Park the badge just below the box, right edge aligned to the box's.
-		label.position({ x: box.x + box.width, y: box.y + box.height + 12 });
+		label.position({ x: box.x + box.width, y: box.y + box.height + 12 * inv });
 		label.offsetX(label.width());
 		label.getLayer()?.batchDraw();
 	}, [stage, selectionStore]);
@@ -542,7 +557,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 	}, [stage, selectedIds, getIR, commit, activePageId]);
 
 	if (croppingId) return null;
-	const iconScale = 16 / 24; // lucide 24×24 viewBox → ~16px glyph
+	const iconScale = ROTATE_ICON_SIZE / 24; // lucide 24×24 viewBox → glyph px
 	return (
 		<>
 			<Transformer
