@@ -18,6 +18,8 @@ vi.mock("react-konva", () => {
 		Path: Leaf,
 		Text: Leaf,
 		Image: Leaf,
+		Label: Group,
+		Tag: Leaf,
 		Transformer: Leaf,
 	};
 });

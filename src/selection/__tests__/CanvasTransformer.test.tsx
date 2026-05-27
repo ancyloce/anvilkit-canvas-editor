@@ -29,6 +29,7 @@ import { createToolStore } from "../../stores/tool-store.js";
 import { createViewportStore } from "../../stores/viewport-store.js";
 import {
 	CanvasTransformer,
+	FALLBACK_CHROME_THEME,
 	selectionBox,
 	setAnchorHovered,
 } from "../CanvasTransformer.js";
@@ -54,8 +55,11 @@ vi.mock("react-konva", () => ({
 		transformerCalls.push({ props: rest, ref: refObj });
 		return null;
 	},
-	// The size-badge nodes render inside the same layer; stub them out — the
-	// effects guard on the (null) refs, so they never touch a real Konva node.
+	// The rotate-icon + size-badge nodes render inside the same layer; stub them
+	// out — the effects guard on the (null) refs, so they never touch a real
+	// Konva node.
+	Group: () => null,
+	Path: () => null,
 	Label: () => null,
 	Tag: () => null,
 	Text: () => null,
@@ -198,27 +202,30 @@ describe("CanvasTransformer", () => {
 		};
 	}
 
-	it("applies the selection chrome (violet border, white circular corners, pill edges)", () => {
+	it("drives the selection chrome from the theme tokens (accent border, surface handles)", () => {
 		const props = renderTransformer();
-		expect(props.borderStroke).toBe("#7c3aed");
-		expect(props.anchorStroke).toBe("#7c3aed");
-		expect(props.anchorFill).toBe("#ffffff");
+		const { accent, surface, border } = FALLBACK_CHROME_THEME;
+		// No custom hex — colors come from the resolved theme.
+		expect(props.borderStroke).toBe(accent);
+		expect(props.anchorStroke).toBe(accent);
+		expect(props.anchorFill).toBe(surface);
 		expect(props.anchorCornerRadius).toBe(6);
 		expect(props.anchorSize).toBe(12);
 		expect(props.rotateLineVisible).toBe(false);
+		// Rotate handle parked below the box.
+		expect(props.rotateAnchorAngle).toBe(180);
 
-		// Rotater → white vertical pill (NOT a persistent purple block).
+		// Rotater → circular surface-filled icon button with a hairline border.
 		const rotater = makeAnchor("rotater");
 		props.anchorStyleFunc(rotater);
-		expect(rotater.state.fill).toBe("#ffffff");
-		expect(rotater.state.height as number).toBeGreaterThan(
-			rotater.state.width as number,
-		);
+		expect(rotater.state.fill).toBe(surface);
+		expect(rotater.state.stroke).toBe(border);
+		expect(rotater.state.width).toBe(rotater.state.height); // circle
 
-		// top/bottom-center → horizontal pill (wider than tall), white at rest.
+		// top/bottom-center → horizontal pill (wider than tall), surface at rest.
 		const topCenter = makeAnchor("top-center");
 		props.anchorStyleFunc(topCenter);
-		expect(topCenter.state.fill).toBe("#ffffff");
+		expect(topCenter.state.fill).toBe(surface);
 		expect(topCenter.state.width as number).toBeGreaterThan(
 			topCenter.state.height as number,
 		);
@@ -230,12 +237,12 @@ describe("CanvasTransformer", () => {
 			middleLeft.state.width as number,
 		);
 
-		// Corners keep the circular global style (shape untouched), white fill.
+		// Corners keep the circular global style (shape untouched), surface fill.
 		const topLeft = makeAnchor("top-left");
 		props.anchorStyleFunc(topLeft);
 		expect(topLeft.state.width).toBeUndefined();
 		expect(topLeft.state.cornerRadius).toBeUndefined();
-		expect(topLeft.state.fill).toBe("#ffffff");
+		expect(topLeft.state.fill).toBe(surface);
 	});
 
 	it("hides every dragger but the one being dragged while transforming", () => {
@@ -245,11 +252,11 @@ describe("CanvasTransformer", () => {
 			props.onTransformStart();
 		});
 
-		// The grabbed handle stays visible and turns violet…
+		// The grabbed handle stays visible and takes the accent fill…
 		const active = makeAnchor("bottom-center", true);
 		props.anchorStyleFunc(active);
 		expect(active.state.visible).toBe(true);
-		expect(active.state.fill).toBe("#7c3aed");
+		expect(active.state.fill).toBe(FALLBACK_CHROME_THEME.accent);
 
 		// …every other handle is hidden.
 		const idle = makeAnchor("top-left", false);
@@ -257,13 +264,14 @@ describe("CanvasTransformer", () => {
 		expect(idle.state.visible).toBe(false);
 	});
 
-	it("setAnchorHovered tints an anchor violet on hover and reverts on leave", () => {
+	it("setAnchorHovered tints an anchor with the accent on hover and reverts on leave", () => {
+		const { accent, surface } = FALLBACK_CHROME_THEME;
 		const anchor = makeAnchor("middle-right");
 		const a = anchor as unknown as Parameters<typeof setAnchorHovered>[0];
-		setAnchorHovered(a, true);
-		expect(anchor.state.fill).toBe("#7c3aed");
-		setAnchorHovered(a, false);
-		expect(anchor.state.fill).toBe("#ffffff");
+		setAnchorHovered(a, true, accent, surface);
+		expect(anchor.state.fill).toBe(accent);
+		setAnchorHovered(a, false, accent, surface);
+		expect(anchor.state.fill).toBe(surface);
 	});
 
 	it("selectionBox unions the selected nodes' client rects in layer space", () => {

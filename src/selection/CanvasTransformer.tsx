@@ -7,8 +7,14 @@ import type {
 	CanvasNodeRotateCommand,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import { Label, Tag, Text, Transformer } from "react-konva";
+import {
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
+import { Group, Label, Path, Tag, Text, Transformer } from "react-konva";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { draggedIdsKey } from "../perf/active-nodes.js";
 import { nodeRenderOffset } from "../stage/node-render-offset.js";
@@ -33,29 +39,78 @@ const SCALE_SIZED: ReadonlySet<CanvasNode["type"]> = new Set(["path", "line"]);
  */
 const noopSubscribe = () => () => undefined;
 
-/** Violet selection accent (matches the editor's `#7c3aed` workspace accent). */
-const SELECTION_ACCENT = "#7c3aed";
-/** Resting anchor fill — handles are white until hovered. */
-const ANCHOR_FILL = "#ffffff";
+/** Diameter of the circular rotate-icon handle parked below the box. */
+const ROTATE_HANDLE_SIZE = 30;
+/**
+ * lucide `refresh-cw` (two arrows forming a circle) in its 24×24 viewBox — the
+ * rotation glyph drawn inside the rotate handle. Combined sub-paths so a single
+ * <Path data> strokes the whole icon.
+ */
+const ROTATE_ICON_PATH =
+	"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5";
 
 /**
- * Reshape a single Transformer anchor: white **circular** corner handles and
- * white **pill** edge handles. Konva applies the global anchor attrs
- * (size/fill/stroke/cornerRadius) to every anchor first, then calls this
- * per-anchor hook — so corners keep the circular global style and we only
- * reshape the edge handles here. After changing an anchor's size we recentre it
- * via offset (padding is 0, so offset = size / 2). Fill is left to the caller so
- * the hovered anchor can be tinted (see `setAnchorHovered`).
+ * Selection-chrome colors, sourced from the editor's shadcn/Tailwind theme
+ * tokens (`--primary`, `--background`, …) so the chrome follows the host theme
+ * (light/dark) instead of hardcoded values.
+ */
+export interface ChromeTheme {
+	/** Accent for the border + resize handles (`--primary`). */
+	accent: string;
+	/** Resting handle / surface fill (`--background`). */
+	surface: string;
+	/** Foreground on a surface — badge bg, rotate-icon glyph (`--foreground`). */
+	onSurface: string;
+	/** Hairline border for the rotate-icon button (`--border`). */
+	border: string;
+}
+
+/** Light-theme token defaults (mirrors `styles.src.css` `:root`). */
+export const FALLBACK_CHROME_THEME: ChromeTheme = {
+	accent: "oklch(0.205 0 0)",
+	surface: "oklch(1 0 0)",
+	onSurface: "oklch(0.145 0 0)",
+	border: "oklch(0.922 0 0)",
+};
+
+/**
+ * Read the shadcn theme tokens off the stage container's computed style.
+ * Custom properties inherit, so this picks up the active light/dark values.
+ * Falls back to the light defaults when the DOM/value is unavailable (SSR,
+ * jsdom, pre-mount).
+ */
+export function resolveChromeTheme(el: HTMLElement | null): ChromeTheme {
+	if (!el || typeof getComputedStyle !== "function")
+		return FALLBACK_CHROME_THEME;
+	const cs = getComputedStyle(el);
+	const read = (name: string, fallback: string) =>
+		cs.getPropertyValue(name).trim() || fallback;
+	return {
+		accent: read("--primary", FALLBACK_CHROME_THEME.accent),
+		surface: read("--background", FALLBACK_CHROME_THEME.surface),
+		onSurface: read("--foreground", FALLBACK_CHROME_THEME.onSurface),
+		border: read("--border", FALLBACK_CHROME_THEME.border),
+	};
+}
+
+/**
+ * Reshape a single Transformer anchor: circular corner handles, pill edge
+ * handles, and the larger circular rotate handle. Konva applies the global
+ * anchor attrs (size/fill/stroke/cornerRadius) to every anchor first, then
+ * calls this per-anchor hook, so we only override the anchors that differ from
+ * the global circle. After changing an anchor's size we recentre it via offset
+ * (padding is 0, so offset = size / 2). Fill/stroke are left to the caller
+ * (theme-aware tinting in `anchorStyleFunc`).
  */
 function shapeSelectionAnchor(anchor: Konva.Rect): void {
 	if (anchor.hasName("rotater")) {
-		// Vertical pill (kept on the right via `rotateAnchorAngle`). White at rest;
-		// fill is applied by the caller (purple on hover / while rotating).
-		anchor.width(10);
-		anchor.height(22);
-		anchor.offsetX(5);
-		anchor.offsetY(11);
-		anchor.cornerRadius(5);
+		// Circular icon button parked below the box (via `rotateAnchorAngle`).
+		const r = ROTATE_HANDLE_SIZE;
+		anchor.width(r);
+		anchor.height(r);
+		anchor.offsetX(r / 2);
+		anchor.offsetY(r / 2);
+		anchor.cornerRadius(r / 2);
 		return;
 	}
 	if (anchor.hasName("top-center") || anchor.hasName("bottom-center")) {
@@ -78,13 +133,17 @@ function shapeSelectionAnchor(anchor: Konva.Rect): void {
 }
 
 /**
- * Tint an anchor on hover: the dragger under the cursor fills violet, and
- * reverts to white on leave. Replaces the old always-on purple block parked off
- * the side of the box — the accent is now hover feedback on the handles
- * themselves.
+ * Tint an anchor on hover: the dragger under the cursor fills with the accent,
+ * reverting to the surface fill on leave. The accent is hover feedback on the
+ * handles themselves (no persistent colored block).
  */
-export function setAnchorHovered(anchor: Konva.Rect, hovered: boolean): void {
-	anchor.fill(hovered ? SELECTION_ACCENT : ANCHOR_FILL);
+export function setAnchorHovered(
+	anchor: Konva.Rect,
+	hovered: boolean,
+	accent: string,
+	surface: string,
+): void {
+	anchor.fill(hovered ? accent : surface);
 	anchor.getLayer?.()?.batchDraw?.();
 }
 
@@ -158,6 +217,9 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		() => draggedIdsKey(draftStore.getState().draft),
 	);
 	const transformerRef = useRef<Konva.Transformer | null>(null);
+	// Decorative rotate glyph parked on the rotate handle (positioned imperatively
+	// to track the handle, including under box rotation).
+	const rotateIconRef = useRef<Konva.Group | null>(null);
 	// Size readout shown while resizing (imperative — no re-render per frame).
 	const sizeLabelRef = useRef<Konva.Label | null>(null);
 	const sizeTextRef = useRef<Konva.Text | null>(null);
@@ -167,27 +229,68 @@ export function CanvasTransformer(): React.JSX.Element | null {
 	// dragger except the one under the cursor.
 	const transformingRef = useRef(false);
 
-	// Per-anchor styling: white circular corners, white pill edges, and a
-	// hover/active tint. While transforming, hide every anchor except the one
-	// being dragged (kept purple) so only the active handle and the size badge
-	// show. Konva runs this last in update() (after positioning + visibility),
-	// so it has the final say on each anchor's fill/visibility every frame.
-	const anchorStyleFunc = useCallback((anchor: Konva.Rect) => {
-		shapeSelectionAnchor(anchor);
-		if (transformingRef.current) {
-			const dragging = anchor.isDragging?.() ?? false;
-			anchor.visible(dragging);
-			if (dragging) anchor.fill(SELECTION_ACCENT);
-			return;
-		}
-		anchor.visible(true);
-		const hovered = hoveredAnchorRef.current;
-		anchor.fill(
-			hovered !== null && anchor.hasName(hovered)
-				? SELECTION_ACCENT
-				: ANCHOR_FILL,
-		);
-	}, []);
+	// Chrome colors from the host's shadcn/Tailwind theme. `theme` drives the
+	// declarative props (re-renders on change); `themeRef` mirrors it for the
+	// imperative anchorStyleFunc, which runs outside React on every Konva frame.
+	const [theme, setTheme] = useState<ChromeTheme>(FALLBACK_CHROME_THEME);
+	const themeRef = useRef<ChromeTheme>(FALLBACK_CHROME_THEME);
+	useEffect(() => {
+		const next = resolveChromeTheme(stage?.container?.() ?? null);
+		themeRef.current = next;
+		setTheme(next);
+	}, [stage, selectedIds]);
+
+	// Keep the rotate glyph centred on the (Konva-positioned) rotate handle.
+	// absolutePosition copies the handle's absolute position regardless of the
+	// differing parent transforms, so it tracks box rotation too.
+	const syncRotateIcon = useCallback(
+		(rotater: Konva.Rect, visible: boolean) => {
+			const g = rotateIconRef.current;
+			const getAbs = rotater.getAbsolutePosition?.bind(rotater);
+			if (!g || !getAbs) return;
+			g.absolutePosition(getAbs());
+			g.visible(visible);
+		},
+		[],
+	);
+
+	// Per-anchor styling: circular corners, pill edges, a circular rotate-icon
+	// handle, and theme-aware tinting. While transforming, hide every dragger
+	// except the one under the cursor (kept accent-filled) so only the active
+	// handle + size badge show. Konva runs this last in update() (after
+	// positioning + visibility), so it has the final say each frame.
+	const anchorStyleFunc = useCallback(
+		(anchor: Konva.Rect) => {
+			const t = themeRef.current;
+			shapeSelectionAnchor(anchor);
+			const isRotater = anchor.hasName("rotater");
+			if (isRotater) {
+				// Surface-filled icon button with a hairline border — never tinted.
+				anchor.fill(t.surface);
+				anchor.stroke(t.border);
+			}
+			if (transformingRef.current) {
+				const dragging = anchor.isDragging?.() ?? false;
+				anchor.visible(dragging);
+				if (isRotater) {
+					syncRotateIcon(anchor, dragging);
+				} else if (dragging) {
+					anchor.fill(t.accent);
+				}
+				return;
+			}
+			anchor.visible(true);
+			if (isRotater) {
+				syncRotateIcon(anchor, true);
+				return;
+			}
+			const hovered = hoveredAnchorRef.current;
+			anchor.fill(
+				hovered !== null && anchor.hasName(hovered) ? t.accent : t.surface,
+			);
+		},
+		[syncRotateIcon],
+	);
 
 	const refreshSizeBadge = useCallback(() => {
 		const tr = transformerRef.current;
@@ -230,13 +333,21 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		const anchors = (tr.find?.("._anchor") ?? []) as Konva.Rect[];
 		const enter = (e: Konva.KonvaEventObject<MouseEvent>) => {
 			const anchor = e.target as Konva.Rect;
-			hoveredAnchorRef.current = anchor.name().split(" ")[0] ?? null;
-			if (!transformingRef.current) setAnchorHovered(anchor, true);
+			const token = anchor.name().split(" ")[0] ?? null;
+			hoveredAnchorRef.current = token;
+			// The rotate handle is an icon button, never tinted.
+			if (!transformingRef.current && token !== "rotater") {
+				const t = themeRef.current;
+				setAnchorHovered(anchor, true, t.accent, t.surface);
+			}
 		};
 		const leave = (e: Konva.KonvaEventObject<MouseEvent>) => {
+			const anchor = e.target as Konva.Rect;
 			hoveredAnchorRef.current = null;
-			if (!transformingRef.current)
-				setAnchorHovered(e.target as Konva.Rect, false);
+			if (!transformingRef.current && !anchor.hasName("rotater")) {
+				const t = themeRef.current;
+				setAnchorHovered(anchor, false, t.accent, t.surface);
+			}
 		};
 		for (const a of anchors) {
 			a.on("mouseenter.akhover", enter);
@@ -431,6 +542,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 	}, [stage, selectedIds, getIR, commit, activePageId]);
 
 	if (croppingId) return null;
+	const iconScale = 16 / 24; // lucide 24×24 viewBox → ~16px glyph
 	return (
 		<>
 			<Transformer
@@ -438,24 +550,38 @@ export function CanvasTransformer(): React.JSX.Element | null {
 				onTransformStart={onTransformStart}
 				onTransform={onTransform}
 				onTransformEnd={onTransformEnd}
-				borderStroke={SELECTION_ACCENT}
+				borderStroke={theme.accent}
 				borderStrokeWidth={1.5}
-				anchorStroke={SELECTION_ACCENT}
+				anchorStroke={theme.accent}
 				anchorStrokeWidth={1.5}
-				anchorFill={ANCHOR_FILL}
+				anchorFill={theme.surface}
 				anchorSize={12}
 				anchorCornerRadius={6}
-				rotateAnchorAngle={90}
-				rotateAnchorOffset={22}
+				rotateAnchorAngle={180}
+				rotateAnchorOffset={34}
 				rotateLineVisible={false}
 				anchorStyleFunc={anchorStyleFunc}
 			/>
+			{/* Rotation glyph drawn on the rotate handle (positioned imperatively). */}
+			<Group ref={rotateIconRef} visible={false} listening={false}>
+				<Path
+					data={ROTATE_ICON_PATH}
+					stroke={theme.onSurface}
+					strokeWidth={2.2}
+					lineCap="round"
+					lineJoin="round"
+					scaleX={iconScale}
+					scaleY={iconScale}
+					offsetX={12}
+					offsetY={12}
+				/>
+			</Group>
 			{/* Live size readout while resizing (positioned imperatively). */}
 			<Label ref={sizeLabelRef} visible={false} listening={false}>
 				<Tag
-					fill="#27272a"
+					fill={theme.onSurface}
 					cornerRadius={6}
-					shadowColor="#000000"
+					shadowColor={theme.onSurface}
 					shadowBlur={8}
 					shadowOpacity={0.25}
 					shadowOffsetY={2}
@@ -463,7 +589,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 				<Text
 					ref={sizeTextRef}
 					text=""
-					fill="#ffffff"
+					fill={theme.surface}
 					fontSize={13}
 					fontStyle="bold"
 					padding={7}

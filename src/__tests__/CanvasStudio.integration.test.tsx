@@ -66,6 +66,8 @@ vi.mock("react-konva", () => {
 		Path: makeMock("Path"),
 		Text: makeMock("Text"),
 		Image: makeMock("Image"),
+		Label: makeMock("Label"),
+		Tag: makeMock("Tag"),
 		Transformer: makeMock("Transformer"),
 	};
 });
