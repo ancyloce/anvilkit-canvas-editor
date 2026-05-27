@@ -69,6 +69,8 @@ export type { LayerPanelProps } from "./panels/LayerPanel.js";
 export { LayerPanel } from "./panels/LayerPanel.js";
 export type { PropertyInspectorProps } from "./panels/PropertyInspector.js";
 export { PropertyInspector } from "./panels/PropertyInspector.js";
+export type { ExportStageContentOptions } from "./render/export-stage.js";
+export { exportStageContentDataURL } from "./render/export-stage.js";
 export type {
 	RasterizePageInput,
 	RasterizePageResult,
