@@ -1,6 +1,6 @@
 {
 	"name": "@anvilkit/canvas-editor",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "React + Konva editor UI for AnvilKit Canvas Studio. Loads inside <Studio> via next/dynamic({ ssr: false }).",
 	"type": "module",
 	"main": "./dist/index.cjs",
