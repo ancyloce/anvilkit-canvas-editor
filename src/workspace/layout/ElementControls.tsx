@@ -185,18 +185,29 @@ export function ElementControls({
 	const allLocked = irNodes.every((n) => n.locked === true);
 
 	const toggleLock = () => {
+		const nextLocked = !allLocked;
 		for (const n of irNodes) {
 			ctx.commit({
 				type: "node.update",
 				nodeId: n.id,
 				kind: n.type,
-				patch: { locked: !allLocked },
+				patch: { locked: nextLocked },
 			} as CanvasAnyNodeUpdateCommand);
 		}
+		// On lock: drop the selection so the element can't be resized/rotated/
+		// dragged. Locked nodes are also un-hittable by `findHitNodeId` and the
+		// marquee, so the canvas can't re-select them — unlock from the layer
+		// panel. On unlock: keep the selection so the user can keep editing.
+		if (nextLocked) ctx.selectionStore.getState().clearSelection();
 	};
 
 	const deleteSelection = () => {
+		// Locked nodes are protected from deletion.
+		const lockedIds = new Set(
+			irNodes.filter((n) => n.locked === true).map((n) => n.id),
+		);
 		for (const id of selectedIds) {
+			if (lockedIds.has(id)) continue;
 			ctx.commit({ type: "node.delete", nodeId: id });
 		}
 		ctx.selectionStore.getState().clearSelection();
