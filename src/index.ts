@@ -1,4 +1,5 @@
-export { TOOL_LABELS, ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
+export { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
+export { TOOL_LABELS } from "./a11y/tool-labels.js";
 export type { BrandColor, BrandKit } from "./brand/brand-kit.js";
 export { EMPTY_BRAND_KIT } from "./brand/brand-kit.js";
 export {
@@ -104,8 +105,8 @@ export {
 export {
 	SMART_GUIDE_COLOR,
 	SMART_GUIDE_DASH,
-	SmartGuideOverlay,
-} from "./snap/SmartGuideOverlay.js";
+} from "./snap/smart-guide-constants.js";
+export { SmartGuideOverlay } from "./snap/SmartGuideOverlay.js";
 export {
 	computeSnap,
 	DEFAULT_SNAP_THRESHOLD,
