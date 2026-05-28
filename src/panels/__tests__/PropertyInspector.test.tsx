@@ -81,7 +81,8 @@ describe("PropertyInspector — empty state", () => {
 		const panel = container.querySelector(
 			"[data-testid='property-inspector']",
 		) as HTMLElement;
-		expect(panel.getAttribute("role")).toBe("region");
+		// A <section> with an accessible name has the implicit ARIA role "region".
+		expect(panel.tagName).toBe("SECTION");
 		expect(panel.getAttribute("aria-label")).toBe("Properties");
 	});
 });
@@ -94,7 +95,8 @@ describe("PropertyInspector — a11y labels", () => {
 		const panel = container.querySelector(
 			"[data-testid='property-inspector']",
 		) as HTMLElement;
-		expect(panel.getAttribute("role")).toBe("region");
+		// A <section> with an accessible name has the implicit ARIA role "region".
+		expect(panel.tagName).toBe("SECTION");
 		expect(panel.getAttribute("aria-label")).toBe("Properties");
 	});
 

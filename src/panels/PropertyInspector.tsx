@@ -51,9 +51,8 @@ export function PropertyInspector({
 
 	if (!node) {
 		return (
-			<div
+			<section
 				data-testid="property-inspector"
-				role="region"
 				aria-label="Properties"
 				className={rootClass}
 				{...(id !== undefined ? { id } : {})}
@@ -67,15 +66,14 @@ export function PropertyInspector({
 				>
 					Select a layer to edit its properties.
 				</div>
-			</div>
+			</section>
 		);
 	}
 
 	return (
-		<div
+		<section
 			data-testid="property-inspector"
 			data-node-id={node.id}
-			role="region"
 			aria-label="Properties"
 			className={rootClass}
 			{...(id !== undefined ? { id } : {})}
@@ -163,7 +161,7 @@ export function PropertyInspector({
 				</Section>
 				{renderTypeSpecificFields(node, commitPatch, ctx)}
 			</div>
-		</div>
+		</section>
 	);
 }
 
