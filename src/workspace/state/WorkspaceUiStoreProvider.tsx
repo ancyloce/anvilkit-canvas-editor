@@ -9,7 +9,7 @@
  * supplies it via context (cf. core's SSR-gated `EditorUiStoreProvider`).
  */
 
-import { createContext, type ReactNode, useContext, useState } from "react";
+import { createContext, type ReactNode, use, useState } from "react";
 import {
 	createWorkspaceUiStore,
 	type WorkspaceUiStoreApi,
@@ -42,7 +42,7 @@ export function WorkspaceUiStoreProvider({
  * `WorkspaceUiStoreProvider` so missing wiring fails loudly in development.
  */
 export function useWorkspaceUiStoreApi(): WorkspaceUiStoreApi {
-	const store = useContext(WorkspaceUiStoreContext);
+	const store = use(WorkspaceUiStoreContext);
 	if (store === null) {
 		throw new Error(
 			"useWorkspaceUiStore was called outside of <WorkspaceUiStoreProvider>. " +
