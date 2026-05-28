@@ -65,12 +65,57 @@ const REORDER_OPTIONS: readonly { dir: ReorderDirection; label: string }[] = [
 	{ dir: "back", label: "Send to back" },
 ];
 
+/** Gap (in screen px) between the bottom of the toolbar and the top of the
+ * selection AABB. */
+const ELEMENT_CONTROLS_GAP = 8;
+
+/** Rotation-aware AABB of a node in design (page) coordinates. */
+function nodeAABB(node: CanvasNode): {
+	minX: number;
+	minY: number;
+	maxX: number;
+	maxY: number;
+} {
+	const { x, y, rotation = 0, scaleX = 1, scaleY = 1 } = node.transform;
+	const w = node.bounds.width * scaleX;
+	const h = node.bounds.height * scaleY;
+	if (!rotation) {
+		return { minX: x, minY: y, maxX: x + w, maxY: y + h };
+	}
+	const cx = x + w / 2;
+	const cy = y + h / 2;
+	const rad = (rotation * Math.PI) / 180;
+	const cos = Math.cos(rad);
+	const sin = Math.sin(rad);
+	const corners: ReadonlyArray<readonly [number, number]> = [
+		[x, y],
+		[x + w, y],
+		[x + w, y + h],
+		[x, y + h],
+	];
+	let minX = Number.POSITIVE_INFINITY;
+	let minY = Number.POSITIVE_INFINITY;
+	let maxX = Number.NEGATIVE_INFINITY;
+	let maxY = Number.NEGATIVE_INFINITY;
+	for (const [px, py] of corners) {
+		const rx = cx + (px - cx) * cos - (py - cy) * sin;
+		const ry = cy + (px - cx) * sin + (py - cy) * cos;
+		if (rx < minX) minX = rx;
+		if (ry < minY) minY = ry;
+		if (rx > maxX) maxX = rx;
+		if (ry > maxY) maxY = ry;
+	}
+	return { minX, minY, maxX, maxY };
+}
+
 /**
- * Floating per-selection controls pinned above the selection: lock, duplicate,
- * delete, and a "⋯ more" menu. Lock + delete run through the existing command
- * pipeline; duplicate / copy-paste-style / align / layer-order are host
- * callbacks (disabled when unwired). These are the floating selection controls
- * for the `CanvasWorkspace` shell.
+ * Floating per-selection controls pinned **above the selected element** (lock,
+ * duplicate, delete, "⋯ more"). The toolbar is a DOM element so it doesn't
+ * scale with the Konva canvas — but its position is computed from screen
+ * coordinates (selection AABB × stage zoom + pan), so it tracks the element on
+ * screen regardless of canvas zoom or hand-tool pan. Lock + delete run through
+ * the existing command pipeline; duplicate / copy-paste-style / align /
+ * layer-order are host callbacks (disabled when unwired).
  */
 export function ElementControls({
 	actions,
@@ -82,6 +127,21 @@ export function ElementControls({
 		() => ctx.selectionStore.getState().selectedIds,
 		() => ctx.selectionStore.getState().selectedIds,
 	);
+	const zoom = useSyncExternalStore(
+		ctx.viewportStore.subscribe,
+		() => ctx.viewportStore.getState().zoom,
+		() => ctx.viewportStore.getState().zoom,
+	);
+	const panX = useSyncExternalStore(
+		ctx.viewportStore.subscribe,
+		() => ctx.viewportStore.getState().panX,
+		() => ctx.viewportStore.getState().panX,
+	);
+	const panY = useSyncExternalStore(
+		ctx.viewportStore.subscribe,
+		() => ctx.viewportStore.getState().panY,
+		() => ctx.viewportStore.getState().panY,
+	);
 
 	if (selectedIds.length === 0) return null;
 	const nodes = selectedIds
@@ -89,6 +149,22 @@ export function ElementControls({
 		.filter((n): n is CanvasNode => Boolean(n));
 	const primary = nodes[0];
 	if (!primary) return null;
+
+	// Selection AABB in design coords (union of nodes), then projected to
+	// stage-container pixels via the current zoom + pan. The page wrapper is the
+	// toolbar's positioned ancestor and shares the stage container's origin, so
+	// these values are also the toolbar's `left`/`top` in CSS px.
+	let minX = Number.POSITIVE_INFINITY;
+	let minY = Number.POSITIVE_INFINITY;
+	let maxX = Number.NEGATIVE_INFINITY;
+	for (const n of nodes) {
+		const b = nodeAABB(n);
+		if (b.minX < minX) minX = b.minX;
+		if (b.minY < minY) minY = b.minY;
+		if (b.maxX > maxX) maxX = b.maxX;
+	}
+	const screenCenterX = ((minX + maxX) / 2) * zoom + panX;
+	const screenTop = minY * zoom + panY;
 
 	const allLocked = nodes.every((n) => n.locked === true);
 
@@ -117,9 +193,16 @@ export function ElementControls({
 			role="toolbar"
 			aria-label="Element controls"
 			className={cn(
-				"absolute -top-11 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-full bg-card px-1.5 py-1 shadow-lg ring-1 ring-border",
+				"pointer-events-auto absolute z-30 flex items-center gap-0.5 rounded-full bg-card px-1.5 py-1 shadow-lg ring-1 ring-border",
 				className,
 			)}
+			style={{
+				left: `${screenCenterX}px`,
+				top: `${screenTop - ELEMENT_CONTROLS_GAP}px`,
+				// translate(-50%, -100%) → toolbar's bottom-centre sits at (left, top),
+				// i.e. it floats above the selection AABB regardless of its own size.
+				transform: "translate(-50%, -100%)",
+			}}
 		>
 			<Button
 				type="button"
