@@ -2,7 +2,7 @@
 
 import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
-import { createContext, useContext } from "react";
+import { createContext, use } from "react";
 import type { BrandKit } from "../brand/brand-kit.js";
 import type { AiJobStoreApi } from "../stores/ai-job-store.js";
 import type { CropStoreApi } from "../stores/crop-store.js";
@@ -95,7 +95,7 @@ export const CanvasStudioContext =
 	createContext<CanvasStudioContextValue | null>(null);
 
 export function useCanvasStudio(): CanvasStudioContextValue {
-	const ctx = useContext(CanvasStudioContext);
+	const ctx = use(CanvasStudioContext);
 	if (!ctx) {
 		throw new Error(
 			"useCanvasStudio must be called inside a <CanvasStudio> tree.",
