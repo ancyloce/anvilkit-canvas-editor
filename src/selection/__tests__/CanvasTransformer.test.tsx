@@ -27,12 +27,13 @@ import { createPagesStore } from "../../stores/pages-store.js";
 import { createSelectionStore } from "../../stores/selection-store.js";
 import { createToolStore } from "../../stores/tool-store.js";
 import { createViewportStore } from "../../stores/viewport-store.js";
+import { CanvasTransformer } from "../CanvasTransformer.js";
 import {
-	CanvasTransformer,
 	FALLBACK_CHROME_THEME,
+	normalizeAngle,
 	selectionBox,
 	setAnchorHovered,
-} from "../CanvasTransformer.js";
+} from "../transformer-helpers.js";
 
 type CapturedProps = {
 	props: Record<string, unknown>;
@@ -316,6 +317,15 @@ describe("CanvasTransformer", () => {
 		expect(anchor.state.fill).toBe(accent);
 		setAnchorHovered(a, false, accent, surface);
 		expect(anchor.state.fill).toBe(surface);
+	});
+
+	it("normalizeAngle maps rotations into the readable (-180, 180] range", () => {
+		expect(normalizeAngle(0)).toBe(0);
+		expect(normalizeAngle(45)).toBe(45);
+		expect(normalizeAngle(180)).toBe(180);
+		expect(normalizeAngle(229)).toBe(-131); // matches the reference figure
+		expect(normalizeAngle(-200)).toBe(160);
+		expect(normalizeAngle(360)).toBe(0);
 	});
 
 	it("selectionBox unions the selected nodes' client rects in layer space", () => {
