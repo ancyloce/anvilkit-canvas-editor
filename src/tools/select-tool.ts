@@ -62,7 +62,11 @@ function findHitNodeId(
 	const ir = ctx.getIR();
 	const page = ir.pages.find((p) => p.id === ctx.activePageId);
 	if (!page) return null;
-	const ids = new Set(page.root.children.map((c) => c.id));
+	// Map id → node so we can skip `locked` nodes during hit-test. A locked
+	// node is treated as if the click missed it — the marquee/empty-stage path
+	// takes over instead. This is the canvas-side enforcement of "locked
+	// elements can't be selected"; unlock via the layer panel to re-edit.
+	const byId = new Map(page.root.children.map((c) => [c.id, c]));
 	let cur: Konva.Node | null = target ?? null;
 	let safety = 16;
 	while (cur && safety-- > 0) {
@@ -70,7 +74,8 @@ function findHitNodeId(
 			typeof (cur as { name?: () => string }).name === "function"
 				? (cur as { name: () => string }).name()
 				: undefined;
-		if (name && ids.has(name)) return name;
+		const match = name ? byId.get(name) : undefined;
+		if (match && match.locked !== true) return name ?? null;
 		const parent = (cur as { getParent?: () => Konva.Node | null }).getParent;
 		cur = typeof parent === "function" ? parent.call(cur) : null;
 	}
@@ -136,8 +141,10 @@ export const selectTool: Tool = {
 			const ir = ctx.getIR();
 			const page = ir.pages.find((p) => p.id === ctx.activePageId);
 			if (!page) return;
+			// Locked nodes are excluded from the move draft — they don't move
+			// even when caught in a multi-selection from the layer panel.
 			const nodeStarts = page.root.children
-				.filter((c) => currentSelection.includes(c.id))
+				.filter((c) => currentSelection.includes(c.id) && c.locked !== true)
 				.map((c) => ({ id: c.id, x: c.transform.x, y: c.transform.y }));
 			if (nodeStarts.length === 0) return;
 			ctx.draftStore.getState().setDraft({
@@ -251,6 +258,9 @@ export const selectTool: Tool = {
 			if (!page) return;
 			const hitIds: string[] = [];
 			for (const child of page.root.children) {
+				// Locked nodes are skipped by the marquee — they can't be selected
+				// via the canvas (unlock via the layer panel to re-edit).
+				if (child.locked === true) continue;
 				const childRect = {
 					x: child.transform.x,
 					y: child.transform.y,
