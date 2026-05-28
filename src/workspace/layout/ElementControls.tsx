@@ -17,8 +17,9 @@ import {
 	DropdownMenuTrigger,
 } from "@anvilkit/ui/dropdown-menu";
 import { cn } from "@anvilkit/ui/lib/utils";
+import type Konva from "konva";
 import { Copy, Lock, LockOpen, MoreHorizontal, Trash2 } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useCanvasStudio } from "../../context/canvas-studio-context.js";
 
 export type AlignDirection =
@@ -69,53 +70,42 @@ const REORDER_OPTIONS: readonly { dir: ReorderDirection; label: string }[] = [
  * selection AABB. */
 const ELEMENT_CONTROLS_GAP = 8;
 
-/** Rotation-aware AABB of a node in design (page) coordinates. */
-function nodeAABB(node: CanvasNode): {
-	minX: number;
-	minY: number;
-	maxX: number;
-	maxY: number;
-} {
-	const { x, y, rotation = 0, scaleX = 1, scaleY = 1 } = node.transform;
-	const w = node.bounds.width * scaleX;
-	const h = node.bounds.height * scaleY;
-	if (!rotation) {
-		return { minX: x, minY: y, maxX: x + w, maxY: y + h };
-	}
-	const cx = x + w / 2;
-	const cy = y + h / 2;
-	const rad = (rotation * Math.PI) / 180;
-	const cos = Math.cos(rad);
-	const sin = Math.sin(rad);
-	const corners: ReadonlyArray<readonly [number, number]> = [
-		[x, y],
-		[x + w, y],
-		[x + w, y + h],
-		[x, y + h],
-	];
+/**
+ * Canvas-pixel bounding box of the selection (centre-X + top), measured via
+ * Konva's `getClientRect`. Cost is O(selection size), independent of the
+ * page's total node count — large pages don't slow this down. Returns null
+ * when nothing resolves (empty selection, detached nodes, stage not ready).
+ */
+function measureSelection(
+	stage: Konva.Stage | null,
+	ids: readonly string[],
+): { centerX: number; top: number } | null {
+	if (!stage || ids.length === 0) return null;
 	let minX = Number.POSITIVE_INFINITY;
 	let minY = Number.POSITIVE_INFINITY;
 	let maxX = Number.NEGATIVE_INFINITY;
-	let maxY = Number.NEGATIVE_INFINITY;
-	for (const [px, py] of corners) {
-		const rx = cx + (px - cx) * cos - (py - cy) * sin;
-		const ry = cy + (px - cx) * sin + (py - cy) * cos;
-		if (rx < minX) minX = rx;
-		if (ry < minY) minY = ry;
-		if (rx > maxX) maxX = rx;
-		if (ry > maxY) maxY = ry;
+	let found = false;
+	for (const id of ids) {
+		const knode = stage.findOne(`.${id}`);
+		if (!knode) continue;
+		const r = knode.getClientRect({ skipShadow: true, skipStroke: true });
+		if (r.x < minX) minX = r.x;
+		if (r.y < minY) minY = r.y;
+		if (r.x + r.width > maxX) maxX = r.x + r.width;
+		found = true;
 	}
-	return { minX, minY, maxX, maxY };
+	return found ? { centerX: (minX + maxX) / 2, top: minY } : null;
 }
 
 /**
  * Floating per-selection controls pinned **above the selected element** (lock,
  * duplicate, delete, "⋯ more"). The toolbar is a DOM element so it doesn't
- * scale with the Konva canvas — but its position is computed from screen
- * coordinates (selection AABB × stage zoom + pan), so it tracks the element on
- * screen regardless of canvas zoom or hand-tool pan. Lock + delete run through
- * the existing command pipeline; duplicate / copy-paste-style / align /
- * layer-order are host callbacks (disabled when unwired).
+ * scale with the Konva canvas — but its position is computed from the rendered
+ * canvas-pixel bounding box (via `Konva.Node#getClientRect`), so it tracks the
+ * element on screen through any nested group transforms, rotation, zoom, or
+ * hand-tool pan. Lock + delete run through the existing command pipeline;
+ * duplicate / copy-paste-style / align / layer-order are host callbacks
+ * (disabled when unwired).
  */
 export function ElementControls({
 	actions,
@@ -127,49 +117,75 @@ export function ElementControls({
 		() => ctx.selectionStore.getState().selectedIds,
 		() => ctx.selectionStore.getState().selectedIds,
 	);
-	const zoom = useSyncExternalStore(
+	// Subscribe to viewport changes so we re-render (and re-measure the
+	// canvas-pixel rect via `getClientRect`) on every zoom/pan tick.
+	useSyncExternalStore(
 		ctx.viewportStore.subscribe,
-		() => ctx.viewportStore.getState().zoom,
-		() => ctx.viewportStore.getState().zoom,
+		() => {
+			const v = ctx.viewportStore.getState();
+			return `${v.zoom}:${v.panX}:${v.panY}`;
+		},
+		() => {
+			const v = ctx.viewportStore.getState();
+			return `${v.zoom}:${v.panX}:${v.panY}`;
+		},
 	);
-	const panX = useSyncExternalStore(
-		ctx.viewportStore.subscribe,
-		() => ctx.viewportStore.getState().panX,
-		() => ctx.viewportStore.getState().panX,
-	);
-	const panY = useSyncExternalStore(
-		ctx.viewportStore.subscribe,
-		() => ctx.viewportStore.getState().panY,
-		() => ctx.viewportStore.getState().panY,
-	);
+
+	const stage = ctx.stage;
+	const { draftStore, selectionStore } = ctx;
+	const toolbarRef = useRef<HTMLDivElement>(null);
+
+	// Follow the element during a local MOVE drag without re-rendering React on
+	// every pointer-move frame. We subscribe to the local `draftStore`
+	// imperatively (remote collab moves never enter this store → no fire for
+	// other users' drags) and rAF-throttle a direct DOM `style.left/top` update.
+	// One measurement per animation frame, O(selection) — independent of total
+	// page node count. The rAF defers the read until AFTER react-konva has
+	// applied the latest draft offset to the Konva node, so `getClientRect`
+	// returns the live position.
+	useEffect(() => {
+		if (!stage) return;
+		let raf = 0;
+		const apply = () => {
+			raf = 0;
+			const el = toolbarRef.current;
+			if (!el) return;
+			const r = measureSelection(stage, selectionStore.getState().selectedIds);
+			if (!r) return;
+			el.style.left = `${r.centerX}px`;
+			el.style.top = `${r.top - ELEMENT_CONTROLS_GAP}px`;
+		};
+		const onDraftChange = () => {
+			if (draftStore.getState().draft?.type !== "move") return;
+			if (raf === 0) raf = requestAnimationFrame(apply);
+		};
+		const unsub = draftStore.subscribe(onDraftChange);
+		return () => {
+			if (raf) cancelAnimationFrame(raf);
+			unsub();
+		};
+	}, [stage, draftStore, selectionStore]);
 
 	if (selectedIds.length === 0) return null;
-	const nodes = selectedIds
+	const irNodes = selectedIds
 		.map((id) => findNode(ctx.ir, id)?.node)
 		.filter((n): n is CanvasNode => Boolean(n));
-	const primary = nodes[0];
-	if (!primary) return null;
+	const primary = irNodes[0];
+	if (!primary || !stage) return null;
 
-	// Selection AABB in design coords (union of nodes), then projected to
-	// stage-container pixels via the current zoom + pan. The page wrapper is the
-	// toolbar's positioned ancestor and shares the stage container's origin, so
-	// these values are also the toolbar's `left`/`top` in CSS px.
-	let minX = Number.POSITIVE_INFINITY;
-	let minY = Number.POSITIVE_INFINITY;
-	let maxX = Number.NEGATIVE_INFINITY;
-	for (const n of nodes) {
-		const b = nodeAABB(n);
-		if (b.minX < minX) minX = b.minX;
-		if (b.minY < minY) minY = b.minY;
-		if (b.maxX > maxX) maxX = b.maxX;
-	}
-	const screenCenterX = ((minX + maxX) / 2) * zoom + panX;
-	const screenTop = minY * zoom + panY;
+	// Initial / resting / post-commit position via the same measurement helper.
+	// (During a move drag the effect above overrides this imperatively each
+	// frame; on drag-end the IR commit re-renders React with the new position
+	// and the inline `style` re-asserts to match.)
+	const measured = measureSelection(stage, selectedIds);
+	if (!measured) return null;
+	const screenCenterX = measured.centerX;
+	const screenTop = measured.top;
 
-	const allLocked = nodes.every((n) => n.locked === true);
+	const allLocked = irNodes.every((n) => n.locked === true);
 
 	const toggleLock = () => {
-		for (const n of nodes) {
+		for (const n of irNodes) {
 			ctx.commit({
 				type: "node.update",
 				nodeId: n.id,
@@ -188,6 +204,7 @@ export function ElementControls({
 
 	return (
 		<div
+			ref={toolbarRef}
 			data-testid="element-controls"
 			data-ak-element-controls=""
 			role="toolbar"
