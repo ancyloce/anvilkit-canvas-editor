@@ -32,10 +32,12 @@ export function TabPanel({
 	const [search, setSearch] = usePanelSearch();
 	const descriptor = registry[activeDockId];
 
-	// Reset the shared search query when switching panels.
+	// Reset the shared search query when switching panels. `setSearch` is a
+	// stable zustand action, so `activeDockId` is what actually re-fires this
+	// on each dock switch — without it the reset would only run once on mount.
 	useEffect(() => {
 		setSearch("");
-	}, [setSearch]);
+	}, [activeDockId, setSearch]);
 
 	const searchable =
 		descriptor?.kind === "search" ||
