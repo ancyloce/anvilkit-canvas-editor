@@ -1,11 +1,6 @@
 "use client";
 
-import {
-	createContext,
-	useContext,
-	useMemo,
-	useSyncExternalStore,
-} from "react";
+import { createContext, use, useMemo, useSyncExternalStore } from "react";
 import type {
 	CanvasBindingUnsubscribe,
 	CanvasPresenceState,
@@ -37,7 +32,7 @@ const EMPTY: readonly CanvasPresenceState[] = [];
  * cursor/selection rendering ships, without changing the binding.
  */
 export function useCanvasPresence(): readonly CanvasPresenceState[] {
-	const source = useContext(CanvasPresenceContext);
+	const source = use(CanvasPresenceContext);
 	const store = useMemo(() => {
 		let snapshot: readonly CanvasPresenceState[] = EMPTY;
 		const listeners = new Set<() => void>();
