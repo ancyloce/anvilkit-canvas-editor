@@ -3,9 +3,10 @@
 import { useSyncExternalStore } from "react";
 import { Line } from "react-konva";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
-
-export const SMART_GUIDE_COLOR = "#ff00ff";
-export const SMART_GUIDE_DASH: [number, number] = [4, 4];
+import {
+	SMART_GUIDE_COLOR,
+	SMART_GUIDE_DASH,
+} from "./smart-guide-constants.js";
 
 export function SmartGuideOverlay(): React.JSX.Element | null {
 	const { guidesStore } = useCanvasStudio();
