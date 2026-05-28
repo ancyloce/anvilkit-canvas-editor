@@ -537,6 +537,17 @@ export function CanvasTransformer(): React.JSX.Element | null {
 			const knode = stage.findOne(`.${id}`) as Konva.Node | undefined;
 			const irNode = childById.get(id);
 			if (!knode || !irNode) continue;
+			// Locked nodes are protected from resize/rotate. If one slipped into
+			// the selection (e.g. via the layer panel) and the user dragged a
+			// handle anyway, reset the live Konva transform on commit and skip.
+			if (irNode.locked === true) {
+				knode.scaleX(1);
+				knode.scaleY(1);
+				knode.rotation(irNode.transform.rotation);
+				knode.x(irNode.transform.x);
+				knode.y(irNode.transform.y);
+				continue;
+			}
 			const { transform, bounds } = irNode;
 
 			const scaleX = knode.scaleX();
