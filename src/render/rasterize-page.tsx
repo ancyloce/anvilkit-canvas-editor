@@ -99,7 +99,10 @@ export async function rasterizePage(
 		});
 
 		// `useImage` performs async setState after Image.onload. Yield two
-		// frames so those states flush before we serialize.
+		// frames so those states flush before we serialize. The first frame also
+		// lets `<CanvasStage>`'s passive onReady effect populate `stage` (it does
+		// not run during the synchronous flushSync above), so the guard below
+		// must stay after these awaits.
 		await waitFrame();
 		await waitFrame();
 
