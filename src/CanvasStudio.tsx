@@ -359,20 +359,20 @@ export function CanvasStudio({
 					<Grid />
 				</RenderLayer>
 				<RenderLayer name="objects">
-					{activePage.root.children
-						.filter((node) => !draggedIds.has(node.id))
-						.map((node) => (
-							<CanvasNodeRenderer key={node.id} node={node} />
-						))}
+					{activePage.root.children.flatMap((node) =>
+						draggedIds.has(node.id)
+							? []
+							: [<CanvasNodeRenderer key={node.id} node={node} />],
+					)}
 				</RenderLayer>
 				{/* I2-5: dragged nodes float on their own layer so only it
 				    redraws during a drag; the (cached) objects layer stays put. */}
 				<RenderLayer name="drag">
-					{activePage.root.children
-						.filter((node) => draggedIds.has(node.id))
-						.map((node) => (
-							<CanvasNodeRenderer key={node.id} node={node} />
-						))}
+					{activePage.root.children.flatMap((node) =>
+						draggedIds.has(node.id)
+							? [<CanvasNodeRenderer key={node.id} node={node} />]
+							: [],
+					)}
 				</RenderLayer>
 				<RenderLayer name="selection">
 					<DraftRenderer />
