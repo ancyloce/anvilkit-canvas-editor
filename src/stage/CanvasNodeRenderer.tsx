@@ -13,7 +13,7 @@ import type {
 	CanvasRectNode,
 	CanvasTextNode,
 } from "@anvilkit/canvas-core";
-import { useContext } from "react";
+import { use } from "react";
 import {
 	Ellipse,
 	Group,
@@ -199,7 +199,7 @@ function CanvasAiPlaceholderNodeRenderer({
 	// Null-safe: this renderer is also exercised outside a <CanvasStudio> tree
 	// (e.g. unit tests render the node directly), where there is no AI job
 	// registry — and a non-pending placeholder has no job to cancel.
-	const studio = useContext(CanvasStudioContext);
+	const studio = use(CanvasStudioContext);
 	const base = commonProps(node);
 	const style = PLACEHOLDER_STATUS_STYLE[node.status];
 	const width = node.bounds.width;
