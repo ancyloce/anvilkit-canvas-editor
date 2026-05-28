@@ -162,9 +162,17 @@ describe("CanvasTransformer", () => {
 	});
 
 	// Fake anchor that records setter calls and matches by name. `activeName`
-	// stands in for the Transformer's `_movingAnchorName` (the dragged anchor),
-	// read via getParent() in anchorStyleFunc.
-	const makeAnchor = (name: string, activeName: string | null = null) => {
+	// stands in for the Transformer's `_movingAnchorName` (the dragged anchor);
+	// `box` stands in for the parent Transformer's getWidth/getHeight (selection
+	// size). Both are read via getParent() in anchorStyleFunc.
+	const makeAnchor = (
+		name: string,
+		activeName: string | null = null,
+		box: { w: number; h: number } = {
+			w: Number.POSITIVE_INFINITY,
+			h: Number.POSITIVE_INFINITY,
+		},
+	) => {
 		const state: Record<string, unknown> = {};
 		const setter = (key: string) => (v: unknown) => {
 			state[key] = v;
@@ -173,7 +181,11 @@ describe("CanvasTransformer", () => {
 			state,
 			name: () => `${name} _anchor`,
 			hasName: (n: string) => n === name || n === "_anchor",
-			getParent: () => ({ _movingAnchorName: activeName }),
+			getParent: () => ({
+				_movingAnchorName: activeName,
+				getWidth: () => box.w,
+				getHeight: () => box.h,
+			}),
 			visible: setter("visible"),
 			fill: setter("fill"),
 			stroke: setter("stroke"),
@@ -265,6 +277,35 @@ describe("CanvasTransformer", () => {
 		const idle = makeAnchor("top-left", "bottom-center");
 		props.anchorStyleFunc(idle);
 		expect(idle.state.visible).toBe(false);
+	});
+
+	it("hides edge handles that don't fit or sit on a too-thin box, keeping corners", () => {
+		const props = renderTransformer();
+
+		// Wide and thick enough (height in [THICKNESS, SPAN)): top/bottom-center fit
+		// the width and the box isn't too thin → shown.
+		const topCenter = makeAnchor("top-center", null, { w: 400, h: 44 });
+		props.anchorStyleFunc(topCenter);
+		expect(topCenter.state.visible).toBe(true);
+		// …left/right don't fit that short height (along-edge too small) → hidden.
+		const middleRight = makeAnchor("middle-right", null, { w: 400, h: 44 });
+		props.anchorStyleFunc(middleRight);
+		expect(middleRight.state.visible).toBe(false);
+
+		// Wide but VERY short: top/bottom still fit the width but the box is too
+		// thin across → hidden (this is the reported case).
+		const topCenterThin = makeAnchor("top-center", null, { w: 400, h: 24 });
+		props.anchorStyleFunc(topCenterThin);
+		expect(topCenterThin.state.visible).toBe(false);
+
+		// Tiny box on both axes: every edge handle hidden…
+		const topCenterTiny = makeAnchor("top-center", null, { w: 20, h: 20 });
+		props.anchorStyleFunc(topCenterTiny);
+		expect(topCenterTiny.state.visible).toBe(false);
+		// …corners always stay.
+		const corner = makeAnchor("top-left", null, { w: 20, h: 20 });
+		props.anchorStyleFunc(corner);
+		expect(corner.state.visible).toBe(true);
 	});
 
 	it("setAnchorHovered tints an anchor with the accent on hover and reverts on leave", () => {

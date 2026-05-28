@@ -39,6 +39,20 @@ const SCALE_SIZED: ReadonlySet<CanvasNode["type"]> = new Set(["path", "line"]);
  */
 const noopSubscribe = () => () => undefined;
 
+/**
+ * Minimum box span (design units) ALONG an edge to show its handle: it must
+ * clear both corner handles (~6px each) plus the ~22px pill plus a small gap.
+ */
+const MIN_EDGE_HANDLE_SPAN = 48;
+/**
+ * Minimum box thickness (design units) PERPENDICULAR to an edge to show its
+ * handle. A short/thin box fits the pill along the long edge but is too cramped
+ * across it (the opposite-edge pills crowd together), so the center handles are
+ * dropped to corners-only. Both checks together: a top/bottom-center handle
+ * needs width ≥ SPAN and height ≥ THICKNESS; left/right need the transpose.
+ */
+const MIN_EDGE_HANDLE_THICKNESS = 40;
+
 /** Diameter of the circular rotate-icon handle parked below the box. */
 const ROTATE_HANDLE_SIZE = 34;
 /**
@@ -297,6 +311,34 @@ export function CanvasTransformer(): React.JSX.Element | null {
 			if (isRotater) {
 				syncRotateIcon(anchor, true);
 				return;
+			}
+			// Size-adaptive: when the box is too small to fit an edge handle between
+			// its corners, hide that edge handle (corners always stay). Sizes are in
+			// design units — box and handles scale with zoom together, so the fit
+			// test is zoom-independent. Top/bottom-center span the width;
+			// middle-left/right span the height.
+			const parent = anchor.getParent?.() as
+				| (Konva.Node & { getWidth?: () => number; getHeight?: () => number })
+				| null
+				| undefined;
+			const onWidthEdge =
+				anchor.hasName("top-center") || anchor.hasName("bottom-center");
+			const onHeightEdge =
+				anchor.hasName("middle-left") || anchor.hasName("middle-right");
+			if (onWidthEdge || onHeightEdge) {
+				const w = parent?.getWidth?.() ?? Number.POSITIVE_INFINITY;
+				const h = parent?.getHeight?.() ?? Number.POSITIVE_INFINITY;
+				// along = edge length (fit between corners); across = box thickness
+				// perpendicular to the edge (not too thin/cramped).
+				const along = onWidthEdge ? w : h;
+				const across = onWidthEdge ? h : w;
+				if (
+					along < MIN_EDGE_HANDLE_SPAN ||
+					across < MIN_EDGE_HANDLE_THICKNESS
+				) {
+					anchor.visible(false);
+					return;
+				}
 			}
 			const hovered = hoveredAnchorRef.current;
 			anchor.fill(
