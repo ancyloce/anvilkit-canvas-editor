@@ -48,12 +48,12 @@
 		"access": "public"
 	},
 	"peerDependencies": {
-		"konva": "^9 || ^10",
+		"konva": "^10.3.0",
 		"react": ">=19.0.0",
 		"react-dom": ">=19.0.0",
-		"react-konva": "^19",
+		"react-konva": "^19.2.4",
 		"y-protocols": "^1.0.7",
-		"yjs": "^13.6.30"
+		"yjs": "^13.6.31"
 	},
 	"peerDependenciesMeta": {
 		"y-protocols": {
@@ -66,9 +66,9 @@
 	"dependencies": {
 		"@anvilkit/canvas-core": "workspace:*",
 		"@anvilkit/ui": "workspace:*",
-		"lucide-react": "^1.7.0",
+		"lucide-react": "^1.17.0",
 		"use-image": "^1.1.4",
-		"zustand": "^5.0.13"
+		"zustand": "^5.0.14"
 	},
 	"scripts": {
 		"build": "rslib build && pnpm build:css",
@@ -87,12 +87,12 @@
 		"@anvilkit/typescript-config": "workspace:*",
 		"@anvilkit/vitest-config": "workspace:*",
 		"@rsbuild/plugin-react": "^2.0.0",
-		"@rslib/core": "^0.21.5",
+		"@rslib/core": "^0.22.0",
 		"@tailwindcss/cli": "4.2.2",
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/react": "^16.3.2",
 		"@types/node": "^25.9.1",
-		"@types/react": "19.2.14",
+		"@types/react": "^19.2.14",
 		"@types/react-dom": "19.2.3",
 		"jsdom": "^29.1.1",
 		"konva": "^10.3.0",
@@ -105,6 +105,6 @@
 		"typescript": "6.0.3",
 		"vitest": "^4.1.7",
 		"y-protocols": "^1.0.7",
-		"yjs": "^13.6.30"
+		"yjs": "^13.6.31"
 	}
 }
