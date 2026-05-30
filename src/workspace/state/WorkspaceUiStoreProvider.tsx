@@ -31,9 +31,7 @@ export function WorkspaceUiStoreProvider({
 	// that need to re-target should re-key the provider (`key={storeId}`).
 	const [store] = useState(() => createWorkspaceUiStore({ storeId }));
 	return (
-		<WorkspaceUiStoreContext.Provider value={store}>
-			{children}
-		</WorkspaceUiStoreContext.Provider>
+		<WorkspaceUiStoreContext value={store}>{children}</WorkspaceUiStoreContext>
 	);
 }
 

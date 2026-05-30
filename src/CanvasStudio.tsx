@@ -393,7 +393,7 @@ export function CanvasStudio({
 		</CanvasAssetsContext.Provider>
 	);
 	return (
-		<CanvasStudioContext.Provider value={ctxValue}>
+		<CanvasStudioContext value={ctxValue}>
 			{renderShell ? (
 				renderShell(stageNode)
 			) : (
@@ -407,6 +407,6 @@ export function CanvasStudio({
 				</div>
 			)}
 			{children}
-		</CanvasStudioContext.Provider>
+		</CanvasStudioContext>
 	);
 }
