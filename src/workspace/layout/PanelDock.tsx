@@ -2,6 +2,7 @@
 
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
+import { useCanvasT } from "../../context/canvas-studio-context.js";
 import { useActiveDock } from "../state/hooks.js";
 import { DOCK_ITEMS, type DockItem } from "../workspace-config.js";
 
@@ -21,18 +22,20 @@ export function PanelDock({
 	className,
 }: PanelDockProps): React.JSX.Element {
 	const [activeDockId, setActiveDockId] = useActiveDock();
+	const t = useCanvasT();
 
 	return (
 		<nav
 			data-testid="panel-dock"
-			aria-label="Panels"
+			aria-label={t("canvas.dock.panels", "Panels")}
 			className={cn(
 				"flex w-16 flex-col items-center gap-1 overflow-y-auto border-r border-border bg-card py-2",
 				className,
 			)}
 		>
-			{items.map(({ id, label, icon: Icon, color }) => {
+			{items.map(({ id, labelKey, label, icon: Icon, color }) => {
 				const active = activeDockId === id;
+				const resolvedLabel = t(labelKey, label);
 				return (
 					<Button
 						key={id}
@@ -41,8 +44,8 @@ export function PanelDock({
 						data-testid={`panel-dock-${id}`}
 						data-active={active ? "true" : "false"}
 						aria-pressed={active}
-						aria-label={label}
-						title={label}
+						aria-label={resolvedLabel}
+						title={resolvedLabel}
 						onClick={() => setActiveDockId(id)}
 						className={cn(
 							"h-auto w-12 flex-col gap-1 rounded-lg px-0 py-2 text-[10px] leading-none font-medium",
@@ -54,7 +57,7 @@ export function PanelDock({
 							aria-hidden
 							style={!active && color ? { color } : undefined}
 						/>
-						<span>{label}</span>
+						<span>{resolvedLabel}</span>
 					</Button>
 				);
 			})}

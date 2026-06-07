@@ -15,6 +15,7 @@ import type { BrandKit } from "./brand/brand-kit.js";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
+	type CanvasT,
 } from "./context/canvas-studio-context.js";
 import { PageNavigator } from "./pages/PageNavigator.js";
 import { draggedIdsKey } from "./perf/active-nodes.js";
@@ -113,6 +114,14 @@ export interface CanvasStudioProps {
 	 */
 	brandKit?: BrandKit;
 	/**
+	 * Host-injected i18n catalog (P7). A flat `canvas.*` → string map for the
+	 * active locale; the editor resolves chrome strings via {@link useCanvasT}
+	 * (host override wins, else the inline English fallback). Omit to render
+	 * the bundled English defaults. canvas-editor stays standalone — the host
+	 * (e.g. plugin-canvas-studio) selects the catalog by locale and passes it.
+	 */
+	messages?: Readonly<Record<string, string>>;
+	/**
 	 * Optional host UI rendered *inside* the editor's context provider, so it
 	 * can call {@link useCanvasStudio} to drive tool selection, read the live
 	 * selection/IR, or mount the exported `<LayerPanel>` / `<PropertyInspector>`
@@ -138,6 +147,7 @@ export function CanvasStudio({
 	toolRegistry,
 	hidePageNavigator,
 	brandKit,
+	messages,
 	renderShell,
 	children,
 }: CanvasStudioProps): React.JSX.Element {
@@ -278,6 +288,12 @@ export function CanvasStudio({
 		[draggedKey],
 	);
 
+	// P7 i18n resolver: host catalog (per-key) → inline English fallback → key.
+	const t = useMemo<CanvasT>(
+		() => (key, fallback) => messages?.[key] ?? fallback ?? key,
+		[messages],
+	);
+
 	const ctxValue = useMemo<CanvasStudioContextValue>(
 		() => ({
 			historyStore,
@@ -301,6 +317,7 @@ export function CanvasStudio({
 			stage,
 			activePageId,
 			ir,
+			t,
 		}),
 		[
 			historyStore,
@@ -324,6 +341,7 @@ export function CanvasStudio({
 			stage,
 			activePageId,
 			ir,
+			t,
 		],
 	);
 

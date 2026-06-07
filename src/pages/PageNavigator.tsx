@@ -11,7 +11,10 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import {
+	useCanvasStudio,
+	useCanvasT,
+} from "../context/canvas-studio-context.js";
 import { usePageThumbnails } from "../perf/page-thumbnails.js";
 import {
 	addPage,
@@ -36,6 +39,12 @@ export function PageNavigator({
 	id,
 }: PageNavigatorProps): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
+	const moveLeftLabel = t("canvas.nav.moveLeft", "Move page left");
+	const moveRightLabel = t("canvas.nav.moveRight", "Move page right");
+	const addPageLabel = t("canvas.nav.addPage", "Add page");
+	const duplicatePageLabel = t("canvas.nav.duplicatePage", "Duplicate page");
+	const deletePageLabel = t("canvas.nav.deletePage", "Delete page");
 	const activePageId = useSyncExternalStore(
 		ctx.pagesStore.subscribe,
 		() => ctx.pagesStore.getState().activePageId,
@@ -108,7 +117,7 @@ export function PageNavigator({
 		>
 			<div
 				role="tablist"
-				aria-label="Artboards"
+				aria-label={t("canvas.nav.artboards", "Artboards")}
 				data-testid="page-tablist"
 				className="inline-flex items-center gap-1.5 overflow-x-auto"
 			>
@@ -128,7 +137,10 @@ export function PageNavigator({
 								onChange={(e) => setRenamingValue(e.target.value)}
 								onKeyDown={onRenameKeyDown}
 								onBlur={commitRename}
-								aria-label={`Rename page ${tabLabel(p.name, p.id)}`}
+								aria-label={t(
+									"canvas.nav.renamePage",
+									"Rename page {label}",
+								).replace("{label}", tabLabel(p.name, p.id))}
 							/>
 						);
 					}
@@ -174,8 +186,8 @@ export function PageNavigator({
 					data-testid="page-reorder-left"
 					disabled={reorderLeftDisabled}
 					onClick={() => reorderPage(ctx, activePageId, activeIndex - 1)}
-					aria-label="Move page left"
-					title="Move page left"
+					aria-label={moveLeftLabel}
+					title={moveLeftLabel}
 				>
 					<ChevronLeft aria-hidden />
 				</Button>
@@ -186,8 +198,8 @@ export function PageNavigator({
 					data-testid="page-reorder-right"
 					disabled={reorderRightDisabled}
 					onClick={() => reorderPage(ctx, activePageId, activeIndex + 1)}
-					aria-label="Move page right"
-					title="Move page right"
+					aria-label={moveRightLabel}
+					title={moveRightLabel}
 				>
 					<ChevronRight aria-hidden />
 				</Button>
@@ -197,8 +209,8 @@ export function PageNavigator({
 					size="icon-xs"
 					data-testid="page-add"
 					onClick={() => addPage(ctx)}
-					aria-label="Add page"
-					title="Add page"
+					aria-label={addPageLabel}
+					title={addPageLabel}
 				>
 					<Plus aria-hidden />
 				</Button>
@@ -208,8 +220,8 @@ export function PageNavigator({
 					size="icon-xs"
 					data-testid="page-duplicate"
 					onClick={() => duplicateCurrentPage(ctx)}
-					aria-label="Duplicate page"
-					title="Duplicate page"
+					aria-label={duplicatePageLabel}
+					title={duplicatePageLabel}
 				>
 					<Copy aria-hidden />
 				</Button>
@@ -220,8 +232,12 @@ export function PageNavigator({
 					data-testid="page-delete"
 					disabled={deleteDisabled}
 					onClick={() => deletePage(ctx, activePageId)}
-					aria-label="Delete page"
-					title={deleteDisabled ? "Cannot delete the only page" : "Delete page"}
+					aria-label={deletePageLabel}
+					title={
+						deleteDisabled
+							? t("canvas.nav.cannotDeleteOnly", "Cannot delete the only page")
+							: deletePageLabel
+					}
 				>
 					<Trash2 aria-hidden />
 				</Button>

@@ -18,3 +18,21 @@ export const TOOL_LABELS: Record<ToolId, string> = {
 	"ai-image": "AI image",
 	"ai-brush": "AI brush",
 };
+
+/**
+ * i18n keys parallel to {@link TOOL_LABELS}. Consumers resolve a localized name
+ * via `t(TOOL_LABEL_KEYS[id], TOOL_LABELS[id])` — the `TOOL_LABELS` value is the
+ * English fallback when no message catalog is injected.
+ */
+export const TOOL_LABEL_KEYS: Record<ToolId, string> = {
+	select: "canvas.tool.select",
+	text: "canvas.tool.text",
+	rect: "canvas.tool.rect",
+	ellipse: "canvas.tool.ellipse",
+	line: "canvas.tool.line",
+	path: "canvas.tool.path",
+	image: "canvas.tool.image",
+	hand: "canvas.tool.hand",
+	"ai-image": "canvas.tool.aiImage",
+	"ai-brush": "canvas.tool.aiBrush",
+};

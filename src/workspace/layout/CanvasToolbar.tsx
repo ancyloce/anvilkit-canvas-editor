@@ -5,7 +5,10 @@ import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { Separator } from "@anvilkit/ui/separator";
 import { useSyncExternalStore } from "react";
-import { useCanvasStudio } from "../../context/canvas-studio-context.js";
+import {
+	useCanvasStudio,
+	useCanvasT,
+} from "../../context/canvas-studio-context.js";
 import { useCommitPatch } from "../../panels/fields.js";
 
 /** Node kinds that carry a `fill`. */
@@ -37,6 +40,7 @@ export function CanvasToolbar({
 	className,
 }: CanvasToolbarProps): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
 	const commitPatch = useCommitPatch();
 	const selectedIds = useSyncExternalStore(
 		ctx.selectionStore.subscribe,
@@ -60,7 +64,7 @@ export function CanvasToolbar({
 				data-testid="canvas-toolbar"
 				data-node-id={node.id}
 				role="toolbar"
-				aria-label="Element properties"
+				aria-label={t("canvas.toolbar.elementProperties", "Element properties")}
 				className={cn(
 					"pointer-events-auto inline-flex h-11 max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-card px-2 shadow-md",
 					className,
@@ -68,7 +72,7 @@ export function CanvasToolbar({
 			>
 				{hasFill ? (
 					<SwatchControl
-						label="Fill"
+						label={t("canvas.toolbar.fill", "Fill")}
 						value={(node as { fill?: string }).fill}
 						testId="toolbar-fill"
 						onCommit={(v) => commitPatch(node, { fill: v })}
@@ -77,7 +81,7 @@ export function CanvasToolbar({
 				{hasFill && hasStroke ? <PillDivider /> : null}
 				{hasStroke ? (
 					<SwatchControl
-						label="Border"
+						label={t("canvas.toolbar.border", "Border")}
 						value={(node as { stroke?: string }).stroke}
 						testId="toolbar-stroke"
 						onCommit={(v) => commitPatch(node, { stroke: v })}
@@ -85,7 +89,7 @@ export function CanvasToolbar({
 				) : null}
 				{hasStroke ? (
 					<NumberControl
-						label="Width"
+						label={t("canvas.toolbar.width", "Width")}
 						value={(node as { strokeWidth?: number }).strokeWidth ?? 0}
 						min={0}
 						testId="toolbar-stroke-width"
@@ -94,7 +98,7 @@ export function CanvasToolbar({
 				) : null}
 				<PillDivider />
 				<NumberControl
-					label="Opacity"
+					label={t("canvas.toolbar.opacity", "Opacity")}
 					value={node.opacity ?? 1}
 					step={0.05}
 					min={0}

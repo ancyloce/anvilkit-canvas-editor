@@ -12,7 +12,10 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { ChromeIcons } from "../../chrome/icons.js";
-import { useCanvasStudio } from "../../context/canvas-studio-context.js";
+import {
+	useCanvasStudio,
+	useCanvasT,
+} from "../../context/canvas-studio-context.js";
 import type { CanvasHeaderPlugin } from "../../header/types.js";
 
 export interface WorkspaceHeaderProps {
@@ -53,6 +56,10 @@ export function WorkspaceHeader({
 	className,
 }: WorkspaceHeaderProps): React.JSX.Element {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
+	const backLabel = t("canvas.header.back", "Back");
+	const undoLabel = t("canvas.header.undo", "Undo");
+	const redoLabel = t("canvas.header.redo", "Redo");
 	const [editing, setEditing] = useState(false);
 
 	const canUndo = useSyncExternalStore(
@@ -75,7 +82,8 @@ export function WorkspaceHeader({
 		ctx.sceneStore?.getState().setIR(next);
 	};
 
-	const displayTitle = title ?? ctx.ir.title ?? "Untitled";
+	const displayTitle =
+		title ?? ctx.ir.title ?? t("canvas.header.untitled", "Untitled");
 	const editable = typeof onTitleChange === "function";
 
 	const commitTitle = (value: string) => {
@@ -100,13 +108,16 @@ export function WorkspaceHeader({
 						variant="ghost"
 						size="icon-sm"
 						data-testid="workspace-back"
-						aria-label="Back"
-						title="Back"
+						aria-label={backLabel}
+						title={backLabel}
 						onClick={onBack}
 					>
 						<ChevronLeft aria-hidden />
 					</Button>
-					<Separator orientation="vertical" className="mx-1 h-4.5 data-vertical:self-center" />
+					<Separator
+						orientation="vertical"
+						className="mx-1 h-4.5 data-vertical:self-center"
+					/>
 				</>
 			) : null}
 
@@ -115,8 +126,8 @@ export function WorkspaceHeader({
 				variant="ghost"
 				size="icon-sm"
 				data-testid="workspace-undo"
-				aria-label="Undo"
-				title="Undo"
+				aria-label={undoLabel}
+				title={undoLabel}
 				disabled={!canUndo}
 				onClick={undo}
 			>
@@ -127,21 +138,24 @@ export function WorkspaceHeader({
 				variant="ghost"
 				size="icon-sm"
 				data-testid="workspace-redo"
-				aria-label="Redo"
-				title="Redo"
+				aria-label={redoLabel}
+				title={redoLabel}
 				disabled={!canRedo}
 				onClick={redo}
 			>
 				<ChromeIcons.redo aria-hidden />
 			</Button>
 
-			<Separator orientation="vertical" className="mx-1 h-4.5 data-vertical:self-center" />
+			<Separator
+				orientation="vertical"
+				className="mx-1 h-4.5 data-vertical:self-center"
+			/>
 
 			{editing ? (
 				<Input
 					key={displayTitle}
 					type="text"
-					aria-label="Document name"
+					aria-label={t("canvas.header.documentName", "Document name")}
 					defaultValue={displayTitle}
 					autoFocus
 					data-testid="workspace-title-input"

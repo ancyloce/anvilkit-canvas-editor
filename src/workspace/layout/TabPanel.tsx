@@ -4,6 +4,7 @@ import { Button } from "@anvilkit/ui/button";
 import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { type ReactNode, useEffect, useState } from "react";
+import { useCanvasT } from "../../context/canvas-studio-context.js";
 import type {
 	CanvasPanelDescriptor,
 	CanvasPanelRegistry,
@@ -30,7 +31,14 @@ export function TabPanel({
 }: TabPanelProps): React.JSX.Element {
 	const [activeDockId] = useActiveDock();
 	const [search, setSearch] = usePanelSearch();
+	const t = useCanvasT();
 	const descriptor = registry[activeDockId];
+	const panelFallback = t("canvas.tabpanel.panel", "Panel");
+	const title = descriptor
+		? descriptor.titleKey
+			? t(descriptor.titleKey, descriptor.title)
+			: descriptor.title
+		: panelFallback;
 
 	// Reset the shared search query when switching panels. `setSearch` is a
 	// stable zustand action, so `activeDockId` is what actually re-fires this
@@ -47,7 +55,7 @@ export function TabPanel({
 	return (
 		<section
 			data-testid="tab-panel"
-			aria-label={descriptor?.title ?? "Panel"}
+			aria-label={title}
 			className={cn(
 				"flex h-full min-h-0 flex-col overflow-hidden border-r border-border bg-card",
 				className,
@@ -55,15 +63,15 @@ export function TabPanel({
 		>
 			<div className="flex h-11 shrink-0 items-center border-b border-border px-3.5">
 				<span className="truncate text-sm font-semibold text-foreground">
-					{descriptor?.title ?? "Panel"}
+					{title}
 				</span>
 			</div>
 			{searchable ? (
 				<div className="shrink-0 p-2">
 					<Input
 						type="search"
-						aria-label="Search panel"
-						placeholder="Search…"
+						aria-label={t("canvas.tabpanel.searchLabel", "Search panel")}
+						placeholder={t("canvas.tabpanel.searchPlaceholder", "Search…")}
 						value={search}
 						data-testid="tab-panel-search"
 						className="h-8 text-xs"
@@ -85,13 +93,14 @@ function PanelBody({
 	descriptor: CanvasPanelDescriptor | undefined;
 	search: string;
 }): ReactNode {
+	const t = useCanvasT();
 	if (!descriptor) {
 		return (
 			<div
 				className="p-4 text-xs text-muted-foreground italic"
 				data-testid="tab-panel-empty"
 			>
-				No panel registered.
+				{t("canvas.tabpanel.noPanel", "No panel registered.")}
 			</div>
 		);
 	}
@@ -114,6 +123,7 @@ function SearchPanelBody({
 	descriptor: SearchPanelDescriptor;
 	search: string;
 }): React.JSX.Element {
+	const t = useCanvasT();
 	const categories = descriptor.categories ?? [];
 	const [category, setCategory] = useState<string>(categories[0] ?? "all");
 	return (
@@ -122,7 +132,7 @@ function SearchPanelBody({
 				<div
 					className="flex flex-wrap gap-1 p-2"
 					role="tablist"
-					aria-label="Categories"
+					aria-label={t("canvas.tabpanel.categories", "Categories")}
 					data-testid="tab-panel-categories"
 				>
 					{categories.map((c) => (
@@ -157,6 +167,7 @@ function RemotePanelBody({
 	descriptor: RemotePanelDescriptor;
 	search: string;
 }): React.JSX.Element {
+	const t = useCanvasT();
 	const [state, setState] = useState<RemoteStatus>({ status: "loading" });
 
 	useEffect(() => {
@@ -181,7 +192,7 @@ function RemotePanelBody({
 				className="p-4 text-xs text-muted-foreground"
 				data-testid="tab-panel-loading"
 			>
-				Loading…
+				{t("canvas.tabpanel.loading", "Loading…")}
 			</div>
 		);
 	}
@@ -191,7 +202,7 @@ function RemotePanelBody({
 				className="p-4 text-xs text-destructive"
 				data-testid="tab-panel-error"
 			>
-				Failed to load.
+				{t("canvas.tabpanel.failed", "Failed to load.")}
 			</div>
 		);
 	}
@@ -201,7 +212,7 @@ function RemotePanelBody({
 				className="p-4 text-xs text-muted-foreground italic"
 				data-testid="tab-panel-remote-empty"
 			>
-				Nothing here yet.
+				{t("canvas.tabpanel.nothingYet", "Nothing here yet.")}
 			</div>
 		);
 	}

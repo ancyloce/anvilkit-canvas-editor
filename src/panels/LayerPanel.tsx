@@ -19,7 +19,11 @@ import {
 	Ungroup,
 } from "lucide-react";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import {
+	type CanvasT,
+	useCanvasStudio,
+	useCanvasT,
+} from "../context/canvas-studio-context.js";
 import {
 	canGroupSelection,
 	canUngroupSelection,
@@ -53,19 +57,31 @@ function flattenChildren(group: CanvasGroupNode): FlatRow[] {
 	return rows;
 }
 
-function nodeLabel(node: CanvasNode): string {
+const KIND_LABEL_KEYS: Record<CanvasNodeKind, string> = {
+	group: "canvas.layer.kind.group",
+	rect: "canvas.layer.kind.rect",
+	ellipse: "canvas.layer.kind.ellipse",
+	line: "canvas.layer.kind.line",
+	path: "canvas.layer.kind.path",
+	text: "canvas.layer.kind.text",
+	image: "canvas.layer.kind.image",
+	"ai-placeholder": "canvas.layer.kind.aiPlaceholder",
+};
+
+const KIND_LABEL_FALLBACKS: Record<CanvasNodeKind, string> = {
+	group: "Group",
+	rect: "Rectangle",
+	ellipse: "Ellipse",
+	line: "Line",
+	path: "Path",
+	text: "Text",
+	image: "Image",
+	"ai-placeholder": "AI placeholder",
+};
+
+function nodeLabel(node: CanvasNode, t: CanvasT): string {
 	if (node.name && node.name.length > 0) return node.name;
-	const kindLabels: Record<CanvasNodeKind, string> = {
-		group: "Group",
-		rect: "Rectangle",
-		ellipse: "Ellipse",
-		line: "Line",
-		path: "Path",
-		text: "Text",
-		image: "Image",
-		"ai-placeholder": "AI placeholder",
-	};
-	return kindLabels[node.type];
+	return t(KIND_LABEL_KEYS[node.type], KIND_LABEL_FALLBACKS[node.type]);
 }
 
 export interface LayerPanelProps {
@@ -75,6 +91,7 @@ export interface LayerPanelProps {
 
 export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
 	const selectedIds = useSyncExternalStore(
 		ctx.selectionStore.subscribe,
 		() => ctx.selectionStore.getState().selectedIds,
@@ -181,15 +198,15 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 		>
 			<div className="flex h-9 items-center gap-1 border-b border-border px-3">
 				<span className="flex-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-					Layers
+					{t("canvas.layer.title", "Layers")}
 				</span>
 				<Button
 					type="button"
 					variant="ghost"
 					size="icon-xs"
 					data-testid="layer-group-btn"
-					aria-label="Group selection"
-					title="Group selection (⌘G)"
+					aria-label={t("canvas.layer.groupSelection", "Group selection")}
+					title={t("canvas.layer.groupSelectionTitle", "Group selection (⌘G)")}
 					disabled={!canGroup}
 					onClick={() => groupSelection(ctx)}
 				>
@@ -200,8 +217,8 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 					variant="ghost"
 					size="icon-xs"
 					data-testid="layer-ungroup-btn"
-					aria-label="Ungroup"
-					title="Ungroup (⌘⇧G)"
+					aria-label={t("canvas.layer.ungroup", "Ungroup")}
+					title={t("canvas.layer.ungroupTitle", "Ungroup (⌘⇧G)")}
 					disabled={!canUngroup}
 					onClick={() => ungroupSelection(ctx)}
 				>
@@ -211,14 +228,14 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 			<div
 				className="flex-1 overflow-y-auto p-1.5"
 				role="tree"
-				aria-label="Layers"
+				aria-label={t("canvas.layer.title", "Layers")}
 			>
 				{rows.length === 0 ? (
 					<div
 						className="px-2 py-1.5 text-xs text-muted-foreground italic"
 						data-testid="layer-panel-empty"
 					>
-						No layers on this page yet.
+						{t("canvas.layer.empty", "No layers on this page yet.")}
 					</div>
 				) : (
 					rows.map(({ node, depth }) => {
@@ -249,7 +266,7 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 								aria-selected={isSelected}
 								tabIndex={-1}
 							>
-								<span className="flex-1 truncate">{nodeLabel(node)}</span>
+								<span className="flex-1 truncate">{nodeLabel(node, t)}</span>
 								<Button
 									type="button"
 									variant="ghost"
@@ -261,8 +278,16 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 											: "text-muted-foreground/40",
 									)}
 									data-testid={`layer-row-${node.id}-visibility`}
-									aria-label={visible ? "Hide layer" : "Show layer"}
-									title={visible ? "Hide" : "Show"}
+									aria-label={
+										visible
+											? t("canvas.layer.hide", "Hide layer")
+											: t("canvas.layer.show", "Show layer")
+									}
+									title={
+										visible
+											? t("canvas.layer.hideShort", "Hide")
+											: t("canvas.layer.showShort", "Show")
+									}
 									onClick={(e) => {
 										e.stopPropagation();
 										handleToggleVisibility(node);
@@ -279,8 +304,16 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 										locked ? "text-foreground" : "text-muted-foreground/40",
 									)}
 									data-testid={`layer-row-${node.id}-lock`}
-									aria-label={locked ? "Unlock layer" : "Lock layer"}
-									title={locked ? "Unlock" : "Lock"}
+									aria-label={
+										locked
+											? t("canvas.layer.unlock", "Unlock layer")
+											: t("canvas.layer.lock", "Lock layer")
+									}
+									title={
+										locked
+											? t("canvas.layer.unlockShort", "Unlock")
+											: t("canvas.layer.lockShort", "Lock")
+									}
 									onClick={(e) => {
 										e.stopPropagation();
 										handleToggleLock(node);

@@ -13,8 +13,14 @@ import {
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { useSyncExternalStore } from "react";
-import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import type {
+	CanvasStudioContextValue,
+	CanvasT,
+} from "../context/canvas-studio-context.js";
+import {
+	useCanvasStudio,
+	useCanvasT,
+} from "../context/canvas-studio-context.js";
 import { beginCrop } from "../selection/crop-actions.js";
 import { beginPathEdit } from "../selection/path-edit-actions.js";
 import {
@@ -45,6 +51,7 @@ export function PropertyInspector({
 	const node = found?.node ?? null;
 
 	const commitPatch = useCommitPatch();
+	const t = useCanvasT();
 
 	const rootClass =
 		"flex h-full min-w-[240px] max-w-[320px] flex-col gap-4 overflow-y-auto bg-card p-4 text-sm text-foreground select-none";
@@ -53,18 +60,21 @@ export function PropertyInspector({
 		return (
 			<section
 				data-testid="property-inspector"
-				aria-label="Properties"
+				aria-label={t("canvas.inspector.properties", "Properties")}
 				className={rootClass}
 				{...(id !== undefined ? { id } : {})}
 			>
 				<div className="text-[13px] font-semibold text-foreground">
-					Inspector
+					{t("canvas.inspector.title", "Inspector")}
 				</div>
 				<div
 					className="text-xs text-muted-foreground italic"
 					data-testid="property-inspector-empty"
 				>
-					Select a layer to edit its properties.
+					{t(
+						"canvas.inspector.empty",
+						"Select a layer to edit its properties.",
+					)}
 				</div>
 			</section>
 		);
@@ -74,28 +84,31 @@ export function PropertyInspector({
 		<section
 			data-testid="property-inspector"
 			data-node-id={node.id}
-			aria-label="Properties"
+			aria-label={t("canvas.inspector.properties", "Properties")}
 			className={rootClass}
 			{...(id !== undefined ? { id } : {})}
 		>
 			<div>
 				<div className="text-[13px] font-semibold text-foreground">
-					Inspector
+					{t("canvas.inspector.title", "Inspector")}
 				</div>
 				<div className="text-xs text-muted-foreground capitalize">
-					{node.type} layer
+					{t("canvas.inspector.layerType", "{type} layer").replace(
+						"{type}",
+						node.type,
+					)}
 				</div>
 			</div>
 			<div className="flex flex-col gap-4" key={node.id}>
-				<Section title="Layer">
+				<Section title={t("canvas.inspector.layer", "Layer")}>
 					<TextField
-						label="Name"
+						label={t("canvas.inspector.name", "Name")}
 						value={node.name ?? ""}
 						dataTestId="prop-name"
 						onCommit={(v) => commitPatch(node, { name: v })}
 					/>
 					<NumberField
-						label="Opacity"
+						label={t("canvas.inspector.opacity", "Opacity")}
 						value={node.opacity ?? 1}
 						step={0.05}
 						min={0}
@@ -104,9 +117,9 @@ export function PropertyInspector({
 						onCommit={(v) => commitPatch(node, { opacity: v })}
 					/>
 				</Section>
-				<Section title="Transform">
+				<Section title={t("canvas.inspector.transform", "Transform")}>
 					<NumberField
-						label="X"
+						label={t("canvas.inspector.x", "X")}
 						value={node.transform.x}
 						dataTestId="prop-x"
 						onCommit={(v) =>
@@ -116,7 +129,7 @@ export function PropertyInspector({
 						}
 					/>
 					<NumberField
-						label="Y"
+						label={t("canvas.inspector.y", "Y")}
 						value={node.transform.y}
 						dataTestId="prop-y"
 						onCommit={(v) =>
@@ -126,7 +139,7 @@ export function PropertyInspector({
 						}
 					/>
 					<NumberField
-						label="Width"
+						label={t("canvas.inspector.width", "Width")}
 						value={node.bounds.width}
 						min={0}
 						dataTestId="prop-width"
@@ -137,7 +150,7 @@ export function PropertyInspector({
 						}
 					/>
 					<NumberField
-						label="Height"
+						label={t("canvas.inspector.height", "Height")}
 						value={node.bounds.height}
 						min={0}
 						dataTestId="prop-height"
@@ -148,7 +161,7 @@ export function PropertyInspector({
 						}
 					/>
 					<NumberField
-						label="Rotation"
+						label={t("canvas.inspector.rotation", "Rotation")}
 						value={node.transform.rotation}
 						step={1}
 						dataTestId="prop-rotation"
@@ -159,7 +172,7 @@ export function PropertyInspector({
 						}
 					/>
 				</Section>
-				{renderTypeSpecificFields(node, commitPatch, ctx)}
+				{renderTypeSpecificFields(node, commitPatch, ctx, t)}
 			</div>
 		</section>
 	);
@@ -169,22 +182,23 @@ function renderTypeSpecificFields(
 	node: CanvasNode,
 	commitPatch: CommitPatch,
 	ctx: CanvasStudioContextValue,
+	t: CanvasT,
 ): React.JSX.Element | null {
 	switch (node.type) {
 		case "rect":
-			return renderRectFields(node, commitPatch);
+			return renderRectFields(node, commitPatch, t);
 		case "ellipse":
-			return renderEllipseFields(node, commitPatch);
+			return renderEllipseFields(node, commitPatch, t);
 		case "line":
-			return renderLineFields(node, commitPatch);
+			return renderLineFields(node, commitPatch, t);
 		case "text":
-			return renderTextFields(node, commitPatch);
+			return renderTextFields(node, commitPatch, t);
 		case "image":
-			return renderImageFields(node, commitPatch, ctx);
+			return renderImageFields(node, commitPatch, ctx, t);
 		case "path":
-			return renderPathFields(node, commitPatch, ctx);
+			return renderPathFields(node, commitPatch, ctx, t);
 		case "group":
-			return renderGroupFields(node);
+			return renderGroupFields(node, t);
 		case "ai-placeholder":
 			return null;
 		default:
@@ -195,30 +209,31 @@ function renderTypeSpecificFields(
 function renderRectFields(
 	node: CanvasRectNode,
 	commitPatch: CommitPatch,
+	t: CanvasT,
 ): React.JSX.Element {
 	return (
-		<Section title="Shape">
+		<Section title={t("canvas.inspector.shape", "Shape")}>
 			<ColorField
-				label="Fill"
+				label={t("canvas.inspector.fill", "Fill")}
 				value={node.fill}
 				dataTestId="prop-fill"
 				onCommit={(v) => commitPatch(node, { fill: v })}
 			/>
 			<ColorField
-				label="Stroke"
+				label={t("canvas.inspector.stroke", "Stroke")}
 				value={node.stroke}
 				dataTestId="prop-stroke"
 				onCommit={(v) => commitPatch(node, { stroke: v })}
 			/>
 			<NumberField
-				label="Stroke W"
+				label={t("canvas.inspector.strokeWidth", "Stroke W")}
 				value={node.strokeWidth ?? 0}
 				min={0}
 				dataTestId="prop-stroke-width"
 				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
 			/>
 			<NumberField
-				label="Radius"
+				label={t("canvas.inspector.radius", "Radius")}
 				value={node.radius ?? 0}
 				min={0}
 				dataTestId="prop-radius"
@@ -231,23 +246,24 @@ function renderRectFields(
 function renderEllipseFields(
 	node: CanvasEllipseNode,
 	commitPatch: CommitPatch,
+	t: CanvasT,
 ): React.JSX.Element {
 	return (
-		<Section title="Shape">
+		<Section title={t("canvas.inspector.shape", "Shape")}>
 			<ColorField
-				label="Fill"
+				label={t("canvas.inspector.fill", "Fill")}
 				value={node.fill}
 				dataTestId="prop-fill"
 				onCommit={(v) => commitPatch(node, { fill: v })}
 			/>
 			<ColorField
-				label="Stroke"
+				label={t("canvas.inspector.stroke", "Stroke")}
 				value={node.stroke}
 				dataTestId="prop-stroke"
 				onCommit={(v) => commitPatch(node, { stroke: v })}
 			/>
 			<NumberField
-				label="Stroke W"
+				label={t("canvas.inspector.strokeWidth", "Stroke W")}
 				value={node.strokeWidth ?? 0}
 				min={0}
 				dataTestId="prop-stroke-width"
@@ -260,17 +276,18 @@ function renderEllipseFields(
 function renderLineFields(
 	node: CanvasLineNode,
 	commitPatch: CommitPatch,
+	t: CanvasT,
 ): React.JSX.Element {
 	return (
-		<Section title="Line">
+		<Section title={t("canvas.inspector.line", "Line")}>
 			<ColorField
-				label="Stroke"
+				label={t("canvas.inspector.stroke", "Stroke")}
 				value={node.stroke}
 				dataTestId="prop-stroke"
 				onCommit={(v) => commitPatch(node, { stroke: v })}
 			/>
 			<NumberField
-				label="Stroke W"
+				label={t("canvas.inspector.strokeWidth", "Stroke W")}
 				value={node.strokeWidth ?? 1}
 				min={0}
 				dataTestId="prop-stroke-width"
@@ -283,30 +300,31 @@ function renderLineFields(
 function renderTextFields(
 	node: CanvasTextNode,
 	commitPatch: CommitPatch,
+	t: CanvasT,
 ): React.JSX.Element {
 	return (
-		<Section title="Text">
+		<Section title={t("canvas.inspector.text", "Text")}>
 			<TextField
-				label="Content"
+				label={t("canvas.inspector.content", "Content")}
 				value={node.text}
 				dataTestId="prop-text"
 				onCommit={(v) => commitPatch(node, { text: v })}
 			/>
 			<TextField
-				label="Font"
+				label={t("canvas.inspector.font", "Font")}
 				value={node.fontFamily}
 				dataTestId="prop-font-family"
 				onCommit={(v) => commitPatch(node, { fontFamily: v })}
 			/>
 			<NumberField
-				label="Size"
+				label={t("canvas.inspector.size", "Size")}
 				value={node.fontSize}
 				min={1}
 				dataTestId="prop-font-size"
 				onCommit={(v) => commitPatch(node, { fontSize: v })}
 			/>
 			<ColorField
-				label="Color"
+				label={t("canvas.inspector.color", "Color")}
 				value={node.fill}
 				dataTestId="prop-text-fill"
 				onCommit={(v) => commitPatch(node, { fill: v })}
@@ -319,6 +337,7 @@ function renderImageFields(
 	node: CanvasImageNode,
 	commitPatch: CommitPatch,
 	ctx: CanvasStudioContextValue,
+	t: CanvasT,
 ): React.JSX.Element {
 	const crop = node.crop;
 	const c = crop ?? { x: 0, y: 0, width: 0, height: 0 };
@@ -326,8 +345,8 @@ function renderImageFields(
 		commitPatch(node, { crop: { ...c, ...patch } });
 	return (
 		<>
-			<Section title="Image">
-				<FieldRow label="Asset">
+			<Section title={t("canvas.inspector.image", "Image")}>
+				<FieldRow label={t("canvas.inspector.asset", "Asset")}>
 					<span
 						data-testid="prop-asset-id"
 						className="truncate text-xs text-foreground"
@@ -336,7 +355,7 @@ function renderImageFields(
 					</span>
 				</FieldRow>
 			</Section>
-			<Section title="Crop">
+			<Section title={t("canvas.inspector.crop", "Crop")}>
 				<Button
 					type="button"
 					variant="outline"
@@ -345,31 +364,31 @@ function renderImageFields(
 					data-testid="prop-crop-begin"
 					onClick={() => beginCrop(ctx, node.id)}
 				>
-					Crop image
+					{t("canvas.inspector.cropImage", "Crop image")}
 				</Button>
 				<NumberField
-					label="Crop X"
+					label={t("canvas.inspector.cropX", "Crop X")}
 					value={c.x}
 					min={0}
 					dataTestId="prop-crop-x"
 					onCommit={(v) => setCrop({ x: v })}
 				/>
 				<NumberField
-					label="Crop Y"
+					label={t("canvas.inspector.cropY", "Crop Y")}
 					value={c.y}
 					min={0}
 					dataTestId="prop-crop-y"
 					onCommit={(v) => setCrop({ y: v })}
 				/>
 				<NumberField
-					label="Crop W"
+					label={t("canvas.inspector.cropW", "Crop W")}
 					value={c.width}
 					min={0}
 					dataTestId="prop-crop-width"
 					onCommit={(v) => setCrop({ width: v })}
 				/>
 				<NumberField
-					label="Crop H"
+					label={t("canvas.inspector.cropH", "Crop H")}
 					value={c.height}
 					min={0}
 					dataTestId="prop-crop-height"
@@ -384,7 +403,7 @@ function renderImageFields(
 						data-testid="prop-crop-clear"
 						onClick={() => commitPatch(node, { crop: undefined })}
 					>
-						Clear crop
+						{t("canvas.inspector.clearCrop", "Clear crop")}
 					</Button>
 				) : null}
 			</Section>
@@ -396,30 +415,31 @@ function renderPathFields(
 	node: CanvasPathNode,
 	commitPatch: CommitPatch,
 	ctx: CanvasStudioContextValue,
+	t: CanvasT,
 ): React.JSX.Element {
 	return (
-		<Section title="Path">
+		<Section title={t("canvas.inspector.path", "Path")}>
 			<ColorField
-				label="Fill"
+				label={t("canvas.inspector.fill", "Fill")}
 				value={node.fill}
 				dataTestId="prop-fill"
 				onCommit={(v) => commitPatch(node, { fill: v })}
 			/>
 			<ColorField
-				label="Stroke"
+				label={t("canvas.inspector.stroke", "Stroke")}
 				value={node.stroke}
 				dataTestId="prop-stroke"
 				onCommit={(v) => commitPatch(node, { stroke: v })}
 			/>
 			<NumberField
-				label="Stroke W"
+				label={t("canvas.inspector.strokeWidth", "Stroke W")}
 				value={node.strokeWidth ?? 1}
 				min={0}
 				dataTestId="prop-stroke-width"
 				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
 			/>
 			<TextField
-				label="Path d"
+				label={t("canvas.inspector.pathD", "Path d")}
 				value={node.d}
 				dataTestId="prop-path-d"
 				onCommit={(v) => commitPatch(node, { d: v })}
@@ -432,16 +452,19 @@ function renderPathFields(
 				data-testid="prop-path-edit"
 				onClick={() => beginPathEdit(ctx, node.id)}
 			>
-				Edit points
+				{t("canvas.inspector.editPoints", "Edit points")}
 			</Button>
 		</Section>
 	);
 }
 
-function renderGroupFields(node: CanvasGroupNode): React.JSX.Element {
+function renderGroupFields(
+	node: CanvasGroupNode,
+	t: CanvasT,
+): React.JSX.Element {
 	return (
-		<Section title="Group">
-			<FieldRow label="Children">
+		<Section title={t("canvas.inspector.group", "Group")}>
+			<FieldRow label={t("canvas.inspector.children", "Children")}>
 				<span
 					data-testid="prop-children-count"
 					className="text-xs text-foreground"

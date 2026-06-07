@@ -1,8 +1,11 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
-import { TOOL_LABELS } from "./tool-labels.js";
+import {
+	useCanvasStudio,
+	useCanvasT,
+} from "../context/canvas-studio-context.js";
+import { TOOL_LABEL_KEYS, TOOL_LABELS } from "./tool-labels.js";
 
 // Visually hidden but exposed to assistive tech (the canonical sr-only clip).
 const srOnly = {
@@ -25,11 +28,13 @@ const srOnly = {
  */
 export function ToolAnnouncer(): React.JSX.Element {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
 	const activeTool = useSyncExternalStore(
 		ctx.toolStore.subscribe,
 		() => ctx.toolStore.getState().activeTool,
 		() => ctx.toolStore.getState().activeTool,
 	);
+	const toolName = t(TOOL_LABEL_KEYS[activeTool], TOOL_LABELS[activeTool]);
 	return (
 		<div
 			data-testid="tool-announcer"
@@ -38,7 +43,10 @@ export function ToolAnnouncer(): React.JSX.Element {
 			aria-atomic="true"
 			style={srOnly}
 		>
-			{`${TOOL_LABELS[activeTool]} tool selected`}
+			{t("canvas.tool.selected", "{tool} tool selected").replace(
+				"{tool}",
+				toolName,
+			)}
 		</div>
 	);
 }

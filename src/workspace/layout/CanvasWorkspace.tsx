@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { ToolAnnouncer } from "../../a11y/ToolAnnouncer.js";
 import { CanvasStudio, type CanvasStudioProps } from "../../CanvasStudio.js";
+import { useCanvasT } from "../../context/canvas-studio-context.js";
 import type { CanvasHeaderPlugin } from "../../header/types.js";
 import { PropertyInspector } from "../../panels/PropertyInspector.js";
 import {
@@ -123,6 +124,7 @@ export function CanvasWorkspace({
  */
 function WorkspaceInspector(): React.JSX.Element {
 	const [collapsed, setCollapsed] = useInspectorCollapsed();
+	const t = useCanvasT();
 	return (
 		<aside
 			data-testid="workspace-inspector"
@@ -138,9 +140,17 @@ function WorkspaceInspector(): React.JSX.Element {
 					variant="ghost"
 					size="icon-sm"
 					data-testid="workspace-inspector-toggle"
-					aria-label={collapsed ? "Expand inspector" : "Collapse inspector"}
+					aria-label={
+						collapsed
+							? t("canvas.inspector.expand", "Expand inspector")
+							: t("canvas.inspector.collapse", "Collapse inspector")
+					}
 					aria-expanded={!collapsed}
-					title={collapsed ? "Expand" : "Collapse"}
+					title={
+						collapsed
+							? t("canvas.inspector.expandShort", "Expand")
+							: t("canvas.inspector.collapseShort", "Collapse")
+					}
 					onClick={() => setCollapsed(!collapsed)}
 				>
 					{collapsed ? (

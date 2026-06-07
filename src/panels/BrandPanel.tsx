@@ -2,6 +2,7 @@
 
 import { cn } from "@anvilkit/ui/lib/utils";
 import { useBrandColors, useBrandFonts } from "../brand/use-brand-kit.js";
+import { useCanvasT } from "../context/canvas-studio-context.js";
 
 export interface BrandPanelProps {
 	className?: string;
@@ -18,6 +19,7 @@ export function BrandPanel({
 }: BrandPanelProps): React.JSX.Element | null {
 	const colors = useBrandColors();
 	const fonts = useBrandFonts();
+	const t = useCanvasT();
 	const hasBrand = colors.length > 0 || fonts.length > 0;
 
 	if (!hasBrand) return null;
@@ -28,7 +30,7 @@ export function BrandPanel({
 			data-testid="brand-section"
 		>
 			<div className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-				Brand kit
+				{t("canvas.brand.title", "Brand kit")}
 			</div>
 			{colors.length > 0 ? (
 				<div className="flex gap-1.5" data-testid="brand-palette">

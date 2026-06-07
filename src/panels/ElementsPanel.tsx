@@ -4,7 +4,10 @@ import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { useSyncExternalStore } from "react";
 import { TOOL_RAIL_ITEMS, type ToolDescriptor } from "../chrome/icons.js";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import {
+	useCanvasStudio,
+	useCanvasT,
+} from "../context/canvas-studio-context.js";
 
 export interface ElementsPanelProps {
 	/** Filter tools by label (driven by the Tab Panel search box). */
@@ -26,6 +29,7 @@ export function ElementsPanel({
 	className,
 }: ElementsPanelProps): React.JSX.Element {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
 	const activeTool = useSyncExternalStore(
 		ctx.toolStore.subscribe,
 		() => ctx.toolStore.getState().activeTool,
@@ -33,9 +37,17 @@ export function ElementsPanel({
 	);
 
 	const query = search.trim().toLowerCase();
+	// Resolve the localized label once per tool so the search filter, button
+	// title, and visible caption all match what the user reads.
+	const resolved = tools.map((tool) => ({
+		...tool,
+		resolvedLabel: t(tool.labelKey, tool.label),
+	}));
 	const visible = query
-		? tools.filter((t) => t.label.toLowerCase().includes(query))
-		: tools;
+		? resolved.filter((tool) =>
+				tool.resolvedLabel.toLowerCase().includes(query),
+			)
+		: resolved;
 
 	return (
 		<div
@@ -47,15 +59,18 @@ export function ElementsPanel({
 					className="px-1 py-2 text-xs text-muted-foreground italic"
 					data-testid="elements-panel-empty"
 				>
-					No tools match “{search}”.
+					{t("canvas.elements.noMatch", "No tools match “{search}”.").replace(
+						"{search}",
+						search,
+					)}
 				</div>
 			) : (
 				<div
 					className="grid grid-cols-3 gap-2"
 					role="listbox"
-					aria-label="Drawing tools"
+					aria-label={t("canvas.elements.drawingTools", "Drawing tools")}
 				>
-					{visible.map(({ id, label, icon: Icon }) => {
+					{visible.map(({ id, resolvedLabel, icon: Icon }) => {
 						const active = activeTool === id;
 						return (
 							<Button
@@ -66,7 +81,7 @@ export function ElementsPanel({
 								aria-selected={active}
 								data-testid={`elements-tool-${id}`}
 								data-active={active ? "true" : "false"}
-								title={label}
+								title={resolvedLabel}
 								onClick={() => ctx.toolStore.getState().setActiveTool(id)}
 								className={cn(
 									"h-auto flex-col gap-1.5 rounded-lg px-0 py-3 text-[10.5px] font-medium",
@@ -76,7 +91,7 @@ export function ElementsPanel({
 								)}
 							>
 								<Icon className="size-5" aria-hidden />
-								<span>{label}</span>
+								<span>{resolvedLabel}</span>
 							</Button>
 						);
 					})}

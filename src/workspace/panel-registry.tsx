@@ -14,6 +14,7 @@
  */
 
 import type { ReactNode } from "react";
+import { useCanvasT } from "../context/canvas-studio-context.js";
 import { BrandPanel } from "../panels/BrandPanel.js";
 import { ElementsPanel } from "../panels/ElementsPanel.js";
 import { LayerPanel } from "../panels/LayerPanel.js";
@@ -26,6 +27,9 @@ export interface CanvasPanelContext {
 
 interface PanelDescriptorBase {
 	readonly id: DockId;
+	/** i18n key resolved by the `TabPanel` (`t(titleKey, title)`). Optional so
+	 * host-supplied descriptors can still pass a plain `title`. */
+	readonly titleKey?: string;
 	readonly title: string;
 	/** Show the Tab Panel search box for this panel. */
 	readonly searchable?: boolean;
@@ -70,22 +74,43 @@ export type CanvasPanelRegistry = Partial<
 	Record<DockId, CanvasPanelDescriptor>
 >;
 
+/** Stub-panel body. A component (not inline JSX) so it can resolve the localized
+ * message via `useCanvasT` — the stub `render` runs inside the `TabPanel`, which
+ * mounts under the editor context. */
+function StubBody({
+	id,
+	messageKey,
+	message,
+}: {
+	id: DockId;
+	messageKey: string;
+	message: string;
+}): React.JSX.Element {
+	const t = useCanvasT();
+	return (
+		<div
+			data-testid={`panel-stub-${id}`}
+			className="p-4 text-xs text-muted-foreground italic"
+		>
+			{t(messageKey, message)}
+		</div>
+	);
+}
+
 function stubPanel(
 	id: DockId,
+	titleKey: string,
 	title: string,
+	messageKey: string,
 	message: string,
 ): BuiltinPanelDescriptor {
 	return {
 		kind: "builtin",
 		id,
+		titleKey,
 		title,
 		render: () => (
-			<div
-				data-testid={`panel-stub-${id}`}
-				className="p-4 text-xs text-muted-foreground italic"
-			>
-				{message}
-			</div>
+			<StubBody id={id} messageKey={messageKey} message={message} />
 		),
 	};
 }
@@ -98,6 +123,7 @@ export const defaultCanvasPanelRegistry: CanvasPanelRegistry = {
 	elements: {
 		kind: "builtin",
 		id: "elements",
+		titleKey: "canvas.panel.elements",
 		title: "Elements",
 		searchable: true,
 		render: ({ search }) => <ElementsPanel search={search} />,
@@ -105,19 +131,45 @@ export const defaultCanvasPanelRegistry: CanvasPanelRegistry = {
 	brand: {
 		kind: "builtin",
 		id: "brand",
+		titleKey: "canvas.panel.brandKit",
 		title: "Brand kit",
 		render: () => <BrandPanel />,
 	},
 	layers: {
 		kind: "builtin",
 		id: "layers",
+		titleKey: "canvas.panel.layers",
 		title: "Layers",
 		render: () => <LayerPanel />,
 	},
-	templates: stubPanel("templates", "Templates", "Templates coming soon."),
-	ai: stubPanel("ai", "AI", "AI tools coming soon."),
-	text: stubPanel("text", "Text", "Text presets coming soon."),
-	uploads: stubPanel("uploads", "Uploads", "Upload assets coming soon."),
+	templates: stubPanel(
+		"templates",
+		"canvas.panel.templates",
+		"Templates",
+		"canvas.panel.templatesSoon",
+		"Templates coming soon.",
+	),
+	ai: stubPanel(
+		"ai",
+		"canvas.panel.ai",
+		"AI",
+		"canvas.panel.aiSoon",
+		"AI tools coming soon.",
+	),
+	text: stubPanel(
+		"text",
+		"canvas.panel.text",
+		"Text",
+		"canvas.panel.textSoon",
+		"Text presets coming soon.",
+	),
+	uploads: stubPanel(
+		"uploads",
+		"canvas.panel.uploads",
+		"Uploads",
+		"canvas.panel.uploadsSoon",
+		"Upload assets coming soon.",
+	),
 };
 
 /** Merge host overrides over the defaults (override wins per dock id). */

@@ -5,7 +5,10 @@ import { cn } from "@anvilkit/ui/lib/utils";
 import { Separator } from "@anvilkit/ui/separator";
 import { useSyncExternalStore } from "react";
 import { ChromeIcons } from "../../chrome/icons.js";
-import { useCanvasStudio } from "../../context/canvas-studio-context.js";
+import {
+	useCanvasStudio,
+	useCanvasT,
+} from "../../context/canvas-studio-context.js";
 
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 4;
@@ -27,6 +30,7 @@ export function WorkspaceFooter({
 	className,
 }: WorkspaceFooterProps): React.JSX.Element {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
 	const zoom = useSyncExternalStore(
 		ctx.viewportStore.subscribe,
 		() => ctx.viewportStore.getState().zoom,
@@ -58,8 +62,8 @@ export function WorkspaceFooter({
 					variant="ghost"
 					size="icon-xs"
 					data-testid="workspace-zoom-out"
-					aria-label="Zoom out"
-					title="Zoom out"
+					aria-label={t("canvas.footer.zoomOut", "Zoom out")}
+					title={t("canvas.footer.zoomOut", "Zoom out")}
 					disabled={zoom <= ZOOM_MIN}
 					onClick={() => setZoom(zoom - ZOOM_STEP)}
 				>
@@ -67,7 +71,7 @@ export function WorkspaceFooter({
 				</Button>
 				<input
 					type="range"
-					aria-label="Zoom"
+					aria-label={t("canvas.footer.zoom", "Zoom")}
 					data-testid="workspace-zoom-slider"
 					min={Math.round(ZOOM_MIN * 100)}
 					max={Math.round(ZOOM_MAX * 100)}
@@ -81,8 +85,8 @@ export function WorkspaceFooter({
 					variant="ghost"
 					size="icon-xs"
 					data-testid="workspace-zoom-in"
-					aria-label="Zoom in"
-					title="Zoom in"
+					aria-label={t("canvas.footer.zoomIn", "Zoom in")}
+					title={t("canvas.footer.zoomIn", "Zoom in")}
 					disabled={zoom >= ZOOM_MAX}
 					onClick={() => setZoom(zoom + ZOOM_STEP)}
 				>
@@ -92,12 +96,17 @@ export function WorkspaceFooter({
 					{percent}%
 				</span>
 			</div>
-			<Separator orientation="vertical" className="h-4 data-vertical:self-center" />
+			<Separator
+				orientation="vertical"
+				className="h-4 data-vertical:self-center"
+			/>
 			<span
 				data-testid="workspace-page-count"
 				className="text-muted-foreground"
 			>
-				Page {pageIndex >= 0 ? pageIndex + 1 : 1} / {pages.length}
+				{t("canvas.footer.pageIndicator", "Page {n} / {total}")
+					.replace("{n}", String(pageIndex >= 0 ? pageIndex + 1 : 1))
+					.replace("{total}", String(pages.length))}
 			</span>
 		</footer>
 	);

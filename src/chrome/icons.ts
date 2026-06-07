@@ -39,6 +39,9 @@ export type ChromeIcon = ComponentType<LucideProps>;
 
 export interface ToolDescriptor {
 	id: ToolId;
+	/** i18n key resolved by the consumer (`t(labelKey, label)`). */
+	labelKey: string;
+	/** English fallback when no message catalog is injected. */
 	label: string;
 	icon: ChromeIcon;
 }
@@ -48,16 +51,41 @@ export interface ToolDescriptor {
  * pass a narrower list to `<ToolRail tools=…>` (e.g. to hide pen/AI).
  */
 export const TOOL_RAIL_ITEMS: readonly ToolDescriptor[] = [
-	{ id: "select", label: "Select", icon: MousePointer2 },
-	{ id: "text", label: "Text", icon: Type },
-	{ id: "rect", label: "Rectangle", icon: Square },
-	{ id: "ellipse", label: "Ellipse", icon: Circle },
-	{ id: "line", label: "Line", icon: Minus },
-	{ id: "path", label: "Pen", icon: PenTool },
-	{ id: "image", label: "Image", icon: Image },
-	{ id: "hand", label: "Hand", icon: Hand },
-	{ id: "ai-image", label: "AI Image", icon: Sparkles },
-	{ id: "ai-brush", label: "AI Brush", icon: Brush },
+	{
+		id: "select",
+		labelKey: "canvas.tool.select",
+		label: "Select",
+		icon: MousePointer2,
+	},
+	{ id: "text", labelKey: "canvas.tool.text", label: "Text", icon: Type },
+	{
+		id: "rect",
+		labelKey: "canvas.tool.rect",
+		label: "Rectangle",
+		icon: Square,
+	},
+	{
+		id: "ellipse",
+		labelKey: "canvas.tool.ellipse",
+		label: "Ellipse",
+		icon: Circle,
+	},
+	{ id: "line", labelKey: "canvas.tool.line", label: "Line", icon: Minus },
+	{ id: "path", labelKey: "canvas.tool.path", label: "Pen", icon: PenTool },
+	{ id: "image", labelKey: "canvas.tool.image", label: "Image", icon: Image },
+	{ id: "hand", labelKey: "canvas.tool.hand", label: "Hand", icon: Hand },
+	{
+		id: "ai-image",
+		labelKey: "canvas.tool.aiImage",
+		label: "AI Image",
+		icon: Sparkles,
+	},
+	{
+		id: "ai-brush",
+		labelKey: "canvas.tool.aiBrush",
+		label: "AI Brush",
+		icon: Brush,
+	},
 ] as const;
 
 /** Action icons shared by the stage bar, floating toolbar, and zoom control. */

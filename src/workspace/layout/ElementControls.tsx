@@ -20,7 +20,10 @@ import { cn } from "@anvilkit/ui/lib/utils";
 import type Konva from "konva";
 import { Copy, Lock, LockOpen, MoreHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { useCanvasStudio } from "../../context/canvas-studio-context.js";
+import {
+	useCanvasStudio,
+	useCanvasT,
+} from "../../context/canvas-studio-context.js";
 
 export type AlignDirection =
 	| "left"
@@ -50,20 +53,36 @@ export interface ElementControlsProps {
 	className?: string;
 }
 
-const ALIGN_OPTIONS: readonly { dir: AlignDirection; label: string }[] = [
-	{ dir: "left", label: "Align left" },
-	{ dir: "center-h", label: "Align center" },
-	{ dir: "right", label: "Align right" },
-	{ dir: "top", label: "Align top" },
-	{ dir: "center-v", label: "Align middle" },
-	{ dir: "bottom", label: "Align bottom" },
+const ALIGN_OPTIONS: readonly {
+	dir: AlignDirection;
+	labelKey: string;
+	label: string;
+}[] = [
+	{ dir: "left", labelKey: "canvas.align.left", label: "Align left" },
+	{ dir: "center-h", labelKey: "canvas.align.centerH", label: "Align center" },
+	{ dir: "right", labelKey: "canvas.align.right", label: "Align right" },
+	{ dir: "top", labelKey: "canvas.align.top", label: "Align top" },
+	{ dir: "center-v", labelKey: "canvas.align.centerV", label: "Align middle" },
+	{ dir: "bottom", labelKey: "canvas.align.bottom", label: "Align bottom" },
 ];
 
-const REORDER_OPTIONS: readonly { dir: ReorderDirection; label: string }[] = [
-	{ dir: "front", label: "Bring to front" },
-	{ dir: "forward", label: "Bring forward" },
-	{ dir: "backward", label: "Send backward" },
-	{ dir: "back", label: "Send to back" },
+const REORDER_OPTIONS: readonly {
+	dir: ReorderDirection;
+	labelKey: string;
+	label: string;
+}[] = [
+	{ dir: "front", labelKey: "canvas.reorder.front", label: "Bring to front" },
+	{
+		dir: "forward",
+		labelKey: "canvas.reorder.forward",
+		label: "Bring forward",
+	},
+	{
+		dir: "backward",
+		labelKey: "canvas.reorder.backward",
+		label: "Send backward",
+	},
+	{ dir: "back", labelKey: "canvas.reorder.back", label: "Send to back" },
 ];
 
 /** Gap (in screen px) between the bottom of the toolbar and the top of the
@@ -112,6 +131,7 @@ export function ElementControls({
 	className,
 }: ElementControlsProps): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
 	const selectedIds = useSyncExternalStore(
 		ctx.selectionStore.subscribe,
 		() => ctx.selectionStore.getState().selectedIds,
@@ -219,7 +239,7 @@ export function ElementControls({
 			data-testid="element-controls"
 			data-ak-element-controls=""
 			role="toolbar"
-			aria-label="Element controls"
+			aria-label={t("canvas.element.controls", "Element controls")}
 			className={cn(
 				"pointer-events-auto absolute z-30 flex items-center gap-0.5 rounded-full bg-card px-1.5 py-1 shadow-lg ring-1 ring-border",
 				className,
@@ -238,8 +258,16 @@ export function ElementControls({
 				variant="ghost"
 				data-testid="element-controls-lock"
 				aria-pressed={allLocked}
-				aria-label={allLocked ? "Unlock" : "Lock"}
-				title={allLocked ? "Unlock" : "Lock"}
+				aria-label={
+					allLocked
+						? t("canvas.element.unlock", "Unlock")
+						: t("canvas.element.lock", "Lock")
+				}
+				title={
+					allLocked
+						? t("canvas.element.unlock", "Unlock")
+						: t("canvas.element.lock", "Lock")
+				}
 				onClick={toggleLock}
 			>
 				{allLocked ? <Lock aria-hidden /> : <LockOpen aria-hidden />}
@@ -249,8 +277,8 @@ export function ElementControls({
 				size="icon-sm"
 				variant="ghost"
 				data-testid="element-controls-duplicate"
-				aria-label="Duplicate"
-				title="Duplicate"
+				aria-label={t("canvas.element.duplicate", "Duplicate")}
+				title={t("canvas.element.duplicate", "Duplicate")}
 				disabled={!actions?.onDuplicate}
 				onClick={() => actions?.onDuplicate?.(selectedIds)}
 			>
@@ -261,8 +289,8 @@ export function ElementControls({
 				size="icon-sm"
 				variant="ghost"
 				data-testid="element-controls-delete"
-				aria-label="Delete"
-				title="Delete"
+				aria-label={t("canvas.element.delete", "Delete")}
+				title={t("canvas.element.delete", "Delete")}
 				onClick={deleteSelection}
 			>
 				<Trash2 aria-hidden />
@@ -271,8 +299,8 @@ export function ElementControls({
 			<DropdownMenu>
 				<DropdownMenuTrigger
 					data-testid="element-controls-more"
-					aria-label="More"
-					title="More"
+					aria-label={t("canvas.element.more", "More")}
+					title={t("canvas.element.more", "More")}
 					className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
 				>
 					<MoreHorizontal aria-hidden />
@@ -283,27 +311,27 @@ export function ElementControls({
 						disabled={!actions?.onCopyStyle}
 						onClick={() => actions?.onCopyStyle?.(primary.id)}
 					>
-						Copy style
+						{t("canvas.element.copyStyle", "Copy style")}
 					</DropdownMenuItem>
 					<DropdownMenuItem
 						data-testid="more-paste-style"
 						disabled={!actions?.onPasteStyle}
 						onClick={() => actions?.onPasteStyle?.(selectedIds)}
 					>
-						Paste style
+						{t("canvas.element.pasteStyle", "Paste style")}
 					</DropdownMenuItem>
 					<DropdownMenuItem
 						data-testid="more-delete"
 						variant="destructive"
 						onClick={deleteSelection}
 					>
-						Delete
+						{t("canvas.element.delete", "Delete")}
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					{actions?.onAlign ? (
 						<DropdownMenuSub>
 							<DropdownMenuSubTrigger data-testid="more-align">
-								Align
+								{t("canvas.element.align", "Align")}
 							</DropdownMenuSubTrigger>
 							<DropdownMenuSubContent>
 								{ALIGN_OPTIONS.map((o) => (
@@ -312,20 +340,20 @@ export function ElementControls({
 										data-testid={`more-align-${o.dir}`}
 										onClick={() => actions.onAlign?.(selectedIds, o.dir)}
 									>
-										{o.label}
+										{t(o.labelKey, o.label)}
 									</DropdownMenuItem>
 								))}
 							</DropdownMenuSubContent>
 						</DropdownMenuSub>
 					) : (
 						<DropdownMenuItem data-testid="more-align" disabled>
-							Align
+							{t("canvas.element.align", "Align")}
 						</DropdownMenuItem>
 					)}
 					{actions?.onReorder ? (
 						<DropdownMenuSub>
 							<DropdownMenuSubTrigger data-testid="more-reorder">
-								Layer order
+								{t("canvas.element.layerOrder", "Layer order")}
 							</DropdownMenuSubTrigger>
 							<DropdownMenuSubContent>
 								{REORDER_OPTIONS.map((o) => (
@@ -334,14 +362,14 @@ export function ElementControls({
 										data-testid={`more-reorder-${o.dir}`}
 										onClick={() => actions.onReorder?.(selectedIds, o.dir)}
 									>
-										{o.label}
+										{t(o.labelKey, o.label)}
 									</DropdownMenuItem>
 								))}
 							</DropdownMenuSubContent>
 						</DropdownMenuSub>
 					) : (
 						<DropdownMenuItem data-testid="more-reorder" disabled>
-							Layer order
+							{t("canvas.element.layerOrder", "Layer order")}
 						</DropdownMenuItem>
 					)}
 				</DropdownMenuContent>

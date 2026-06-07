@@ -21,6 +21,15 @@ import type { AiToolIntent } from "../tools/ai-intent.js";
 
 export type CanvasIRGetter = () => CanvasIR;
 
+/**
+ * i18n resolver (P7). `key` is a `canvas.*` message id; `fallback` is the
+ * inline English default. Returns the host-injected translation when present,
+ * else the fallback, else the key. canvas-editor stays standalone (no
+ * `@anvilkit/core` dep) — the host (e.g. plugin-canvas-studio) injects a
+ * locale-selected catalog via `<CanvasWorkspace messages>`.
+ */
+export type CanvasT = (key: string, fallback?: string) => string;
+
 export interface CanvasStudioContextValue {
 	historyStore: HistoryStoreApi;
 	toolStore: ToolStoreApi;
@@ -89,6 +98,13 @@ export interface CanvasStudioContextValue {
 	activePageId: string;
 	/** Current IR. Reactive — context value changes on every commit. */
 	ir: CanvasIR;
+	/**
+	 * i18n resolver (P7). Optional — `<CanvasStudio>` provides one backed by
+	 * its `messages` prop; absent in partial test contexts. Read it via
+	 * {@link useCanvasT}, which falls back to the inline English default so
+	 * callers always get a string.
+	 */
+	t?: CanvasT;
 }
 
 export const CanvasStudioContext =
@@ -102,4 +118,17 @@ export function useCanvasStudio(): CanvasStudioContextValue {
 		);
 	}
 	return ctx;
+}
+
+/** Inline-English fallback resolver used when no catalog/`t` is provided. */
+const DEFAULT_CANVAS_T: CanvasT = (key, fallback) => fallback ?? key;
+
+/**
+ * Resolve `canvas.*` chrome strings. Null-tolerant: when there is no
+ * `<CanvasStudio>` ancestor (or it provides no `t`), returns
+ * {@link DEFAULT_CANVAS_T} so the inline English fallback always renders.
+ */
+export function useCanvasT(): CanvasT {
+	const ctx = use(CanvasStudioContext);
+	return ctx?.t ?? DEFAULT_CANVAS_T;
 }

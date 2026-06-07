@@ -10,7 +10,10 @@ import {
 	useRef,
 	useSyncExternalStore,
 } from "react";
-import { useCanvasStudio } from "../../context/canvas-studio-context.js";
+import {
+	useCanvasStudio,
+	useCanvasT,
+} from "../../context/canvas-studio-context.js";
 import {
 	addPage,
 	deletePage,
@@ -107,29 +110,29 @@ export function PagesCanvas({
 	}, [ctx]);
 
 	return (
-    <div
-      ref={scrollRef}
-      data-testid="pages-canvas"
-      className="min-h-0 flex-1 overflow-auto px-7 pt-16 pb-14 dark:bg-neutral-800 bg-neutral-50"
-    >
-      <div className="flex flex-col items-center gap-8 pb-8">
-        {pages.map((page, index) => (
-          <PageRow
-            key={page.id}
-            page={page}
-            index={index}
-            total={pages.length}
-            zoom={zoom}
-            isActive={page.id === activePageId}
-            stage={stage}
-            elementActions={elementActions}
-            thumbnail={thumbnails.get(page.id)}
-          />
-        ))}
-        <AddPageButton width={addWidth} />
-      </div>
-    </div>
-  );
+		<div
+			ref={scrollRef}
+			data-testid="pages-canvas"
+			className="min-h-0 flex-1 overflow-auto px-7 pt-16 pb-14 dark:bg-neutral-800 bg-neutral-50"
+		>
+			<div className="flex flex-col items-center gap-8 pb-8">
+				{pages.map((page, index) => (
+					<PageRow
+						key={page.id}
+						page={page}
+						index={index}
+						total={pages.length}
+						zoom={zoom}
+						isActive={page.id === activePageId}
+						stage={stage}
+						elementActions={elementActions}
+						thumbnail={thumbnails.get(page.id)}
+					/>
+				))}
+				<AddPageButton width={addWidth} />
+			</div>
+		</div>
+	);
 }
 
 interface PageRowProps {
@@ -157,11 +160,14 @@ function PageRow({
 	thumbnail,
 }: PageRowProps): React.JSX.Element {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
 	const width = page.size.width * zoom;
 	const height = page.size.height * zoom;
 	const label = page.name
-		? `Page ${index + 1} · ${page.name}`
-		: `Page ${index + 1}`;
+		? t("canvas.pages.pageLabelNamed", "Page {n} · {name}")
+				.replace("{n}", String(index + 1))
+				.replace("{name}", page.name)
+		: t("canvas.pages.pageLabel", "Page {n}").replace("{n}", String(index + 1));
 
 	return (
 		<div
@@ -180,8 +186,8 @@ function PageRow({
 					size="icon-xs"
 					className={SURFACE_GHOST}
 					data-testid={`page-reorder-up-${page.id}`}
-					aria-label="Move page up"
-					title="Move up"
+					aria-label={t("canvas.pages.moveUp", "Move page up")}
+					title={t("canvas.pages.moveUpTitle", "Move up")}
 					disabled={index === 0}
 					onClick={() => reorderPage(ctx, page.id, index - 1)}
 				>
@@ -193,8 +199,8 @@ function PageRow({
 					size="icon-xs"
 					className={SURFACE_GHOST}
 					data-testid={`page-reorder-down-${page.id}`}
-					aria-label="Move page down"
-					title="Move down"
+					aria-label={t("canvas.pages.moveDown", "Move page down")}
+					title={t("canvas.pages.moveDownTitle", "Move down")}
 					disabled={index === total - 1}
 					onClick={() => reorderPage(ctx, page.id, index + 1)}
 				>
@@ -206,8 +212,8 @@ function PageRow({
 					size="icon-xs"
 					className={SURFACE_GHOST}
 					data-testid={`page-duplicate-${page.id}`}
-					aria-label="Duplicate page"
-					title="Duplicate"
+					aria-label={t("canvas.pages.duplicate", "Duplicate page")}
+					title={t("canvas.pages.duplicateTitle", "Duplicate")}
 					onClick={() => {
 						switchToPage(ctx, page.id);
 						duplicateCurrentPage(ctx);
@@ -221,8 +227,8 @@ function PageRow({
 					size="icon-xs"
 					className={SURFACE_GHOST}
 					data-testid={`page-delete-${page.id}`}
-					aria-label="Delete page"
-					title="Delete"
+					aria-label={t("canvas.pages.delete", "Delete page")}
+					title={t("canvas.pages.deleteTitle", "Delete")}
 					disabled={total <= 1}
 					onClick={() => deletePage(ctx, page.id)}
 				>
@@ -243,7 +249,10 @@ function PageRow({
 				<button
 					type="button"
 					data-testid={`page-activate-${page.id}`}
-					aria-label={`Activate ${label}`}
+					aria-label={t("canvas.pages.activate", "Activate {label}").replace(
+						"{label}",
+						label,
+					)}
 					onClick={() => switchToPage(ctx, page.id)}
 					className={cn(
 						"block overflow-hidden rounded-[3px] bg-background shadow-[0_4px_20px_-6px_rgba(0,0,0,0.3)] ring-1 ring-foreground/15 transition hover:ring-2 hover:ring-violet-500/60",
@@ -266,17 +275,19 @@ function PageRow({
 
 function AddPageButton({ width }: { width: number }): React.JSX.Element {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
+	const addPageLabel = t("canvas.pages.addPage", "Add page");
 	return (
 		<button
 			type="button"
 			data-testid="page-add"
-			aria-label="Add page"
+			aria-label={addPageLabel}
 			onClick={() => addPage(ctx)}
 			className="flex h-12 items-center justify-center gap-2 rounded-lg border border-dashed border-foreground/20 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
 			style={width > 0 ? { width } : undefined}
 		>
 			<Plus className="size-4" aria-hidden />
-			Add page
+			{addPageLabel}
 		</button>
 	);
 }
