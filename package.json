@@ -28,6 +28,8 @@
 			}
 		},
 		"./styles.css": "./dist/styles.css",
+		"./i18n/en.json": "./i18n/messages/en.json",
+		"./i18n/zh.json": "./i18n/messages/zh.json",
 		"./*": {
 			"import": {
 				"types": "./dist/*.d.ts",
@@ -40,7 +42,8 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"i18n"
 	],
 	"license": "MIT",
 	"sideEffects": false,

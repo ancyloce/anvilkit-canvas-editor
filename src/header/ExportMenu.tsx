@@ -13,7 +13,10 @@ import { RadioGroup, RadioGroupItem } from "@anvilkit/ui/radio-group";
 import { Slider } from "@anvilkit/ui/slider";
 import { Download } from "lucide-react";
 import { useState } from "react";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import {
+	useCanvasStudio,
+	useCanvasT,
+} from "../context/canvas-studio-context.js";
 import {
 	DEFAULT_CANVAS_EXPORTERS,
 	downloadCanvasArtifact,
@@ -21,17 +24,40 @@ import {
 import type { CanvasExportFormat, CanvasExportPluginOptions } from "./types.js";
 
 interface FormatMeta {
+	/** Format acronym — locale-neutral, not translated. */
 	readonly label: string;
+	/** i18n key for the hint; `hint` is the English fallback. */
+	readonly hintKey: string;
 	readonly hint: string;
 	/** Raster pipelines honor quality/resolution; vector/data formats don't. */
 	readonly raster: boolean;
 }
 
 const FORMAT_META: Record<CanvasExportFormat, FormatMeta> = {
-	png: { label: "PNG", hint: "Best for photos", raster: true },
-	svg: { label: "SVG", hint: "Scalable vector", raster: false },
-	pdf: { label: "PDF", hint: "Print-ready", raster: true },
-	json: { label: "JSON", hint: "Editable scene", raster: false },
+	png: {
+		label: "PNG",
+		hintKey: "canvas.export.hint.png",
+		hint: "Best for photos",
+		raster: true,
+	},
+	svg: {
+		label: "SVG",
+		hintKey: "canvas.export.hint.svg",
+		hint: "Scalable vector",
+		raster: false,
+	},
+	pdf: {
+		label: "PDF",
+		hintKey: "canvas.export.hint.pdf",
+		hint: "Print-ready",
+		raster: true,
+	},
+	json: {
+		label: "JSON",
+		hintKey: "canvas.export.hint.json",
+		hint: "Editable scene",
+		raster: false,
+	},
 };
 
 const FORMAT_ORDER: readonly CanvasExportFormat[] = [
@@ -42,9 +68,14 @@ const FORMAT_ORDER: readonly CanvasExportFormat[] = [
 ];
 
 const RESOLUTIONS = [
-	{ value: "50", label: "50%", scale: 0.5 },
-	{ value: "100", label: "100%", scale: 1 },
-	{ value: "custom", label: "Custom", scale: 1 },
+	{ value: "50", labelKey: "canvas.export.res50", label: "50%", scale: 0.5 },
+	{ value: "100", labelKey: "canvas.export.res100", label: "100%", scale: 1 },
+	{
+		value: "custom",
+		labelKey: "canvas.export.resCustom",
+		label: "Custom",
+		scale: 1,
+	},
 ] as const;
 
 function resolutionScale(value: string): number {
@@ -64,6 +95,7 @@ export function ExportMenu({
 	onError,
 }: CanvasExportPluginOptions): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
 	const merged = { ...DEFAULT_CANVAS_EXPORTERS, ...exporters };
 	const available = (formats ?? FORMAT_ORDER).filter((f) => merged[f]);
 
@@ -115,7 +147,7 @@ export function ExportMenu({
 					className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}
 				>
 					<Download className="size-3.5" />
-					Export
+					{t("canvas.export.trigger", "Export")}
 				</PopoverTrigger>
 				<PopoverPanel
 					align="end"
@@ -130,7 +162,7 @@ export function ExportMenu({
 						</div>
 						<div className="min-w-0">
 							<p className="truncate text-sm font-semibold text-foreground">
-								Export image
+								{t("canvas.export.title", "Export image")}
 							</p>
 							<p className="truncate text-xs text-muted-foreground">
 								{name}.{activeFormat}
@@ -141,7 +173,9 @@ export function ExportMenu({
 
 					{/* Format */}
 					<section className="space-y-2 rounded-xl bg-muted/40 p-3">
-						<p className="text-xs font-medium text-muted-foreground">Format</p>
+						<p className="text-xs font-medium text-muted-foreground">
+							{t("canvas.export.format", "Format")}
+						</p>
 						<RadioGroup
 							className="grid-cols-2"
 							value={activeFormat}
@@ -163,7 +197,7 @@ export function ExportMenu({
 											{FORMAT_META[f].label}
 										</span>
 										<span className="text-[0.7rem] font-normal text-muted-foreground">
-											{FORMAT_META[f].hint}
+											{t(FORMAT_META[f].hintKey, FORMAT_META[f].hint)}
 										</span>
 									</span>
 									<RadioGroupItem id={`canvas-export-format-${f}`} value={f} />
@@ -174,7 +208,9 @@ export function ExportMenu({
 
 					{/* Quality */}
 					<section className="space-y-2 rounded-xl bg-muted/40 p-3">
-						<p className="text-xs font-medium text-muted-foreground">Quality</p>
+						<p className="text-xs font-medium text-muted-foreground">
+							{t("canvas.export.quality", "Quality")}
+						</p>
 						<Slider
 							value={[quality]}
 							min={0}
@@ -185,15 +221,15 @@ export function ExportMenu({
 							}
 						/>
 						<div className="flex justify-between text-[0.7rem] text-muted-foreground">
-							<span>Smaller file</span>
-							<span>Best quality</span>
+							<span>{t("canvas.export.smallerFile", "Smaller file")}</span>
+							<span>{t("canvas.export.bestQuality", "Best quality")}</span>
 						</div>
 					</section>
 
 					{/* Resolution */}
 					<section className="space-y-2 rounded-xl bg-muted/40 p-3">
 						<p className="text-xs font-medium text-muted-foreground">
-							Resolution
+							{t("canvas.export.resolution", "Resolution")}
 						</p>
 						<RadioGroup
 							className="grid-cols-3"
@@ -212,7 +248,7 @@ export function ExportMenu({
 										!meta.raster && "cursor-not-allowed opacity-50",
 									)}
 								>
-									{r.label}
+									{t(r.labelKey, r.label)}
 									<RadioGroupItem
 										id={`canvas-export-res-${r.value}`}
 										value={r.value}
@@ -227,16 +263,19 @@ export function ExportMenu({
 					<section className="flex items-center justify-between rounded-xl bg-muted/40 p-3">
 						<div className="space-y-0.5">
 							<p className="text-sm font-medium text-foreground">
-								Remove metadata
+								{t("canvas.export.removeMetadata", "Remove metadata")}
 							</p>
 							<p className="text-[0.7rem] text-muted-foreground">
-								Strips EXIF, location, camera info
+								{t(
+									"canvas.export.removeMetadataHint",
+									"Strips EXIF, location, camera info",
+								)}
 							</p>
 						</div>
 						<Switch
 							checked={stripMetadata}
 							onCheckedChange={(checked) => setStripMetadata(checked)}
-							aria-label="Remove metadata"
+							aria-label={t("canvas.export.removeMetadata", "Remove metadata")}
 						/>
 					</section>
 
@@ -248,7 +287,7 @@ export function ExportMenu({
 							onClick={() => setOpen(false)}
 							data-testid="canvas-export-cancel"
 						>
-							Cancel
+							{t("canvas.export.cancel", "Cancel")}
 						</Button>
 						<Button
 							size="sm"
@@ -258,7 +297,10 @@ export function ExportMenu({
 							}}
 							data-testid="canvas-export-save"
 						>
-							Export {meta.label}
+							{t("canvas.export.exportFormat", "Export {label}").replace(
+								"{label}",
+								meta.label,
+							)}
 						</Button>
 					</div>
 				</PopoverPanel>

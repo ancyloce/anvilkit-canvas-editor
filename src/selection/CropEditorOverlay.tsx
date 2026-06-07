@@ -7,7 +7,10 @@ import {
 	useRef,
 	useSyncExternalStore,
 } from "react";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import {
+	useCanvasStudio,
+	useCanvasT,
+} from "../context/canvas-studio-context.js";
 import type { CropRect, CropStoreApi } from "../stores/crop-store.js";
 import {
 	type CropDragMode,
@@ -52,6 +55,7 @@ function CropEditorOverlayInner({
 	cropStore: CropStoreApi;
 }): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
+	const t = useCanvasT();
 	const { stage, getIR, viewportStore } = ctx;
 	const cropNodeId = useSyncExternalStore(
 		cropStore.subscribe,
@@ -215,8 +219,8 @@ function CropEditorOverlayInner({
 				<button
 					type="button"
 					data-testid="crop-confirm"
-					title="Apply crop (Enter)"
-					aria-label="Apply crop"
+					title={t("canvas.crop.applyTitle", "Apply crop (Enter)")}
+					aria-label={t("canvas.crop.apply", "Apply crop")}
 					onClick={() => commitCrop(ctx)}
 					style={cropButtonStyle("#2563eb", "#ffffff")}
 				>
@@ -225,8 +229,8 @@ function CropEditorOverlayInner({
 				<button
 					type="button"
 					data-testid="crop-cancel"
-					title="Cancel crop (Esc)"
-					aria-label="Cancel crop"
+					title={t("canvas.crop.cancelTitle", "Cancel crop (Esc)")}
+					aria-label={t("canvas.crop.cancel", "Cancel crop")}
 					onClick={() => cancelCrop(ctx)}
 					style={cropButtonStyle("#ffffff", "#374151")}
 				>

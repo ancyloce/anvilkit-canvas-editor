@@ -24,7 +24,10 @@ import {
 	Text,
 } from "react-konva";
 import useImage from "use-image";
-import { CanvasStudioContext } from "../context/canvas-studio-context.js";
+import {
+	CanvasStudioContext,
+	useCanvasT,
+} from "../context/canvas-studio-context.js";
 import { useCanvasAsset } from "./CanvasAssetsContext.js";
 import { nodeRenderOffset } from "./node-render-offset.js";
 
@@ -163,6 +166,8 @@ interface PlaceholderStatusStyle {
 	stroke: string;
 	fill: string;
 	color: string;
+	/** i18n key for the status label; `label` is the English fallback. */
+	labelKey: string;
 	label: string;
 }
 
@@ -175,18 +180,21 @@ const PLACEHOLDER_STATUS_STYLE: Record<
 		stroke: "#6366f1",
 		fill: "rgba(99, 102, 241, 0.08)",
 		color: "#4f46e5",
+		labelKey: "canvas.placeholder.generating",
 		label: "Generating…",
 	},
 	complete: {
 		stroke: "#888",
 		fill: "rgba(136, 136, 136, 0.08)",
 		color: "#666",
+		labelKey: "canvas.placeholder.ready",
 		label: "AI ready",
 	},
 	error: {
 		stroke: "#dc2626",
 		fill: "rgba(220, 38, 38, 0.08)",
 		color: "#b91c1c",
+		labelKey: "canvas.placeholder.failed",
 		label: "AI failed",
 	},
 };
@@ -200,6 +208,7 @@ function CanvasAiPlaceholderNodeRenderer({
 	// (e.g. unit tests render the node directly), where there is no AI job
 	// registry — and a non-pending placeholder has no job to cancel.
 	const studio = use(CanvasStudioContext);
+	const t = useCanvasT();
 	const base = commonProps(node);
 	const style = PLACEHOLDER_STATUS_STYLE[node.status];
 	const width = node.bounds.width;
@@ -235,7 +244,7 @@ function CanvasAiPlaceholderNodeRenderer({
 				fill={style.fill}
 			/>
 			<Text
-				text={style.label}
+				text={t(style.labelKey, style.label)}
 				x={8}
 				y={8}
 				fontSize={14}
@@ -276,7 +285,7 @@ function CanvasAiPlaceholderNodeRenderer({
 						strokeWidth={1}
 					/>
 					<Text
-						text="Cancel"
+						text={t("canvas.placeholder.cancel", "Cancel")}
 						width={cancelW}
 						y={4}
 						align="center"
