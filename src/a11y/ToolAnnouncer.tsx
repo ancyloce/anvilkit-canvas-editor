@@ -34,7 +34,9 @@ export function ToolAnnouncer(): React.JSX.Element {
 		() => ctx.toolStore.getState().activeTool,
 		() => ctx.toolStore.getState().activeTool,
 	);
-	const toolName = t(TOOL_LABEL_KEYS[activeTool], TOOL_LABELS[activeTool]);
+	// Custom (extension) tools have no built-in label key — announce their id.
+	const labelKey = TOOL_LABEL_KEYS[activeTool];
+	const toolName = labelKey ? t(labelKey, TOOL_LABELS[activeTool]) : activeTool;
 	return (
 		<div
 			data-testid="tool-announcer"
