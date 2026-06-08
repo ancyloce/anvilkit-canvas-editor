@@ -40,39 +40,36 @@ export interface CanvasStudioContextValue {
 	editingStore: EditingStoreApi;
 	pagesStore: PagesStoreApi;
 	/**
-	 * Owns the live {@link CanvasIR} scene. Optional in the context (like
-	 * {@link aiJobStore}) so partial test contexts need not construct it;
-	 * `<CanvasStudio>` always provides it. The Yjs collab prototype (I3-1)
-	 * binds this store to a `Y.Doc`. Prefer {@link getIR}/{@link commit}/{@link ir}
-	 * for normal reads and mutations — `sceneStore` is the collab seam.
+	 * Owns the live {@link CanvasIR} scene. Always provided by `<CanvasStudio>`
+	 * (W2 — required, not optional, so app code gets type safety without
+	 * defensive guards). The Yjs collab prototype (I3-1) binds this store to a
+	 * `Y.Doc`. Prefer {@link getIR}/{@link commit}/{@link ir} for normal reads
+	 * and mutations — `sceneStore` is the collab seam. Tests that need a partial
+	 * context should fill the stores (e.g. via `createSceneStore`).
 	 */
-	sceneStore?: SceneStoreApi;
+	sceneStore: SceneStoreApi;
 	/**
 	 * Transient registry of in-flight AI jobs backing `ai-placeholder` nodes
 	 * (I1-10). The host registers an abort handle when it starts a job; the
 	 * placeholder's on-canvas Cancel button calls `aiJobStore.cancel(jobId)`.
-	 * Always provided by `<CanvasStudio>`; optional (like {@link requestAiIntent})
-	 * so partial test contexts for non-AI components need not construct it.
+	 * Always provided by `<CanvasStudio>` (W2 — required).
 	 */
-	aiJobStore?: AiJobStoreApi;
+	aiJobStore: AiJobStoreApi;
 	/**
-	 * Drives the interactive image-crop editor (I3-2). Optional (like
-	 * {@link aiJobStore}) so partial test contexts need not construct it;
-	 * `<CanvasStudio>` always provides it.
+	 * Drives the interactive image-crop editor (I3-2). Always provided by
+	 * `<CanvasStudio>` (W2 — required).
 	 */
-	cropStore?: CropStoreApi;
+	cropStore: CropStoreApi;
 	/**
-	 * Multi-click pen-path state (I3-2). Optional (like {@link cropStore}) so
-	 * partial test contexts need not construct it; `<CanvasStudio>` always
-	 * provides it. The `path` tool and `PenToolOverlay` read it.
+	 * Multi-click pen-path state (I3-2). Always provided by `<CanvasStudio>`
+	 * (W2 — required). The `path` tool and `PenToolOverlay` read it.
 	 */
-	penStore?: PenStoreApi;
+	penStore: PenStoreApi;
 	/**
-	 * On-stage path point-editing mode (I3-2). Optional (like {@link cropStore})
-	 * so partial test contexts need not construct it; `<CanvasStudio>` always
-	 * provides it. The `PathEditOverlay` reads it.
+	 * On-stage path point-editing mode (I3-2). Always provided by
+	 * `<CanvasStudio>` (W2 — required). The `PathEditOverlay` reads it.
 	 */
-	pathEditStore?: PathEditStoreApi;
+	pathEditStore: PathEditStoreApi;
 	getIR: CanvasIRGetter;
 	commit: (cmd: CanvasCommand) => CanvasIR;
 	pickAsset: () => Promise<string>;
@@ -110,6 +107,23 @@ export interface CanvasStudioContextValue {
 export const CanvasStudioContext =
 	createContext<CanvasStudioContextValue | null>(null);
 
+/**
+ * The stable half of {@link CanvasStudioContextValue} (W16): the store handles
+ * and host callbacks, with NO per-commit live state (`ir`/`activePageId`/
+ * `stage`). `<CanvasStudio>` memoizes this so its identity never changes after
+ * mount, letting components that only need stores subscribe via
+ * {@link useCanvasStores} and skip the re-render that fires on every edit for
+ * consumers of the full {@link CanvasStudioContext}.
+ */
+export type CanvasStudioStableValue = Omit<
+	CanvasStudioContextValue,
+	"ir" | "activePageId" | "stage"
+>;
+
+/** Stable-only context (W16). Provided alongside {@link CanvasStudioContext}. */
+export const CanvasStudioStableContext =
+	createContext<CanvasStudioStableValue | null>(null);
+
 export function useCanvasStudio(): CanvasStudioContextValue {
 	const ctx = use(CanvasStudioContext);
 	if (!ctx) {
@@ -118,6 +132,28 @@ export function useCanvasStudio(): CanvasStudioContextValue {
 		);
 	}
 	return ctx;
+}
+
+/**
+ * Read the stable store handles + callbacks WITHOUT subscribing to the live
+ * per-commit state (W16). Use this in components that only touch stores/commit
+ * and have no need for `ir`/`activePageId`/`stage`, so they don't re-render on
+ * every edit.
+ *
+ * Falls back to the full {@link CanvasStudioContext} when the stable context is
+ * absent — e.g. a partial test context that mounts only the merged provider.
+ * The fallback `use(...)` is intentionally conditional (legal for `use`, unlike
+ * other hooks): when the stable context IS present the merged context is never
+ * read, so no per-commit subscription is created and the optimization holds.
+ */
+export function useCanvasStores(): CanvasStudioStableValue {
+	const stable = use(CanvasStudioStableContext);
+	if (stable) return stable;
+	const merged = use(CanvasStudioContext);
+	if (merged) return merged;
+	throw new Error(
+		"useCanvasStores must be called inside a <CanvasStudio> tree.",
+	);
 }
 
 /** Inline-English fallback resolver used when no catalog/`t` is provided. */
