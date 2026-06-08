@@ -6,8 +6,9 @@ import {
 	createRect,
 	createText,
 } from "@anvilkit/canvas-core";
-import { act, render } from "@testing-library/react";
-import { type ReactNode, useSyncExternalStore } from "react";
+import { act, fireEvent, render } from "@testing-library/react";
+import type Konva from "konva";
+import { type ReactNode, useEffect, useSyncExternalStore } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type ElementCall = { type: string; props: Record<string, unknown> };
@@ -86,6 +87,29 @@ vi.mock("../render/rasterize-page.js", () => ({
 }));
 
 import { CanvasStudio, type Tool, useCanvasStudio } from "../index.js";
+
+function KbSelectProbe({ ids }: { ids: readonly string[] }): null {
+	const ctx = useCanvasStudio();
+	useEffect(() => {
+		ctx.selectionStore.getState().setSelection(ids);
+	}, [ctx, ids]);
+	return null;
+}
+
+function KbFocusProbe({ id }: { id: string }): null {
+	const ctx = useCanvasStudio();
+	useEffect(() => {
+		ctx.focusStore.getState().setFocus(id);
+	}, [ctx, id]);
+	return null;
+}
+
+let capturedSelectionIds: () => string[] = () => [];
+function CaptureSelection(): null {
+	const ctx = useCanvasStudio();
+	capturedSelectionIds = () => ctx.selectionStore.getState().selectedIds;
+	return null;
+}
 
 function layerCalls() {
 	return calls.filter((c) => c.type === "Layer");
@@ -175,6 +199,364 @@ describe("CanvasStudio integration", () => {
 		expect(dragLayer?.querySelector('[data-id="r1"]')).not.toBeNull();
 		expect(objectsLayer?.querySelector('[data-id="r1"]')).toBeNull();
 		expect(objectsLayer?.querySelector('[data-id="r2"]')).not.toBeNull();
+	});
+
+	it("activates a custom tool contributed via extensions", () => {
+		const onActivate = vi.fn();
+		const ir = createCanvasIR({
+			pages: [createPage({ id: "p1" })],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				initialTool="custom.probe"
+				extensions={[
+					{
+						id: "ext-tool",
+						tools: [{ id: "custom.probe", cursor: "crosshair", onActivate }],
+					},
+				]}
+			/>,
+		);
+		// The extension tool must be merged into the registry, and the tool layer
+		// activates the initial tool → onActivate fires.
+		expect(onActivate).toHaveBeenCalled();
+	});
+
+	it("keyboard: nudges the selected node on ArrowRight via commit", () => {
+		let stage: Konva.Stage | null = null;
+		const onChange = vi.fn();
+		const ir = createCanvasIR({
+			pages: [
+				(() => {
+					const page = createPage({ id: "p1" });
+					page.root = createGroup({
+						id: "p1-root",
+						bounds: page.root.bounds,
+						children: [
+							createRect({
+								id: "r1",
+								bounds: { width: 20, height: 20 },
+								transform: { x: 10, y: 20 },
+							}),
+						],
+					});
+					return page;
+				})(),
+			],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				onChange={onChange}
+				onStageReady={(s) => {
+					if (s) stage = s;
+				}}
+			>
+				<KbSelectProbe ids={["r1"]} />
+			</CanvasStudio>,
+		);
+		if (!stage) throw new Error("stage not ready");
+		fireEvent.keyDown((stage as Konva.Stage).container(), {
+			key: "ArrowRight",
+		});
+		expect(onChange.mock.calls.at(-1)?.[1]).toMatchObject({
+			type: "node.move",
+			nodeId: "r1",
+			to: { x: 11, y: 20 },
+		});
+	});
+
+	it("keyboard: ignores keystrokes from form fields", () => {
+		let stage: Konva.Stage | null = null;
+		const onChange = vi.fn();
+		const ir = createCanvasIR({
+			pages: [
+				(() => {
+					const page = createPage({ id: "p1" });
+					page.root = createGroup({
+						id: "p1-root",
+						bounds: page.root.bounds,
+						children: [
+							createRect({ id: "r1", bounds: { width: 20, height: 20 } }),
+						],
+					});
+					return page;
+				})(),
+			],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				onChange={onChange}
+				onStageReady={(s) => {
+					if (s) stage = s;
+				}}
+			>
+				<KbSelectProbe ids={["r1"]} />
+			</CanvasStudio>,
+		);
+		if (!stage) throw new Error("stage not ready");
+		const input = document.createElement("input");
+		(stage as Konva.Stage).container().appendChild(input);
+		fireEvent.keyDown(input, { key: "ArrowRight" });
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it("keyboard: Cmd/Ctrl+G groups the multi-selection", () => {
+		let stage: Konva.Stage | null = null;
+		const onChange = vi.fn();
+		const ir = createCanvasIR({
+			pages: [
+				(() => {
+					const page = createPage({ id: "p1" });
+					page.root = createGroup({
+						id: "p1-root",
+						bounds: page.root.bounds,
+						children: [
+							createRect({ id: "a", bounds: { width: 10, height: 10 } }),
+							createRect({
+								id: "b",
+								bounds: { width: 10, height: 10 },
+								transform: { x: 50 },
+							}),
+						],
+					});
+					return page;
+				})(),
+			],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				onChange={onChange}
+				onStageReady={(s) => {
+					if (s) stage = s;
+				}}
+			>
+				<KbSelectProbe ids={["a", "b"]} />
+			</CanvasStudio>,
+		);
+		if (!stage) throw new Error("stage not ready");
+		fireEvent.keyDown((stage as Konva.Stage).container(), {
+			key: "g",
+			metaKey: true,
+		});
+		expect(
+			onChange.mock.calls.some(
+				(c) => (c[1] as { type?: string } | undefined)?.type === "node.group",
+			),
+		).toBe(true);
+	});
+
+	it("keyboard: Ctrl+] reorders the selected node", () => {
+		let stage: Konva.Stage | null = null;
+		const onChange = vi.fn();
+		const ir = createCanvasIR({
+			pages: [
+				(() => {
+					const page = createPage({ id: "p1" });
+					page.root = createGroup({
+						id: "p1-root",
+						bounds: page.root.bounds,
+						children: [
+							createRect({ id: "a", bounds: { width: 1, height: 1 } }),
+							createRect({ id: "b", bounds: { width: 1, height: 1 } }),
+							createRect({ id: "c", bounds: { width: 1, height: 1 } }),
+						],
+					});
+					return page;
+				})(),
+			],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				onChange={onChange}
+				onStageReady={(s) => {
+					if (s) stage = s;
+				}}
+			>
+				<KbSelectProbe ids={["b"]} />
+			</CanvasStudio>,
+		);
+		if (!stage) throw new Error("stage not ready");
+		fireEvent.keyDown((stage as Konva.Stage).container(), {
+			key: "]",
+			ctrlKey: true,
+		});
+		expect(
+			onChange.mock.calls.some(
+				(c) => (c[1] as { type?: string } | undefined)?.type === "node.reorder",
+			),
+		).toBe(true);
+	});
+
+	it("renders a focus ring for the keyboard-focused node", () => {
+		const ir = createCanvasIR({
+			pages: [
+				(() => {
+					const page = createPage({ id: "p1" });
+					page.root = createGroup({
+						id: "p1-root",
+						bounds: page.root.bounds,
+						children: [
+							createRect({ id: "r1", bounds: { width: 20, height: 20 } }),
+						],
+					});
+					return page;
+				})(),
+			],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		const { container } = render(
+			<CanvasStudio initialIR={ir} initialActivePageId="p1">
+				<KbFocusProbe id="r1" />
+			</CanvasStudio>,
+		);
+		expect(
+			container.querySelector('[data-layer-name="ak-focus-ring"]'),
+		).not.toBeNull();
+	});
+
+	it("keyboard: Cmd/Ctrl+A selects all top-level nodes", () => {
+		let stage: Konva.Stage | null = null;
+		const ir = createCanvasIR({
+			pages: [
+				(() => {
+					const page = createPage({ id: "p1" });
+					page.root = createGroup({
+						id: "p1-root",
+						bounds: page.root.bounds,
+						children: [
+							createRect({ id: "a", bounds: { width: 1, height: 1 } }),
+							createRect({ id: "b", bounds: { width: 1, height: 1 } }),
+							createText({
+								id: "t",
+								text: "x",
+								bounds: { width: 1, height: 1 },
+							}),
+						],
+					});
+					return page;
+				})(),
+			],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				onStageReady={(s) => {
+					if (s) stage = s;
+				}}
+			>
+				<CaptureSelection />
+			</CanvasStudio>,
+		);
+		if (!stage) throw new Error("stage not ready");
+		fireEvent.keyDown((stage as Konva.Stage).container(), {
+			key: "a",
+			ctrlKey: true,
+		});
+		expect([...capturedSelectionIds()].sort()).toEqual(["a", "b", "t"]);
+	});
+
+	it("keyboard: Cmd/Ctrl+Shift+A selects same-kind nodes", () => {
+		let stage: Konva.Stage | null = null;
+		const ir = createCanvasIR({
+			pages: [
+				(() => {
+					const page = createPage({ id: "p1" });
+					page.root = createGroup({
+						id: "p1-root",
+						bounds: page.root.bounds,
+						children: [
+							createRect({ id: "a", bounds: { width: 1, height: 1 } }),
+							createRect({ id: "b", bounds: { width: 1, height: 1 } }),
+							createText({
+								id: "t",
+								text: "x",
+								bounds: { width: 1, height: 1 },
+							}),
+						],
+					});
+					return page;
+				})(),
+			],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				onStageReady={(s) => {
+					if (s) stage = s;
+				}}
+			>
+				<KbSelectProbe ids={["a"]} />
+				<CaptureSelection />
+			</CanvasStudio>,
+		);
+		if (!stage) throw new Error("stage not ready");
+		fireEvent.keyDown((stage as Konva.Stage).container(), {
+			key: "a",
+			ctrlKey: true,
+			shiftKey: true,
+		});
+		expect([...capturedSelectionIds()].sort()).toEqual(["a", "b"]);
+	});
+
+	it("passes gradient fill props to the Konva shape", () => {
+		const ir = createCanvasIR({
+			pages: [
+				(() => {
+					const page = createPage({ id: "p1" });
+					page.root = createGroup({
+						id: "p1-root",
+						bounds: page.root.bounds,
+						children: [
+							{
+								id: "r1",
+								type: "rect",
+								transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+								bounds: { width: 10, height: 10 },
+								zIndex: 0,
+								fill: {
+									kind: "linear",
+									stops: [
+										{ offset: 0, color: "#ff0000" },
+										{ offset: 1, color: "#0000ff" },
+									],
+									from: { x: 0, y: 0 },
+									to: { x: 1, y: 1 },
+								},
+							} as never,
+						],
+					});
+					return page;
+				})(),
+			],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		render(<CanvasStudio initialIR={ir} initialActivePageId="p1" />);
+		expect(
+			calls.some(
+				(c) =>
+					c.type === "Rect" &&
+					Array.isArray(c.props.fillLinearGradientColorStops),
+			),
+		).toBe(true);
 	});
 
 	it("renders one CanvasNodeRenderer per top-level child of the active page root", () => {

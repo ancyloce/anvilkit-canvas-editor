@@ -40,6 +40,11 @@ export {
 	useCanvasStudio,
 	useCanvasT,
 } from "./context/canvas-studio-context.js";
+export type {
+	CanvasEditorExtension,
+	CanvasKindInspector,
+	CanvasKindRenderer,
+} from "./extensions/editor-extension.js";
 // ── Export / header ──────────────────────────────────────────────────────────
 export type {
 	CanvasExportArtifact,

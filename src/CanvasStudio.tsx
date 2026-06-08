@@ -1,6 +1,11 @@
 "use client";
 
-import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
+import {
+	type CanvasChange,
+	type CanvasCommand,
+	type CanvasIR,
+	commandToChange,
+} from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import {
 	useCallback,
@@ -10,7 +15,10 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { CanvasFocusRing } from "./a11y/CanvasFocusRing.js";
+import { SceneAccessibilityTree } from "./a11y/SceneAccessibilityTree.js";
 import { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
+import { CanvasKeyboardLayer } from "./a11y/useCanvasKeyboard.js";
 import type { BrandKit } from "./brand/brand-kit.js";
 import { CanvasErrorBoundary } from "./CanvasErrorBoundary.js";
 import {
@@ -20,6 +28,11 @@ import {
 	type CanvasStudioStableValue,
 	type CanvasT,
 } from "./context/canvas-studio-context.js";
+import type {
+	CanvasEditorExtension,
+	CanvasKindInspector,
+	CanvasKindRenderer,
+} from "./extensions/editor-extension.js";
 import { PageNavigator } from "./pages/PageNavigator.js";
 import { draggedIdsKey } from "./perf/active-nodes.js";
 import { useStaticGroupCache } from "./perf/static-cache.js";
@@ -39,6 +52,7 @@ import { createAiJobStore } from "./stores/ai-job-store.js";
 import { createCropStore } from "./stores/crop-store.js";
 import { createDraftStore } from "./stores/draft-store.js";
 import { createEditingStore } from "./stores/editing-store.js";
+import { createFocusStore } from "./stores/focus-store.js";
 import { createGuidesStore } from "./stores/guides-store.js";
 import { createHistoryStore } from "./stores/history-store.js";
 import { createPagesStore } from "./stores/pages-store.js";
@@ -54,6 +68,7 @@ import { PenPreview } from "./tools/PenPreview.js";
 import { PenToolOverlay } from "./tools/PenToolOverlay.js";
 import { TextEditorOverlay } from "./tools/TextEditorOverlay.js";
 import { ToolInteractionLayer } from "./tools/ToolInteractionLayer.js";
+import { defaultToolRegistry } from "./tools/tool-registry.js";
 import type { ToolRegistry } from "./tools/tool-types.js";
 
 export interface CanvasStudioProps {
@@ -73,6 +88,13 @@ export interface CanvasStudioProps {
 	initialTool?: ToolId;
 	/** Fires after every committed command with the new IR + the command. */
 	onChange?: (ir: CanvasIR, command: CanvasCommand) => void;
+	/**
+	 * Fires after every commit with the granular change records + the new IR.
+	 * Complements {@link onChange} for autosave / dirty-tracking / collab that
+	 * wants deltas rather than the whole command. A batch commit reports the
+	 * flattened per-command changes.
+	 */
+	onChanges?: (changes: readonly CanvasChange[], ir: CanvasIR) => void;
 	/**
 	 * Fires whenever the active page (artboard) changes, with the new
 	 * page id. Used by hosts that want to mirror the active artboard
@@ -125,6 +147,13 @@ export interface CanvasStudioProps {
 	 */
 	messages?: Readonly<Record<string, string>>;
 	/**
+	 * Domain extensions (Area 1). Each may contribute renderers/inspectors for
+	 * custom node kinds; they are threaded to `<CanvasNodeRenderer>` and the
+	 * inspector via context. Pair with canvas-core's `createCanvasRuntime` for the
+	 * matching schema/command/serializer extensions.
+	 */
+	extensions?: readonly CanvasEditorExtension[];
+	/**
 	 * Optional host UI rendered *inside* the editor's context provider, so it
 	 * can call {@link useCanvasStudio} to drive tool selection, read the live
 	 * selection/IR, or mount the exported `<LayerPanel>` / `<PropertyInspector>`
@@ -143,6 +172,7 @@ export function CanvasStudio({
 	height,
 	initialTool,
 	onChange,
+	onChanges,
 	onActivePageChange,
 	onPickAsset,
 	onAiIntent,
@@ -151,6 +181,7 @@ export function CanvasStudio({
 	hidePageNavigator,
 	brandKit,
 	messages,
+	extensions,
 	renderShell,
 	children,
 }: CanvasStudioProps): React.JSX.Element {
@@ -178,6 +209,7 @@ export function CanvasStudio({
 	const [historyStore] = useState(() => createHistoryStore());
 	const [toolStore] = useState(() => createToolStore({ initialTool }));
 	const [selectionStore] = useState(() => createSelectionStore());
+	const [focusStore] = useState(() => createFocusStore());
 	const [viewportStore] = useState(() => createViewportStore());
 	const [pagesStore] = useState(() =>
 		createPagesStore({
@@ -224,11 +256,15 @@ export function CanvasStudio({
 	const [pathEditStore] = useState(() => createPathEditStore());
 
 	const onChangeRef = useRef(onChange);
+	const onChangesRef = useRef(onChanges);
 	const onPickAssetRef = useRef(onPickAsset);
 	const onAiIntentRef = useRef(onAiIntent);
 	useEffect(() => {
 		onChangeRef.current = onChange;
 	}, [onChange]);
+	useEffect(() => {
+		onChangesRef.current = onChanges;
+	}, [onChanges]);
 	useEffect(() => {
 		onPickAssetRef.current = onPickAsset;
 	}, [onPickAsset]);
@@ -243,6 +279,36 @@ export function CanvasStudio({
 				.commit(sceneStore.getState().ir, cmd);
 			sceneStore.getState().setIR(next);
 			onChangeRef.current?.(next, cmd);
+			if (onChangesRef.current) {
+				const change = commandToChange(cmd);
+				onChangesRef.current(change ? [change] : [], next);
+			}
+			return next;
+		},
+		[historyStore, sceneStore],
+	);
+
+	// Apply many commands as ONE undo entry (multi-select move, transform commit,
+	// ungroup). Fires onChange (with the composite batch command) and onChanges once.
+	const commitBatch = useCallback(
+		(commands: readonly CanvasCommand[], label?: string): CanvasIR => {
+			if (commands.length === 0) return sceneStore.getState().ir;
+			const next = historyStore
+				.getState()
+				.commitBatch(sceneStore.getState().ir, commands, label);
+			sceneStore.getState().setIR(next);
+			const batchCmd: CanvasCommand = {
+				type: "batch",
+				...(label !== undefined ? { label } : {}),
+				commands: [...commands],
+			};
+			onChangeRef.current?.(next, batchCmd);
+			if (onChangesRef.current) {
+				const changes = commands
+					.map(commandToChange)
+					.filter((c): c is CanvasChange => c !== null);
+				onChangesRef.current(changes, next);
+			}
 			return next;
 		},
 		[historyStore, sceneStore],
@@ -297,6 +363,31 @@ export function CanvasStudio({
 		[messages],
 	);
 
+	// Area 1: index extension renderers/inspectors by node kind for
+	// <CanvasNodeRenderer> (and the inspector). Stable — rebuilt only on change.
+	const { kindRenderers, kindInspectors } = useMemo(() => {
+		const renderers: Record<string, CanvasKindRenderer> = {};
+		const inspectors: Record<string, CanvasKindInspector> = {};
+		for (const ext of extensions ?? []) {
+			for (const r of ext.renderers ?? []) renderers[r.kind] = r;
+			for (const ins of ext.inspectors ?? []) inspectors[ins.kind] = ins;
+		}
+		return { kindRenderers: renderers, kindInspectors: inspectors };
+	}, [extensions]);
+
+	// Merge extension-contributed tools into the registry handed to the tool
+	// interaction layer (default tools + extension tools + the `toolRegistry`
+	// prop, which wins). No extension tools → pass the prop through untouched so
+	// the layer falls back to the default registry.
+	const effectiveToolRegistry = useMemo(() => {
+		const extTools = extensions?.flatMap((e) => e.tools ?? []) ?? [];
+		if (extTools.length === 0) return toolRegistry;
+		const merged: ToolRegistry = { ...defaultToolRegistry };
+		for (const tool of extTools) merged[tool.id] = tool;
+		if (toolRegistry) Object.assign(merged, toolRegistry);
+		return merged;
+	}, [toolRegistry, extensions]);
+
 	// Stable half (W16): store handles + callbacks, no live state. Its identity
 	// never changes after mount, so `useCanvasStores()` consumers don't re-render
 	// on every commit.
@@ -305,6 +396,7 @@ export function CanvasStudio({
 			historyStore,
 			toolStore,
 			selectionStore,
+			focusStore,
 			viewportStore,
 			guidesStore,
 			draftStore,
@@ -317,15 +409,19 @@ export function CanvasStudio({
 			pathEditStore,
 			getIR,
 			commit,
+			commitBatch,
 			pickAsset,
 			requestAiIntent,
 			brandKit,
 			t,
+			kindRenderers,
+			kindInspectors,
 		}),
 		[
 			historyStore,
 			toolStore,
 			selectionStore,
+			focusStore,
 			viewportStore,
 			guidesStore,
 			draftStore,
@@ -338,10 +434,13 @@ export function CanvasStudio({
 			pathEditStore,
 			getIR,
 			commit,
+			commitBatch,
 			pickAsset,
 			requestAiIntent,
 			brandKit,
 			t,
+			kindRenderers,
+			kindInspectors,
 		],
 	);
 
@@ -409,13 +508,14 @@ export function CanvasStudio({
 						<PenPreview />
 						<PathEditOverlay />
 						<CanvasTransformer />
+						<CanvasFocusRing />
 					</RenderLayer>
 					<RenderLayer name="presence" listening={false}>
 						<RemoteCursors />
 						<RemoteSelections />
 					</RenderLayer>
 				</CanvasStage>
-				<ToolInteractionLayer registry={toolRegistry} />
+				<ToolInteractionLayer registry={effectiveToolRegistry} />
 				<TextEditorOverlay />
 				<CropEditorOverlay />
 				<PenToolOverlay />
@@ -437,6 +537,8 @@ export function CanvasStudio({
 						{stageNode}
 					</div>
 				)}
+				<CanvasKeyboardLayer />
+				<SceneAccessibilityTree />
 				{children}
 			</CanvasStudioStableContext>
 		</CanvasStudioContext>
