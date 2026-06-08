@@ -80,9 +80,19 @@ const KIND_LABEL_FALLBACKS: Record<CanvasNodeKind, string> = {
 	"ai-placeholder": "AI placeholder",
 };
 
-function nodeLabel(node: CanvasNode, t: CanvasT): string {
+function nodeLabel(
+	node: CanvasNode,
+	t: CanvasT,
+	kindInspectors?: Readonly<Record<string, { label?: string }>>,
+): string {
 	if (node.name && node.name.length > 0) return node.name;
-	return t(KIND_LABEL_KEYS[node.type], KIND_LABEL_FALLBACKS[node.type]);
+	const kind = node.type as string;
+	const key = (KIND_LABEL_KEYS as Record<string, string>)[kind];
+	if (key) {
+		return t(key, (KIND_LABEL_FALLBACKS as Record<string, string>)[kind]);
+	}
+	// Custom (extension) kind: registered inspector label, else the raw kind.
+	return kindInspectors?.[kind]?.label ?? kind;
 }
 
 export interface LayerPanelProps {
@@ -221,7 +231,9 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 					aria-selected={isSelected}
 					tabIndex={-1}
 				>
-					<span className="flex-1 truncate">{nodeLabel(node, t)}</span>
+					<span className="flex-1 truncate">
+						{nodeLabel(node, t, ctx.kindInspectors)}
+					</span>
 					<Button
 						type="button"
 						variant="ghost"

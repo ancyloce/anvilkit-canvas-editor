@@ -58,6 +58,56 @@ function withTextIR(): CanvasIR {
 	return ir;
 }
 
+function withStarIR(): CanvasIR {
+	const ir = createCanvasIR({
+		id: "ir-1",
+		pages: [createPage({ id: "p1" })],
+		now: () => FIXED_TS,
+	});
+	const star = {
+		id: "star-1",
+		type: "star",
+		transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+		bounds: { width: 10, height: 10 },
+		zIndex: 0,
+		points: 5,
+	};
+	const firstPage = ir.pages[0];
+	if (!firstPage) throw new Error("expected at least one page");
+	firstPage.root.children = [star as never];
+	return ir;
+}
+
+function withGradientRectIR(): CanvasIR {
+	const ir = createCanvasIR({
+		id: "ir-1",
+		pages: [createPage({ id: "p1" })],
+		now: () => FIXED_TS,
+	});
+	const rect = createRect({
+		id: "rect-a",
+		bounds: { width: 50, height: 60 },
+		now: () => FIXED_TS,
+	});
+	const firstPage = ir.pages[0];
+	if (!firstPage) throw new Error("expected at least one page");
+	firstPage.root.children = [
+		{
+			...rect,
+			fill: {
+				kind: "linear",
+				stops: [
+					{ offset: 0, color: "#ff0000" },
+					{ offset: 1, color: "#0000ff" },
+				],
+				from: { x: 0, y: 0 },
+				to: { x: 1, y: 1 },
+			},
+		},
+	];
+	return ir;
+}
+
 function mount(ctx: CanvasStudioContextValue) {
 	return render(
 		<CanvasStudioContext.Provider value={ctx}>
@@ -84,6 +134,81 @@ describe("PropertyInspector — empty state", () => {
 		// A <section> with an accessible name has the implicit ARIA role "region".
 		expect(panel.tagName).toBe("SECTION");
 		expect(panel.getAttribute("aria-label")).toBe("Properties");
+	});
+});
+
+describe("PropertyInspector — fill type", () => {
+	it("switches a node's fill to a gradient via the fill-type selector", () => {
+		const h = makeHarness({ ir: withRectIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		const select = container.querySelector(
+			"[data-testid='prop-fill-type']",
+		) as HTMLSelectElement;
+		fireEvent.change(select, { target: { value: "linear" } });
+		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rect">;
+		expect(last.type).toBe("node.update");
+		expect((last.patch as { fill?: { kind?: string } }).fill?.kind).toBe(
+			"linear",
+		);
+	});
+
+	it("adds a shadow when a shadow color is set", () => {
+		const h = makeHarness({ ir: withRectIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		const shadow = container.querySelector(
+			"[data-testid='prop-shadow-color']",
+		) as HTMLInputElement;
+		shadow.value = "#123456";
+		fireEvent.blur(shadow);
+		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rect">;
+		expect((last.patch as { shadow?: { color?: string } }).shadow?.color).toBe(
+			"#123456",
+		);
+	});
+
+	it("renders one color field per gradient stop", () => {
+		const h = makeHarness({ ir: withGradientRectIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		expect(
+			container.querySelectorAll("[data-testid^='prop-gradient-stop-row-']"),
+		).toHaveLength(2);
+	});
+
+	it("adds a gradient stop via the add-stop button", () => {
+		const h = makeHarness({ ir: withGradientRectIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		const addBtn = container.querySelector(
+			"[data-testid='prop-gradient-add-stop']",
+		) as HTMLButtonElement;
+		fireEvent.click(addBtn);
+		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rect">;
+		const fill = (last.patch as { fill?: { stops?: unknown[] } }).fill;
+		expect(fill?.stops).toHaveLength(3);
+	});
+});
+
+describe("PropertyInspector — custom (extension) kind", () => {
+	it("renders the registered inspector fields for a custom node kind", () => {
+		const h = makeHarness({ ir: withStarIR() });
+		h.studioCtx.kindInspectors = {
+			star: {
+				kind: "star",
+				render: (node) => (
+					<div data-testid="star-fields">
+						points:{(node as unknown as { points: number }).points}
+					</div>
+				),
+			},
+		};
+		h.studioCtx.selectionStore.getState().setSelection(["star-1"]);
+		const { container } = mount(h.studioCtx);
+		expect(
+			container.querySelector("[data-testid='star-fields']"),
+		).not.toBeNull();
 	});
 });
 

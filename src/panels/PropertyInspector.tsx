@@ -32,6 +32,7 @@ import {
 	TextField,
 	useCommitPatch,
 } from "./fields.js";
+import { FillAndShadowFields } from "./fill-shadow-fields.js";
 
 export interface PropertyInspectorProps {
 	id?: string;
@@ -201,8 +202,12 @@ function renderTypeSpecificFields(
 			return renderGroupFields(node, t);
 		case "ai-placeholder":
 			return null;
-		default:
-			return null;
+		default: {
+			// Custom (extension) kind: render its registered inspector fields, if any.
+			const custom = node as unknown as CanvasNode & { type: string };
+			const inspector = ctx.kindInspectors?.[custom.type];
+			return inspector ? inspector.render(custom, ctx.commit) : null;
+		}
 	}
 }
 
@@ -213,11 +218,12 @@ function renderRectFields(
 ): React.JSX.Element {
 	return (
 		<Section title={t("canvas.inspector.shape", "Shape")}>
-			<ColorField
-				label={t("canvas.inspector.fill", "Fill")}
-				value={node.fill}
-				dataTestId="prop-fill"
-				onCommit={(v) => commitPatch(node, { fill: v })}
+			<FillAndShadowFields
+				node={node}
+				fill={node.fill}
+				shadow={node.shadow}
+				commitPatch={commitPatch}
+				t={t}
 			/>
 			<ColorField
 				label={t("canvas.inspector.stroke", "Stroke")}
@@ -250,11 +256,12 @@ function renderEllipseFields(
 ): React.JSX.Element {
 	return (
 		<Section title={t("canvas.inspector.shape", "Shape")}>
-			<ColorField
-				label={t("canvas.inspector.fill", "Fill")}
-				value={node.fill}
-				dataTestId="prop-fill"
-				onCommit={(v) => commitPatch(node, { fill: v })}
+			<FillAndShadowFields
+				node={node}
+				fill={node.fill}
+				shadow={node.shadow}
+				commitPatch={commitPatch}
+				t={t}
 			/>
 			<ColorField
 				label={t("canvas.inspector.stroke", "Stroke")}
@@ -325,7 +332,7 @@ function renderTextFields(
 			/>
 			<ColorField
 				label={t("canvas.inspector.color", "Color")}
-				value={node.fill}
+				value={typeof node.fill === "string" ? node.fill : undefined}
 				dataTestId="prop-text-fill"
 				onCommit={(v) => commitPatch(node, { fill: v })}
 			/>
@@ -419,11 +426,12 @@ function renderPathFields(
 ): React.JSX.Element {
 	return (
 		<Section title={t("canvas.inspector.path", "Path")}>
-			<ColorField
-				label={t("canvas.inspector.fill", "Fill")}
-				value={node.fill}
-				dataTestId="prop-fill"
-				onCommit={(v) => commitPatch(node, { fill: v })}
+			<FillAndShadowFields
+				node={node}
+				fill={node.fill}
+				shadow={node.shadow}
+				commitPatch={commitPatch}
+				t={t}
 			/>
 			<ColorField
 				label={t("canvas.inspector.stroke", "Stroke")}
