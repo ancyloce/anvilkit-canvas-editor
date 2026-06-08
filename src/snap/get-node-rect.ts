@@ -1,19 +1,19 @@
-import type { CanvasIR, CanvasNode } from "@anvilkit/canvas-core";
+import {
+	type CanvasIR,
+	type CanvasNode,
+	nodeWorldAabb,
+} from "@anvilkit/canvas-core";
 import type { SnapRect } from "./snap-types.js";
 
 /**
- * Approximate world-space rect for a node. Ignores rotation/scale — sufficient
- * for axis-aligned snap and marquee hit-testing in MVP. Iteration polish:
- * compose with `node.transform.{rotation, scaleX, scaleY}` if/when rotated
- * nodes need accurate snap.
+ * World-space rect for a node — the rotation/scale-aware axis-aligned bounding
+ * box from `@anvilkit/canvas-core` (`nodeWorldAabb`). For an unrotated, unscaled
+ * node this equals `{x, y, width, height}`; rotated/scaled nodes now report
+ * their true visual bounds (the earlier approximation ignored rotation/scale).
  */
 export function getNodeWorldRect(node: CanvasNode): SnapRect {
-	return {
-		x: node.transform.x,
-		y: node.transform.y,
-		width: node.bounds.width,
-		height: node.bounds.height,
-	};
+	const { minX, minY, maxX, maxY } = nodeWorldAabb(node);
+	return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 /**
