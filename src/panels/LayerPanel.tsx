@@ -10,6 +10,7 @@ import {
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
+import { Windowed } from "@anvilkit/ui/windowed";
 import {
 	Eye,
 	EyeOff,
@@ -188,6 +189,97 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 		[ctx, rows, selectedIds],
 	);
 
+	// Stable row renderer for `Windowed` (W5). Identity changes on selection so
+	// rows reflect `data-selected`; below the virtualization threshold this is the
+	// same DOM the old inline `.map()` produced (keyed Fragments add no nodes).
+	const renderRow = useCallback(
+		({ node, depth }: FlatRow): React.JSX.Element => {
+			const isSelected = selectedSet.has(node.id);
+			const visible = node.visible !== false;
+			const locked = node.locked === true;
+			return (
+				<div
+					key={node.id}
+					data-testid={`layer-row-${node.id}`}
+					data-selected={isSelected ? "true" : "false"}
+					className={cn(
+						"flex h-7 items-center gap-1 rounded-md pr-1 text-[13px]",
+						"cursor-pointer hover:bg-muted",
+						isSelected
+							? "bg-accent text-accent-foreground hover:bg-accent"
+							: "text-foreground",
+					)}
+					style={{ paddingLeft: ROW_PAD_X + depth * INDENT_PX }}
+					onClick={(e) => handleSelect(node.id, e)}
+					onKeyDown={(e) => {
+						if (e.key === "Enter" || e.key === " ") {
+							e.preventDefault();
+							handleSelect(node.id, e as unknown as React.MouseEvent);
+						}
+					}}
+					role="treeitem"
+					aria-selected={isSelected}
+					tabIndex={-1}
+				>
+					<span className="flex-1 truncate">{nodeLabel(node, t)}</span>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						className={cn(
+							"size-6",
+							visible ? "text-muted-foreground" : "text-muted-foreground/40",
+						)}
+						data-testid={`layer-row-${node.id}-visibility`}
+						aria-label={
+							visible
+								? t("canvas.layer.hide", "Hide layer")
+								: t("canvas.layer.show", "Show layer")
+						}
+						title={
+							visible
+								? t("canvas.layer.hideShort", "Hide")
+								: t("canvas.layer.showShort", "Show")
+						}
+						onClick={(e) => {
+							e.stopPropagation();
+							handleToggleVisibility(node);
+						}}
+					>
+						{visible ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						className={cn(
+							"size-6",
+							locked ? "text-foreground" : "text-muted-foreground/40",
+						)}
+						data-testid={`layer-row-${node.id}-lock`}
+						aria-label={
+							locked
+								? t("canvas.layer.unlock", "Unlock layer")
+								: t("canvas.layer.lock", "Lock layer")
+						}
+						title={
+							locked
+								? t("canvas.layer.unlockShort", "Unlock")
+								: t("canvas.layer.lockShort", "Lock")
+						}
+						onClick={(e) => {
+							e.stopPropagation();
+							handleToggleLock(node);
+						}}
+					>
+						{locked ? <Lock aria-hidden /> : <LockOpen aria-hidden />}
+					</Button>
+				</div>
+			);
+		},
+		[selectedSet, t, handleSelect, handleToggleVisibility, handleToggleLock],
+	);
+
 	return (
 		<div
 			data-testid="layer-panel"
@@ -238,92 +330,18 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 						{t("canvas.layer.empty", "No layers on this page yet.")}
 					</div>
 				) : (
-					rows.map(({ node, depth }) => {
-						const isSelected = selectedSet.has(node.id);
-						const visible = node.visible !== false;
-						const locked = node.locked === true;
-						return (
-							<div
-								key={node.id}
-								data-testid={`layer-row-${node.id}`}
-								data-selected={isSelected ? "true" : "false"}
-								className={cn(
-									"flex h-7 items-center gap-1 rounded-md pr-1 text-[13px]",
-									"cursor-pointer hover:bg-muted",
-									isSelected
-										? "bg-accent text-accent-foreground hover:bg-accent"
-										: "text-foreground",
-								)}
-								style={{ paddingLeft: ROW_PAD_X + depth * INDENT_PX }}
-								onClick={(e) => handleSelect(node.id, e)}
-								onKeyDown={(e) => {
-									if (e.key === "Enter" || e.key === " ") {
-										e.preventDefault();
-										handleSelect(node.id, e as unknown as React.MouseEvent);
-									}
-								}}
-								role="treeitem"
-								aria-selected={isSelected}
-								tabIndex={-1}
-							>
-								<span className="flex-1 truncate">{nodeLabel(node, t)}</span>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-xs"
-									className={cn(
-										"size-6",
-										visible
-											? "text-muted-foreground"
-											: "text-muted-foreground/40",
-									)}
-									data-testid={`layer-row-${node.id}-visibility`}
-									aria-label={
-										visible
-											? t("canvas.layer.hide", "Hide layer")
-											: t("canvas.layer.show", "Show layer")
-									}
-									title={
-										visible
-											? t("canvas.layer.hideShort", "Hide")
-											: t("canvas.layer.showShort", "Show")
-									}
-									onClick={(e) => {
-										e.stopPropagation();
-										handleToggleVisibility(node);
-									}}
-								>
-									{visible ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
-								</Button>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-xs"
-									className={cn(
-										"size-6",
-										locked ? "text-foreground" : "text-muted-foreground/40",
-									)}
-									data-testid={`layer-row-${node.id}-lock`}
-									aria-label={
-										locked
-											? t("canvas.layer.unlock", "Unlock layer")
-											: t("canvas.layer.lock", "Lock layer")
-									}
-									title={
-										locked
-											? t("canvas.layer.unlockShort", "Unlock")
-											: t("canvas.layer.lockShort", "Lock")
-									}
-									onClick={(e) => {
-										e.stopPropagation();
-										handleToggleLock(node);
-									}}
-								>
-									{locked ? <Lock aria-hidden /> : <LockOpen aria-hidden />}
-								</Button>
-							</div>
-						);
-					})
+					// Virtualized (W5): below 50 layers this is identical DOM to the old
+					// inline map (keyed Fragments add no nodes); above it only the
+					// visible window mounts, so a 1000-layer page stops rendering 1000
+					// rows. The outer `role="tree"` container stays the scroll owner.
+					<Windowed
+						items={rows}
+						renderItem={renderRow}
+						itemKey={(row) => row.node.id}
+						estimateSize={28}
+						maxHeight={600}
+						data-testid="layer-rows"
+					/>
 				)}
 			</div>
 		</div>
