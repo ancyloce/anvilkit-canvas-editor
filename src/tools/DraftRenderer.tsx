@@ -2,13 +2,13 @@
 
 import { useSyncExternalStore } from "react";
 import { Ellipse, Line, Rect } from "react-konva";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import { useCanvasStores } from "../context/canvas-studio-context.js";
 
 export const DRAFT_STROKE_COLOR = "#3b82f6";
 export const DRAFT_DASH: [number, number] = [4, 4];
 
 export function DraftRenderer(): React.JSX.Element | null {
-	const { draftStore } = useCanvasStudio();
+	const { draftStore } = useCanvasStores();
 	const draft = useSyncExternalStore(
 		draftStore.subscribe,
 		() => draftStore.getState().draft,

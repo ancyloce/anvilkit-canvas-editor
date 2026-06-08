@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { Circle, Path } from "react-konva";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import { useCanvasStores } from "../context/canvas-studio-context.js";
 import type { PenAnchor } from "../stores/pen-store.js";
 import { buildPathD } from "./pen-geometry.js";
 
@@ -15,7 +15,7 @@ const noopSubscribe = () => () => undefined;
  * visual (`listening={false}`), so it never intercepts pointer events.
  */
 export function PenPreview(): React.JSX.Element | null {
-	const { penStore, toolStore } = useCanvasStudio();
+	const { penStore, toolStore } = useCanvasStores();
 	const activeTool = useSyncExternalStore(
 		toolStore.subscribe,
 		() => toolStore.getState().activeTool,
