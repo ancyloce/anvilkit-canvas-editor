@@ -4,6 +4,7 @@ import type {
 	CanvasAiPlaceholderNode,
 	CanvasAiPlaceholderStatus,
 	CanvasEllipseNode,
+	CanvasFill,
 	CanvasGroupNode,
 	CanvasImageNode,
 	CanvasLineNode,
@@ -11,8 +12,10 @@ import type {
 	CanvasNodeBase,
 	CanvasPathNode,
 	CanvasRectNode,
+	CanvasShadow,
 	CanvasTextNode,
 } from "@anvilkit/canvas-core";
+import type Konva from "konva";
 import { use } from "react";
 import {
 	Ellipse,
@@ -61,6 +64,47 @@ function commonProps(node: CanvasNodeBase & { id: string }): CommonProps {
 	};
 }
 
+/** Map a node fill (string or gradient) to Konva fill props. */
+function fillProps(
+	fill: CanvasFill | undefined,
+	bounds: { width: number; height: number },
+): Konva.ShapeConfig {
+	if (fill === undefined) return {};
+	if (typeof fill === "string") return { fill };
+	const stops = fill.stops.flatMap((s) => [s.offset, s.color]);
+	const start = {
+		x: fill.from.x * bounds.width,
+		y: fill.from.y * bounds.height,
+	};
+	const end = { x: fill.to.x * bounds.width, y: fill.to.y * bounds.height };
+	if (fill.kind === "radial") {
+		return {
+			fillRadialGradientStartPoint: start,
+			fillRadialGradientEndPoint: end,
+			fillRadialGradientStartRadius: 0,
+			fillRadialGradientEndRadius: Math.max(bounds.width, bounds.height) / 2,
+			fillRadialGradientColorStops: stops,
+		};
+	}
+	return {
+		fillLinearGradientStartPoint: start,
+		fillLinearGradientEndPoint: end,
+		fillLinearGradientColorStops: stops,
+	};
+}
+
+/** Map an optional node shadow to Konva shadow props. */
+function shadowProps(shadow: CanvasShadow | undefined): Konva.ShapeConfig {
+	if (!shadow) return {};
+	return {
+		shadowColor: shadow.color,
+		shadowBlur: shadow.blur,
+		shadowOffsetX: shadow.offsetX,
+		shadowOffsetY: shadow.offsetY,
+		...(shadow.opacity !== undefined ? { shadowOpacity: shadow.opacity } : {}),
+	};
+}
+
 function CanvasGroupNodeRenderer({ node }: { node: CanvasGroupNode }) {
 	return (
 		<Group {...commonProps(node)}>
@@ -77,7 +121,8 @@ function CanvasRectNodeRenderer({ node }: { node: CanvasRectNode }) {
 			{...commonProps(node)}
 			width={node.bounds.width}
 			height={node.bounds.height}
-			fill={node.fill}
+			{...fillProps(node.fill, node.bounds)}
+			{...shadowProps(node.shadow)}
 			stroke={node.stroke}
 			strokeWidth={node.strokeWidth}
 			cornerRadius={node.radius}
@@ -100,7 +145,8 @@ function CanvasEllipseNodeRenderer({ node }: { node: CanvasEllipseNode }) {
 			y={base.y + offset.y}
 			radiusX={radiusX}
 			radiusY={radiusY}
-			fill={node.fill}
+			{...fillProps(node.fill, node.bounds)}
+			{...shadowProps(node.shadow)}
 			stroke={node.stroke}
 			strokeWidth={node.strokeWidth}
 		/>
@@ -123,7 +169,8 @@ function CanvasPathNodeRenderer({ node }: { node: CanvasPathNode }) {
 		<Path
 			{...commonProps(node)}
 			data={node.d}
-			fill={node.fill}
+			{...fillProps(node.fill, node.bounds)}
+			{...shadowProps(node.shadow)}
 			stroke={node.stroke}
 			strokeWidth={node.strokeWidth}
 		/>
@@ -138,7 +185,8 @@ function CanvasTextNodeRenderer({ node }: { node: CanvasTextNode }) {
 			fontFamily={node.fontFamily}
 			fontSize={node.fontSize}
 			fontStyle={node.fontWeight}
-			fill={node.fill}
+			{...fillProps(node.fill, node.bounds)}
+			{...shadowProps(node.shadow)}
 			align={node.align}
 			width={node.bounds.width}
 			height={node.bounds.height}
@@ -299,6 +347,16 @@ function CanvasAiPlaceholderNodeRenderer({
 	);
 }
 
+function CanvasCustomNodeRenderer({ node }: { node: CanvasNode }) {
+	// Custom (extension) node kind: render via the registered renderer from
+	// context, else nothing. Built-in kinds never reach here.
+	const studio = use(CanvasStudioContext);
+	const renderer = studio?.kindRenderers?.[(node as { type: string }).type];
+	if (!renderer) return null;
+	const Render = renderer.render;
+	return <Render node={node} />;
+}
+
 export function CanvasNodeRenderer({
 	node,
 }: CanvasNodeRendererProps): React.JSX.Element | null {
@@ -319,5 +377,7 @@ export function CanvasNodeRenderer({
 			return <CanvasImageNodeRenderer node={node} />;
 		case "ai-placeholder":
 			return <CanvasAiPlaceholderNodeRenderer node={node} />;
+		default:
+			return <CanvasCustomNodeRenderer node={node} />;
 	}
 }
