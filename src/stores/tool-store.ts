@@ -6,7 +6,8 @@ import { createStore, type StoreApi } from "zustand/vanilla";
  * The AI tools (`ai-image`, `ai-brush`) commit nothing — they capture a gesture
  * and emit an {@link ../tools/ai-intent.js#AiToolIntent} to the host.
  */
-export type ToolId =
+/** Built-in tool ids (PRD FR-009). */
+export type BuiltinToolId =
 	| "select"
 	| "text"
 	| "rect"
@@ -17,6 +18,12 @@ export type ToolId =
 	| "hand"
 	| "ai-image"
 	| "ai-brush";
+
+/**
+ * A tool id. Built-in ids keep literal autocomplete; `(string & {})` admits
+ * custom tool ids contributed by an editor extension (Area 1).
+ */
+export type ToolId = BuiltinToolId | (string & {});
 
 export const DEFAULT_TOOL: ToolId = "select";
 

@@ -40,6 +40,29 @@ function moveRectA(to: { x: number; y: number }): CanvasNodeMoveCommand {
 	};
 }
 
+function moveRect(
+	id: string,
+	to: { x: number; y: number },
+): CanvasNodeMoveCommand {
+	return { type: "node.move", nodeId: id, from: { x: 0, y: 0 }, to };
+}
+
+function fixtureIR2(): CanvasIR {
+	const a = createRect({ id: "rectA", bounds: { width: 100, height: 50 } });
+	const b = createRect({ id: "rectB", bounds: { width: 80, height: 40 } });
+	const page = createPage({ id: "page-1" });
+	page.root = createGroup({
+		id: "page-1-root",
+		bounds: page.root.bounds,
+		children: [a, b],
+	});
+	return createCanvasIR({ id: "ir-1", pages: [page], now });
+}
+
+function nodeX(ir: CanvasIR, id: string): number | undefined {
+	return ir.pages[0]?.root.children.find((c) => c.id === id)?.transform.x;
+}
+
 describe("createHistoryStore — defaults", () => {
 	it("has empty past and future, canUndo/canRedo false", () => {
 		const store = createHistoryStore({ now });
@@ -186,6 +209,139 @@ describe("createHistoryStore — PRD §9.2 scenario 3", () => {
 		const after = store.getState().commit(ir, moveRectA({ x: 100, y: 0 }));
 		const restored = store.getState().undo(after);
 		expect(snapshot(restored)).toBe(before);
+	});
+});
+
+describe("createHistoryStore — commitBatch", () => {
+	it("records a multi-command gesture as ONE undo entry", () => {
+		const store = createHistoryStore({ now });
+		let ir = fixtureIR2();
+		ir = store
+			.getState()
+			.commitBatch(ir, [
+				moveRect("rectA", { x: 10, y: 0 }),
+				moveRect("rectB", { x: 20, y: 0 }),
+			]);
+		expect(store.getState().past).toHaveLength(1);
+		expect(nodeX(ir, "rectA")).toBe(10);
+		expect(nodeX(ir, "rectB")).toBe(20);
+
+		const undone = store.getState().undo(ir);
+		expect(store.getState().past).toHaveLength(0);
+		expect(nodeX(undone, "rectA")).toBe(0);
+		expect(nodeX(undone, "rectB")).toBe(0);
+	});
+
+	it("redo restores the whole batch", () => {
+		const store = createHistoryStore({ now });
+		let ir = fixtureIR2();
+		ir = store
+			.getState()
+			.commitBatch(ir, [
+				moveRect("rectA", { x: 10, y: 0 }),
+				moveRect("rectB", { x: 20, y: 0 }),
+			]);
+		const undone = store.getState().undo(ir);
+		const redone = store.getState().redo(undone);
+		expect(nodeX(redone, "rectA")).toBe(10);
+		expect(nodeX(redone, "rectB")).toBe(20);
+	});
+
+	it("empty batch is a no-op and records nothing", () => {
+		const store = createHistoryStore({ now });
+		const ir = fixtureIR2();
+		const after = store.getState().commitBatch(ir, []);
+		expect(after).toBe(ir);
+		expect(store.getState().past).toEqual([]);
+	});
+});
+
+describe("createHistoryStore — commitCoalesced", () => {
+	it("collapses a same-key burst within the window into one undo entry", () => {
+		let clock = 0;
+		const store = createHistoryStore({ now, nowMs: () => clock });
+		let ir = fixtureIR();
+		ir = store
+			.getState()
+			.commitCoalesced(ir, moveRectA({ x: 1, y: 0 }), "m:rectA");
+		clock = 100;
+		ir = store
+			.getState()
+			.commitCoalesced(ir, moveRectA({ x: 2, y: 0 }), "m:rectA");
+		clock = 200;
+		ir = store
+			.getState()
+			.commitCoalesced(ir, moveRectA({ x: 3, y: 0 }), "m:rectA");
+
+		expect(store.getState().past).toHaveLength(1);
+		expect(nodeX(ir, "rectA")).toBe(3);
+		const undone = store.getState().undo(ir);
+		expect(nodeX(undone, "rectA")).toBe(0); // restores pre-burst
+	});
+
+	it("redo after a coalesced undo restores the full burst end state", () => {
+		let clock = 0;
+		const store = createHistoryStore({ now, nowMs: () => clock });
+		let ir = fixtureIR();
+		ir = store
+			.getState()
+			.commitCoalesced(ir, moveRectA({ x: 1, y: 0 }), "m:rectA");
+		clock = 100;
+		ir = store
+			.getState()
+			.commitCoalesced(ir, moveRectA({ x: 5, y: 0 }), "m:rectA");
+		const undone = store.getState().undo(ir);
+		expect(nodeX(undone, "rectA")).toBe(0);
+		const redone = store.getState().redo(undone);
+		expect(nodeX(redone, "rectA")).toBe(5);
+	});
+
+	it("does not coalesce across different merge keys", () => {
+		let clock = 0;
+		const store = createHistoryStore({ now, nowMs: () => clock });
+		let ir = fixtureIR();
+		ir = store
+			.getState()
+			.commitCoalesced(ir, moveRectA({ x: 1, y: 0 }), "m:rectA");
+		clock = 10;
+		ir = store
+			.getState()
+			.commitCoalesced(ir, moveRectA({ x: 2, y: 0 }), "m:rectB");
+		expect(store.getState().past).toHaveLength(2);
+	});
+
+	it("does not coalesce once the merge window elapses", () => {
+		let clock = 0;
+		const store = createHistoryStore({
+			now,
+			nowMs: () => clock,
+			mergeWindowMs: 400,
+		});
+		let ir = fixtureIR();
+		ir = store
+			.getState()
+			.commitCoalesced(ir, moveRectA({ x: 1, y: 0 }), "m:rectA");
+		clock = 1000;
+		ir = store
+			.getState()
+			.commitCoalesced(ir, moveRectA({ x: 2, y: 0 }), "m:rectA");
+		expect(store.getState().past).toHaveLength(2);
+	});
+
+	it("a plain commit breaks the coalescing run", () => {
+		let clock = 0;
+		const store = createHistoryStore({ now, nowMs: () => clock });
+		let ir = fixtureIR();
+		ir = store
+			.getState()
+			.commitCoalesced(ir, moveRectA({ x: 1, y: 0 }), "m:rectA");
+		clock = 10;
+		ir = store.getState().commit(ir, moveRectA({ x: 2, y: 0 }));
+		clock = 20;
+		ir = store
+			.getState()
+			.commitCoalesced(ir, moveRectA({ x: 3, y: 0 }), "m:rectA");
+		expect(store.getState().past).toHaveLength(3);
 	});
 });
 
