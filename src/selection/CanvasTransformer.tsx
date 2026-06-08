@@ -19,6 +19,7 @@ import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { draggedIdsKey } from "../perf/active-nodes.js";
 import { nodeRenderOffset } from "../stage/node-render-offset.js";
 import {
+	activeAnchorName,
 	type ChromeTheme,
 	FALLBACK_CHROME_THEME,
 	normalizeAngle,
@@ -277,11 +278,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 				anchor.stroke(t.border);
 			}
 			if (transformingRef.current) {
-				const parent = anchor.getParent?.() as
-					| (Konva.Node & { _movingAnchorName?: string | null })
-					| null
-					| undefined;
-				const active = parent?._movingAnchorName ?? null;
+				const active = activeAnchorName(anchor.getParent?.());
 				const isActive = active !== null && anchor.hasName(active);
 				anchor.visible(isActive);
 				if (isRotater) {
@@ -375,16 +372,6 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		text.text(`${Math.round(angle)}°`);
 		positionBadgeAtCursor();
 	}, [stage, selectionStore, positionBadgeAtCursor]);
-
-	const activeAnchorName = useCallback(
-		() =>
-			(
-				transformerRef.current as unknown as {
-					_movingAnchorName?: string | null;
-				}
-			)?._movingAnchorName ?? null,
-		[],
-	);
 
 	useEffect(() => {
 		const tr = transformerRef.current;
@@ -502,7 +489,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		transformingRef.current = true;
 		// `_movingAnchorName` is set before `transformstart` fires. The same badge
 		// node shows the live size while resizing and the live angle while rotating.
-		const active = activeAnchorName();
+		const active = activeAnchorName(tr);
 		// Re-run anchorStyleFunc now (not on the next frame) so every handle but the
 		// active one hides immediately, with no flash.
 		tr.update?.();
@@ -510,13 +497,14 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		sizeLabelRef.current?.visible(true);
 		if (active === "rotater") refreshAngleBadge();
 		else refreshSizeBadge();
-	}, [activeAnchorName, refreshAngleBadge, refreshSizeBadge]);
+	}, [refreshAngleBadge, refreshSizeBadge]);
 
 	const onTransform = useCallback(() => {
 		if (!transformingRef.current || !sizeLabelRef.current?.visible()) return;
-		if (activeAnchorName() === "rotater") refreshAngleBadge();
+		if (activeAnchorName(transformerRef.current) === "rotater")
+			refreshAngleBadge();
 		else refreshSizeBadge();
-	}, [activeAnchorName, refreshAngleBadge, refreshSizeBadge]);
+	}, [refreshAngleBadge, refreshSizeBadge]);
 
 	const onTransformEnd = useCallback(() => {
 		// Leave transform mode first: drop the size badge and restore every

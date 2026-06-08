@@ -45,6 +45,29 @@ export function resolveChromeTheme(el: HTMLElement | null): ChromeTheme {
 }
 
 /**
+ * KONVA-INTERNAL (T7). The name (e.g. `"top-left"`, `"rotater"`) of the anchor
+ * currently being dragged during a transform, or `null` when idle. Konva drives
+ * resize/rotate off raw window mouse events and immediately `stopDrag()`s the
+ * anchor, so `anchor.isDragging()` is always false inside `anchorStyleFunc`; the
+ * only signal Konva exposes is the **undocumented private** `_movingAnchorName`
+ * on the `Transformer`. We deliberately read it, but funnel every access through
+ * this one helper so the brittle coupling lives in a single, marked place — a
+ * Konva rename then breaks here (and its pinning test) instead of silently
+ * across the component. `node` is the Transformer (or an anchor's parent, which
+ * is the Transformer).
+ *
+ * @see CanvasTransformer — `anchorStyleFunc` and `onTransformStart`.
+ */
+export function activeAnchorName(
+	node: Konva.Node | null | undefined,
+): string | null {
+	return (
+		(node as { _movingAnchorName?: string | null } | null | undefined)
+			?._movingAnchorName ?? null
+	);
+}
+
+/**
  * Tint an anchor on hover: the dragger under the cursor fills with the accent,
  * reverting to the surface fill on leave. The accent is hover feedback on the
  * handles themselves (no persistent colored block).
