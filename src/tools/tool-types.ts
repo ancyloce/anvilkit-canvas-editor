@@ -2,6 +2,7 @@ import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
+import type { CanvasFocusStoreApi } from "../stores/focus-store.js";
 import type { GuidesStoreApi } from "../stores/guides-store.js";
 import type { PenStoreApi } from "../stores/pen-store.js";
 import type { SelectionStoreApi } from "../stores/selection-store.js";
@@ -18,7 +19,19 @@ export interface ToolContext {
 	stage: Konva.Stage;
 	getIR: () => CanvasIR;
 	commit: (cmd: CanvasCommand) => CanvasIR;
+	/**
+	 * Apply many commands as one undoable transaction (a single undo step).
+	 * Supplied by `<CanvasStudio>` via `ToolInteractionLayer`; optional so
+	 * lightweight tool-test contexts may omit it — callers must fall back to
+	 * per-command {@link commit} when it is absent.
+	 */
+	commitBatch?: (
+		commands: readonly CanvasCommand[],
+		label?: string,
+	) => CanvasIR;
 	selectionStore: SelectionStoreApi;
+	/** Roving keyboard focus (a11y). Optional — lightweight tool tests may omit it. */
+	focusStore?: CanvasFocusStoreApi;
 	viewportStore: ViewportStoreApi;
 	toolStore: ToolStoreApi;
 	guidesStore: GuidesStoreApi;

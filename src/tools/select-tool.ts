@@ -1,4 +1,4 @@
-import type { CanvasNodeMoveCommand } from "@anvilkit/canvas-core";
+import { type CanvasNodeMoveCommand, marqueeHits } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { getOtherNodeRects } from "../snap/get-node-rect.js";
 import { computeSnap } from "../snap/snap-engine.js";
@@ -7,17 +7,6 @@ import type { Tool, ToolContext, ToolPointerEvent } from "./tool-types.js";
 
 const MIN_MOVE_DISTANCE = 0.5;
 const MIN_MARQUEE_SIZE = 2;
-
-function aabbIntersect(
-	a: { x: number; y: number; width: number; height: number },
-	b: { x: number; y: number; width: number; height: number },
-): boolean {
-	if (a.x + a.width < b.x) return false;
-	if (b.x + b.width < a.x) return false;
-	if (a.y + a.height < b.y) return false;
-	if (b.y + b.height < a.y) return false;
-	return true;
-}
 
 /**
  * Walk up the Konva tree from the hit target until we find an ancestor whose
@@ -231,14 +220,20 @@ export const selectTool: Tool = {
 			) {
 				return;
 			}
-			for (const start of draft.nodeStarts) {
-				const cmd: CanvasNodeMoveCommand = {
+			const moveCmds: CanvasNodeMoveCommand[] = draft.nodeStarts.map(
+				(start) => ({
 					type: "node.move",
 					nodeId: start.id,
 					from: { x: start.x, y: start.y },
 					to: { x: start.x + dx, y: start.y + dy },
-				};
-				ctx.commit(cmd);
+				}),
+			);
+			// Multi-select drag commits as ONE undo entry; a single node stays a
+			// plain commit (MVP-7 single-command contract).
+			if (moveCmds.length > 1 && ctx.commitBatch) {
+				ctx.commitBatch(moveCmds, "Move");
+			} else {
+				for (const cmd of moveCmds) ctx.commit(cmd);
 			}
 		} else if (draft.type === "marquee") {
 			const x = Math.min(draft.startX, e.point.x);
@@ -253,22 +248,16 @@ export const selectTool: Tool = {
 				return;
 			}
 
-			const marquee = { x, y, width: w, height: h };
+			const marquee = { minX: x, minY: y, maxX: x + w, maxY: y + h };
 			const page = ctx.getIR().pages.find((p) => p.id === ctx.activePageId);
 			if (!page) return;
-			const hitIds: string[] = [];
-			for (const child of page.root.children) {
-				// Locked nodes are skipped by the marquee — they can't be selected
-				// via the canvas (unlock via the layer panel to re-edit).
-				if (child.locked === true) continue;
-				const childRect = {
-					x: child.transform.x,
-					y: child.transform.y,
-					width: child.bounds.width,
-					height: child.bounds.height,
-				};
-				if (aabbIntersect(marquee, childRect)) hitIds.push(child.id);
-			}
+			// Locked nodes are skipped by the marquee — they can't be selected via
+			// the canvas (unlock via the layer panel to re-edit). marqueeHits uses
+			// each node's rotation-aware world AABB, replacing the earlier
+			// rotation-ignoring inline rect + local aabbIntersect.
+			const hitIds = marqueeHits(page.root.children, marquee, {
+				skipLocked: true,
+			}).map((n) => n.id);
 
 			if (e.shiftKey) {
 				for (const id of hitIds) {

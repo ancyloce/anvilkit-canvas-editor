@@ -6,6 +6,7 @@ import type { CanvasStudioContextValue } from "../../context/canvas-studio-conte
 import { createCropStore } from "../../stores/crop-store.js";
 import { createDraftStore } from "../../stores/draft-store.js";
 import { createEditingStore } from "../../stores/editing-store.js";
+import { createFocusStore } from "../../stores/focus-store.js";
 import { createGuidesStore } from "../../stores/guides-store.js";
 import { createHistoryStore } from "../../stores/history-store.js";
 import { createPagesStore } from "../../stores/pages-store.js";
@@ -66,6 +67,7 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 
 	const historyStore = createHistoryStore();
 	const selectionStore = createSelectionStore();
+	const focusStore = createFocusStore();
 	const viewportStore = createViewportStore({ gridEnabled: false });
 	const toolStore = createToolStore();
 	const guidesStore = createGuidesStore();
@@ -89,6 +91,12 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 		commits.push(cmd);
 		return ir;
 	});
+	// Flatten batched sub-commands into `commits` so count/filter assertions stay
+	// valid whether a gesture commits singly or as a batch.
+	const commitBatch = vi.fn((cmds: readonly CanvasCommand[]) => {
+		for (const c of cmds) commits.push(c);
+		return ir;
+	});
 	const pickAsset = vi.fn(() => Promise.resolve("asset-1"));
 	const aiIntents: AiToolIntent[] = [];
 	const requestAiIntent = vi.fn((intent: AiToolIntent) => {
@@ -99,7 +107,9 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 		stage,
 		getIR,
 		commit,
+		commitBatch,
 		selectionStore,
+		focusStore,
 		viewportStore,
 		toolStore,
 		guidesStore,
@@ -115,6 +125,7 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 		historyStore,
 		toolStore,
 		selectionStore,
+		focusStore,
 		viewportStore,
 		guidesStore,
 		draftStore,
@@ -125,6 +136,7 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 		pathEditStore,
 		getIR,
 		commit,
+		commitBatch,
 		pickAsset,
 		requestAiIntent,
 		stage,

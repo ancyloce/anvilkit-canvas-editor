@@ -99,7 +99,8 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 				height: editingNode.bounds.height * vp.zoom,
 				fontFamily: editingNode.fontFamily,
 				fontSize: editingNode.fontSize * vp.zoom,
-				color: editingNode.fill,
+				color:
+					typeof editingNode.fill === "string" ? editingNode.fill : undefined,
 				border: "1px solid #3b82f6",
 				background: "rgba(255, 255, 255, 0.9)",
 				padding: 0,

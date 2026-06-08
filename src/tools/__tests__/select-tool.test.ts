@@ -197,6 +197,29 @@ describe("selectTool — drag-to-move", () => {
 		expect(h.ctx.draftStore.getState().draft).toBeNull();
 	});
 
+	it("multi-select drag commits ONE batch (not per-node) on pointerup", () => {
+		const h = makeHarness();
+		h.ctx.getIR = () => fixtureIR();
+		h.ctx.stage = fakeStageWithNodes({
+			rectA: { x: 10, y: 20 },
+			rectB: { x: 200, y: 300 },
+		});
+		h.ctx.selectionStore.getState().setSelection(["rectA", "rectB"]);
+		const target = fakeKonvaNodeWithName("rectA");
+		selectTool.onPointerDown?.(pointerEvent(15, 25, { target }), h.ctx);
+		expect(h.ctx.draftStore.getState().draft?.type).toBe("move");
+		for (let i = 0; i < 5; i++) {
+			selectTool.onPointerMove?.(pointerEvent(15 + i * 10, 25), h.ctx);
+		}
+		selectTool.onPointerUp?.(pointerEvent(75, 25), h.ctx);
+		// One batch for the whole gesture; per-node commit is NOT used.
+		expect(h.ctx.commitBatch).toHaveBeenCalledTimes(1);
+		expect(h.ctx.commit).not.toHaveBeenCalled();
+		// The harness flattens the batch into `commits` → both moves are present.
+		expect(h.commits).toHaveLength(2);
+		expect(h.commits.map((c) => c.type)).toEqual(["node.move", "node.move"]);
+	});
+
 	it("ellipse move preview applies the center render offset so it tracks the cursor", () => {
 		// Regression: Konva.Ellipse is centered at (x, y) but the IR transform is
 		// the top-left. The live drag preview must add the half-bounds offset, or
