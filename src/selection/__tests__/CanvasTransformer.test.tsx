@@ -130,6 +130,12 @@ function makeCtx(stage: Konva.Stage | null, ir: CanvasIR) {
 			commits.push(cmd);
 			return ir;
 		}),
+		commitBatch: vi.fn(
+			(cmds: Parameters<CanvasStudioContextValue["commit"]>[0][]) => {
+				for (const c of cmds) commits.push(c);
+				return ir;
+			},
+		),
 		pickAsset: () => Promise.resolve(""),
 		stage,
 		activePageId: "p1",

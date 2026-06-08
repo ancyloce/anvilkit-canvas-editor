@@ -1,6 +1,7 @@
 import {
 	type CanvasIR,
 	type CanvasNodeGroupCommand,
+	type CanvasNodeUngroupCommand,
 	findNode,
 	isGroupNode,
 	parentOf,
@@ -73,20 +74,28 @@ export function groupSelection(ctx: CanvasStudioContextValue): string | null {
 
 /**
  * Dissolve every selected (non-root) group, lifting its children into the
- * parent, then select the lifted children. Returns the lifted child ids. Each
- * group is dissolved as its own undoable command; the live IR is re-read between
- * iterations so already-removed ids are skipped.
+ * parent, then select the lifted children. Returns the lifted child ids.
+ * Multiple groups dissolve as ONE undo entry (a single `commitBatch`); a lone
+ * group stays a plain commit. Commands are collected from the pre-gesture IR —
+ * the selected groups are distinct, so each `node.ungroup` resolves its group by
+ * id regardless of how earlier ungroups in the batch reshaped the tree.
  */
 export function ungroupSelection(ctx: CanvasStudioContextValue): string[] {
 	const selectedIds = [...ctx.selectionStore.getState().selectedIds];
+	const ir = ctx.getIR();
 	const lifted: string[] = [];
+	const cmds: CanvasNodeUngroupCommand[] = [];
 	for (const id of selectedIds) {
-		const ir = ctx.getIR();
 		const found = findNode(ir, id);
 		if (!found || !isGroupNode(found.node)) continue;
 		if (parentOf(ir, id) === null) continue;
 		lifted.push(...found.node.children.map((c) => c.id));
-		ctx.commit({ type: "node.ungroup", groupId: id });
+		cmds.push({ type: "node.ungroup", groupId: id });
+	}
+	if (cmds.length > 1) {
+		ctx.commitBatch(cmds, "Ungroup");
+	} else if (cmds.length === 1 && cmds[0]) {
+		ctx.commit(cmds[0]);
 	}
 	if (lifted.length > 0) {
 		ctx.selectionStore.getState().setSelection(lifted);

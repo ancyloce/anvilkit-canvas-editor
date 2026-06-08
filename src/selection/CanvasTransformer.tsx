@@ -2,6 +2,7 @@
 
 import type {
 	CanvasAnyNodeUpdateCommand,
+	CanvasCommand,
 	CanvasNode,
 	CanvasNodeResizeCommand,
 	CanvasNodeRotateCommand,
@@ -126,6 +127,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		viewportStore,
 		getIR,
 		commit,
+		commitBatch,
 		activePageId,
 	} = useCanvasStudio();
 	// Hide the resize/rotate transformer while the crop editor owns the handles.
@@ -521,6 +523,9 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		const page = ir.pages.find((p) => p.id === activePageId);
 		if (!page) return;
 		const childById = new Map(page.root.children.map((c) => [c.id, c]));
+		// Collect every node's resize/rotate command so a single gesture (incl.
+		// simultaneous resize + rotate, and multi-node transforms) is ONE undo entry.
+		const cmds: CanvasCommand[] = [];
 		for (const id of selectedIds) {
 			const knode = stage.findOne(`.${id}`) as Konva.Node | undefined;
 			const irNode = childById.get(id);
@@ -574,7 +579,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 							},
 						},
 					} as CanvasAnyNodeUpdateCommand;
-					commit(cmd);
+					cmds.push(cmd);
 				}
 				continue;
 			}
@@ -613,7 +618,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 					},
 					to: { x: newX, y: newY, width: newW, height: newH },
 				};
-				commit(cmd);
+				cmds.push(cmd);
 			}
 
 			if (Math.abs(newRotation - transform.rotation) > EPSILON) {
@@ -623,10 +628,15 @@ export function CanvasTransformer(): React.JSX.Element | null {
 					from: transform.rotation,
 					to: newRotation,
 				};
-				commit(cmd);
+				cmds.push(cmd);
 			}
 		}
-	}, [stage, selectedIds, getIR, commit, activePageId]);
+		if (cmds.length > 1) {
+			commitBatch(cmds, "Transform");
+		} else if (cmds.length === 1 && cmds[0]) {
+			commit(cmds[0]);
+		}
+	}, [stage, selectedIds, getIR, commit, commitBatch, activePageId]);
 
 	if (croppingId) return null;
 	return (
