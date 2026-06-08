@@ -1,6 +1,6 @@
 "use client";
 
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import { useCanvasStores } from "../context/canvas-studio-context.js";
 import {
 	type BrandColor,
 	type BrandKit,
@@ -13,7 +13,7 @@ import {
  * well-formed kit so callers never branch on `undefined`.
  */
 export function useBrandKit(): BrandKit {
-	return useCanvasStudio().brandKit ?? EMPTY_BRAND_KIT;
+	return useCanvasStores().brandKit ?? EMPTY_BRAND_KIT;
 }
 
 /** Just the brand color swatches (empty array when none configured). */

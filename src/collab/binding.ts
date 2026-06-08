@@ -140,7 +140,17 @@ export function createCanvasYjsBinding(
 		if (ir === undefined) return;
 		const author = readAuthorPeer();
 		applyRemote(ir);
-		for (const cb of remoteSubscribers) cb(ir, author);
+		// This observer runs synchronously inside the Yjs transaction commit
+		// (`applyUpdate`). A throwing subscriber would escape the observer and
+		// could abort the transaction, leaving the doc/observer set inconsistent
+		// — a desync vector under a buggy or hostile peer. Isolate each callback.
+		for (const cb of remoteSubscribers) {
+			try {
+				cb(ir, author);
+			} catch (err) {
+				console.error("canvas collab remote subscriber threw", err);
+			}
+		}
 	};
 	map.observe(observer);
 

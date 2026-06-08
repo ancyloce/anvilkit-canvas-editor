@@ -1,5 +1,20 @@
+/**
+ * `@anvilkit/canvas-editor` — public, host-facing API (W1).
+ *
+ * This root entry is the STABLE surface for integrating the canvas editor: the
+ * `<CanvasStudio>` core, the `<CanvasWorkspace>` shell, the context hooks, the
+ * mountable panels + inspector fields, page/export actions, and the brand kit.
+ *
+ * The editor's ADVANCED / EXTENSION internals (tool definitions, store
+ * factories, stage primitives, snap engine, geometry helpers) are intentionally
+ * NOT re-exported here — they carry no stability guarantee. Reach them via the
+ * `@anvilkit/canvas-editor/internal` entry, or a specific deep subpath (e.g.
+ * `@anvilkit/canvas-editor/stores/viewport-store`) when you need exactly one.
+ */
+
+// ── a11y ─────────────────────────────────────────────────────────────────────
 export { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
-export { TOOL_LABELS } from "./a11y/tool-labels.js";
+// ── Brand kit ────────────────────────────────────────────────────────────────
 export type { BrandColor, BrandKit } from "./brand/brand-kit.js";
 export { EMPTY_BRAND_KIT } from "./brand/brand-kit.js";
 export {
@@ -7,18 +22,25 @@ export {
 	useBrandFonts,
 	useBrandKit,
 } from "./brand/use-brand-kit.js";
-export type { CanvasStudioProps } from "./CanvasStudio.js";
-export { CanvasStudio } from "./CanvasStudio.js";
-export type { ChromeIcon, ToolDescriptor } from "./chrome/icons.js";
-export { ChromeIcons, TOOL_RAIL_ITEMS } from "./chrome/icons.js";
-export type {
-	CanvasIRGetter,
-	CanvasStudioContextValue,
-} from "./context/canvas-studio-context.js";
 export {
+	CanvasErrorBoundary,
+	type CanvasErrorBoundaryProps,
+} from "./CanvasErrorBoundary.js";
+// ── Core editor + shell ──────────────────────────────────────────────────────
+export { CanvasStudio, type CanvasStudioProps } from "./CanvasStudio.js";
+// ── Context + hooks ──────────────────────────────────────────────────────────
+export {
+	type CanvasIRGetter,
 	CanvasStudioContext,
+	type CanvasStudioContextValue,
+	CanvasStudioStableContext,
+	type CanvasStudioStableValue,
+	type CanvasT,
+	useCanvasStores,
 	useCanvasStudio,
+	useCanvasT,
 } from "./context/canvas-studio-context.js";
+// ── Export / header ──────────────────────────────────────────────────────────
 export type {
 	CanvasExportArtifact,
 	CanvasExportContext,
@@ -36,12 +58,14 @@ export {
 	jsonExporter,
 	pngExporter,
 } from "./header/index.js";
-export type { ClonePageOptions } from "./pages/clone-page.js";
-export { clonePage, regenerateIds } from "./pages/clone-page.js";
-export type { PageNavigatorProps } from "./pages/PageNavigator.js";
-export { PageNavigator } from "./pages/PageNavigator.js";
-export type { AddPageOptions } from "./pages/page-actions.js";
+// ── Pages ────────────────────────────────────────────────────────────────────
+export { type ClonePageOptions, clonePage } from "./pages/clone-page.js";
 export {
+	PageNavigator,
+	type PageNavigatorProps,
+} from "./pages/PageNavigator.js";
+export {
+	type AddPageOptions,
 	addPage,
 	deletePage,
 	duplicateCurrentPage,
@@ -49,6 +73,7 @@ export {
 	reorderPage,
 	switchToPage,
 } from "./pages/page-actions.js";
+// ── Panels + inspector field primitives ──────────────────────────────────────
 export { BrandPanel, type BrandPanelProps } from "./panels/BrandPanel.js";
 export {
 	ElementsPanel,
@@ -66,10 +91,13 @@ export {
 	type TextFieldProps,
 	useCommitPatch,
 } from "./panels/fields.js";
-export type { LayerPanelProps } from "./panels/LayerPanel.js";
-export { LayerPanel } from "./panels/LayerPanel.js";
-export type { PropertyInspectorProps } from "./panels/PropertyInspector.js";
-export { PropertyInspector } from "./panels/PropertyInspector.js";
+export { LayerPanel, type LayerPanelProps } from "./panels/LayerPanel.js";
+export {
+	PropertyInspector,
+	type PropertyInspectorProps,
+} from "./panels/PropertyInspector.js";
+
+// ── Render utilities (host export bridges) ───────────────────────────────────
 export type { ExportStageContentOptions } from "./render/export-stage.js";
 export { exportStageContentDataURL } from "./render/export-stage.js";
 export type {
@@ -77,190 +105,7 @@ export type {
 	RasterizePageResult,
 } from "./render/rasterize-page.js";
 export { rasterizePage } from "./render/rasterize-page.js";
-export { CanvasTransformer } from "./selection/CanvasTransformer.js";
-export { CropEditorOverlay } from "./selection/CropEditorOverlay.js";
-export {
-	beginCrop,
-	type CropDragMode,
-	cancelCrop,
-	commitCrop,
-	computeCropDrag,
-} from "./selection/crop-actions.js";
-export {
-	canGroupSelection,
-	canUngroupSelection,
-	groupSelection,
-	ungroupSelection,
-} from "./selection/group-actions.js";
-export { PathEditOverlay } from "./selection/PathEditOverlay.js";
-export {
-	beginPathEdit,
-	commitPathD,
-	endPathEdit,
-} from "./selection/path-edit-actions.js";
-export {
-	getNodeWorldRect,
-	getOtherNodeRects,
-} from "./snap/get-node-rect.js";
-export {
-	SMART_GUIDE_COLOR,
-	SMART_GUIDE_DASH,
-} from "./snap/smart-guide-constants.js";
-export { SmartGuideOverlay } from "./snap/SmartGuideOverlay.js";
-export {
-	computeSnap,
-	DEFAULT_SNAP_THRESHOLD,
-} from "./snap/snap-engine.js";
-export type {
-	SmartGuide,
-	SnapAxis,
-	SnapInput,
-	SnapRect,
-	SnapResult,
-} from "./snap/snap-types.js";
-export {
-	CanvasAssetsContext,
-	useCanvasAsset,
-} from "./stage/CanvasAssetsContext.js";
-export type { CanvasNodeRendererProps } from "./stage/CanvasNodeRenderer.js";
-export { CanvasNodeRenderer } from "./stage/CanvasNodeRenderer.js";
-export type { CanvasStageProps } from "./stage/CanvasStage.js";
-export { CanvasStage } from "./stage/CanvasStage.js";
-export { DesignBackground } from "./stage/DesignBackground.js";
-export { Grid } from "./stage/Grid.js";
-export { RemoteCursors } from "./stage/RemoteCursors.js";
-export { RemoteSelections } from "./stage/RemoteSelections.js";
-export type { RenderLayerName, RenderLayerProps } from "./stage/RenderLayer.js";
-export { RenderLayer } from "./stage/RenderLayer.js";
-export type {
-	AiJobEntry,
-	AiJobRegistration,
-	AiJobState,
-	AiJobStoreApi,
-} from "./stores/ai-job-store.js";
-export { createAiJobStore } from "./stores/ai-job-store.js";
-export type {
-	CropRect,
-	CropState,
-	CropStoreApi,
-} from "./stores/crop-store.js";
-export { createCropStore } from "./stores/crop-store.js";
-export type {
-	DraftState,
-	DraftStoreApi,
-	DrawDraft,
-} from "./stores/draft-store.js";
-export { createDraftStore } from "./stores/draft-store.js";
-export type {
-	EditingState,
-	EditingStoreApi,
-} from "./stores/editing-store.js";
-export { createEditingStore } from "./stores/editing-store.js";
-export type { GuidesState, GuidesStoreApi } from "./stores/guides-store.js";
-export { createGuidesStore } from "./stores/guides-store.js";
-export type {
-	CreateHistoryStoreOptions,
-	HistoryState,
-	HistoryStoreApi,
-} from "./stores/history-store.js";
-export {
-	createHistoryStore,
-	DEFAULT_HISTORY_LIMIT,
-} from "./stores/history-store.js";
-export type {
-	CreatePagesStoreOptions,
-	PagesState,
-	PagesStoreApi,
-} from "./stores/pages-store.js";
-export { createPagesStore } from "./stores/pages-store.js";
-export type {
-	PathEditState,
-	PathEditStoreApi,
-} from "./stores/path-edit-store.js";
-export { createPathEditStore } from "./stores/path-edit-store.js";
-export type {
-	PenAnchor,
-	PenState,
-	PenStoreApi,
-} from "./stores/pen-store.js";
-export { createPenStore } from "./stores/pen-store.js";
-export type {
-	SelectionState,
-	SelectionStoreApi,
-} from "./stores/selection-store.js";
-export { createSelectionStore } from "./stores/selection-store.js";
-export type {
-	CreateToolStoreOptions,
-	ToolId,
-	ToolState,
-	ToolStoreApi,
-} from "./stores/tool-store.js";
-export {
-	createToolStore,
-	DEFAULT_TOOL,
-} from "./stores/tool-store.js";
-export type {
-	CreateViewportStoreOptions,
-	ViewportState,
-	ViewportStoreApi,
-} from "./stores/viewport-store.js";
-export {
-	createViewportStore,
-	DEFAULT_GRID_SIZE,
-} from "./stores/viewport-store.js";
-export { aiBrushTool } from "./tools/ai-brush-tool.js";
-export { aiImageTool } from "./tools/ai-image-tool.js";
-export type {
-	AiBrushSelectIntent,
-	AiImageMarqueeIntent,
-	AiToolIntent,
-} from "./tools/ai-intent.js";
-export {
-	DRAFT_DASH,
-	DRAFT_STROKE_COLOR,
-	DraftRenderer,
-} from "./tools/DraftRenderer.js";
-export { snapPoint } from "./tools/draw-snap.js";
-export { ellipseTool } from "./tools/ellipse-tool.js";
-export type { StagePointer } from "./tools/get-stage-pointer.js";
-export { getStagePointer } from "./tools/get-stage-pointer.js";
-export { handTool } from "./tools/hand-tool.js";
-export { imageTool } from "./tools/image-tool.js";
-export { lineTool } from "./tools/line-tool.js";
-export { PenPreview } from "./tools/PenPreview.js";
-export { PenToolOverlay } from "./tools/PenToolOverlay.js";
-export {
-	movePathControl,
-	type ParsedPath,
-	type PathControl,
-	type PathControlRef,
-	type PathSeg,
-	type Pt,
-	parsePathD,
-	pathControlPoints,
-	serializeParsedPath,
-} from "./tools/path-edit-geometry.js";
-export {
-	cancelPenPath,
-	commitPenPath,
-	type PenCommitContext,
-} from "./tools/pen-actions.js";
-export { buildPathD, type PenBounds, penBounds } from "./tools/pen-geometry.js";
-export { penTool } from "./tools/pen-tool.js";
-export { rectTool } from "./tools/rect-tool.js";
-export { selectTool } from "./tools/select-tool.js";
-export { TextEditorOverlay } from "./tools/TextEditorOverlay.js";
-export type { ToolInteractionLayerProps } from "./tools/ToolInteractionLayer.js";
-export { ToolInteractionLayer } from "./tools/ToolInteractionLayer.js";
-export { textTool } from "./tools/text-tool.js";
-export {
-	buildToolRegistry,
-	defaultToolRegistry,
-} from "./tools/tool-registry.js";
-export type {
-	Tool,
-	ToolContext,
-	ToolPointerEvent,
-	ToolRegistry,
-} from "./tools/tool-types.js";
+// ── Tool id (host may set `initialTool` / drive tool selection) ──────────────
+export type { ToolId } from "./stores/tool-store.js";
+// `<CanvasWorkspace>`, the panel registry, dock config, and workspace UI hooks.
 export * from "./workspace/index.js";

@@ -2,14 +2,14 @@
 
 import { useSyncExternalStore } from "react";
 import { Line } from "react-konva";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import { useCanvasStores } from "../context/canvas-studio-context.js";
 import {
 	SMART_GUIDE_COLOR,
 	SMART_GUIDE_DASH,
 } from "./smart-guide-constants.js";
 
 export function SmartGuideOverlay(): React.JSX.Element | null {
-	const { guidesStore } = useCanvasStudio();
+	const { guidesStore } = useCanvasStores();
 	const guides = useSyncExternalStore(
 		guidesStore.subscribe,
 		() => guidesStore.getState().guides,

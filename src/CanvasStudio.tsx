@@ -12,9 +12,12 @@ import {
 } from "react";
 import { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
 import type { BrandKit } from "./brand/brand-kit.js";
+import { CanvasErrorBoundary } from "./CanvasErrorBoundary.js";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
+	CanvasStudioStableContext,
+	type CanvasStudioStableValue,
 	type CanvasT,
 } from "./context/canvas-studio-context.js";
 import { PageNavigator } from "./pages/PageNavigator.js";
@@ -294,7 +297,10 @@ export function CanvasStudio({
 		[messages],
 	);
 
-	const ctxValue = useMemo<CanvasStudioContextValue>(
+	// Stable half (W16): store handles + callbacks, no live state. Its identity
+	// never changes after mount, so `useCanvasStores()` consumers don't re-render
+	// on every commit.
+	const stableCtxValue = useMemo<CanvasStudioStableValue>(
 		() => ({
 			historyStore,
 			toolStore,
@@ -314,9 +320,6 @@ export function CanvasStudio({
 			pickAsset,
 			requestAiIntent,
 			brandKit,
-			stage,
-			activePageId,
-			ir,
 			t,
 		}),
 		[
@@ -338,11 +341,15 @@ export function CanvasStudio({
 			pickAsset,
 			requestAiIntent,
 			brandKit,
-			stage,
-			activePageId,
-			ir,
 			t,
 		],
+	);
+
+	// Full value = stable half + live state. Changes on every commit (ir) and on
+	// page/stage changes — this is what `useCanvasStudio()` consumers subscribe to.
+	const ctxValue = useMemo<CanvasStudioContextValue>(
+		() => ({ ...stableCtxValue, stage, activePageId, ir }),
+		[stableCtxValue, stage, activePageId, ir],
 	);
 
 	const activePage = ir.pages.find((p) => p.id === activePageId);
@@ -363,68 +370,75 @@ export function CanvasStudio({
 	// into the legacy bare layout or anywhere a `renderShell` decides to place
 	// it (e.g. the centre column of the reference editor grid).
 	const stageNode = (
-		<CanvasAssetsContext.Provider value={ir.assets}>
-			<CanvasStage
-				width={stageWidth}
-				height={stageHeight}
-				zoom={zoom}
-				panX={panX}
-				panY={panY}
-				onReady={handleStageReady}
-			>
-				<RenderLayer name="background" listening={false}>
-					<DesignBackground />
-					<Grid />
-				</RenderLayer>
-				<RenderLayer name="objects">
-					{activePage.root.children.flatMap((node) =>
-						draggedIds.has(node.id)
-							? []
-							: [<CanvasNodeRenderer key={node.id} node={node} />],
-					)}
-				</RenderLayer>
-				{/* I2-5: dragged nodes float on their own layer so only it
+		<CanvasErrorBoundary
+			label={t("canvas.error.canvas", "The canvas failed to render.")}
+			resetKey={activePageId}
+		>
+			<CanvasAssetsContext.Provider value={ir.assets}>
+				<CanvasStage
+					width={stageWidth}
+					height={stageHeight}
+					zoom={zoom}
+					panX={panX}
+					panY={panY}
+					onReady={handleStageReady}
+				>
+					<RenderLayer name="background" listening={false}>
+						<DesignBackground />
+						<Grid />
+					</RenderLayer>
+					<RenderLayer name="objects">
+						{activePage.root.children.flatMap((node) =>
+							draggedIds.has(node.id)
+								? []
+								: [<CanvasNodeRenderer key={node.id} node={node} />],
+						)}
+					</RenderLayer>
+					{/* I2-5: dragged nodes float on their own layer so only it
 				    redraws during a drag; the (cached) objects layer stays put. */}
-				<RenderLayer name="drag">
-					{activePage.root.children.flatMap((node) =>
-						draggedIds.has(node.id)
-							? [<CanvasNodeRenderer key={node.id} node={node} />]
-							: [],
-					)}
-				</RenderLayer>
-				<RenderLayer name="selection">
-					<DraftRenderer />
-					<SmartGuideOverlay />
-					<PenPreview />
-					<PathEditOverlay />
-					<CanvasTransformer />
-				</RenderLayer>
-				<RenderLayer name="presence" listening={false}>
-					<RemoteCursors />
-					<RemoteSelections />
-				</RenderLayer>
-			</CanvasStage>
-			<ToolInteractionLayer registry={toolRegistry} />
-			<TextEditorOverlay />
-			<CropEditorOverlay />
-			<PenToolOverlay />
-		</CanvasAssetsContext.Provider>
+					<RenderLayer name="drag">
+						{activePage.root.children.flatMap((node) =>
+							draggedIds.has(node.id)
+								? [<CanvasNodeRenderer key={node.id} node={node} />]
+								: [],
+						)}
+					</RenderLayer>
+					<RenderLayer name="selection">
+						<DraftRenderer />
+						<SmartGuideOverlay />
+						<PenPreview />
+						<PathEditOverlay />
+						<CanvasTransformer />
+					</RenderLayer>
+					<RenderLayer name="presence" listening={false}>
+						<RemoteCursors />
+						<RemoteSelections />
+					</RenderLayer>
+				</CanvasStage>
+				<ToolInteractionLayer registry={toolRegistry} />
+				<TextEditorOverlay />
+				<CropEditorOverlay />
+				<PenToolOverlay />
+			</CanvasAssetsContext.Provider>
+		</CanvasErrorBoundary>
 	);
 	return (
 		<CanvasStudioContext value={ctxValue}>
-			{renderShell ? (
-				renderShell(stageNode)
-			) : (
-				<div
-					data-testid="canvas-studio-root"
-					style={{ display: "flex", flexDirection: "column" }}
-				>
-					<ToolAnnouncer />
-					{!hidePageNavigator && <PageNavigator />}
-					{stageNode}
-				</div>
-			)}
-			{children}
+			<CanvasStudioStableContext value={stableCtxValue}>
+				{renderShell ? (
+					renderShell(stageNode)
+				) : (
+					<div
+						data-testid="canvas-studio-root"
+						style={{ display: "flex", flexDirection: "column" }}
+					>
+						<ToolAnnouncer />
+						{!hidePageNavigator && <PageNavigator />}
+						{stageNode}
+					</div>
+				)}
+				{children}
+			</CanvasStudioStableContext>
 		</CanvasStudioContext>
 	);
 }

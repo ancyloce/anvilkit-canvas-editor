@@ -107,6 +107,10 @@ export function ExportMenu({
 	const [resolution, setResolution] = useState("100");
 	const [stripMetadata, setStripMetadata] = useState(true);
 	const [busy, setBusy] = useState(false);
+	// Default in-UI failure surface (W6). When the host wires `onError` it owns
+	// the reporting; otherwise we show an inline message so a failed export is
+	// never silent (previously it only logged to the console).
+	const [error, setError] = useState<string | null>(null);
 
 	if (available.length === 0) return null;
 
@@ -123,6 +127,7 @@ export function ExportMenu({
 		const exporter = merged[activeFormat];
 		if (!exporter || busy) return;
 		setBusy(true);
+		setError(null);
 		try {
 			const artifact = await exporter(
 				{ ir: ctx.getIR(), activePageId: ctx.activePageId, stage: ctx.stage },
@@ -130,10 +135,17 @@ export function ExportMenu({
 			);
 			downloadCanvasArtifact(artifact);
 			setOpen(false);
-		} catch (error) {
-			if (onError) onError(error, activeFormat);
-			else
-				console.error("canvas export failed", { format: activeFormat, error });
+		} catch (err) {
+			// Host owns reporting when it wired `onError`; otherwise surface the
+			// failure inline (W6) so the user isn't left with a silently dead button.
+			if (onError) onError(err, activeFormat);
+			else {
+				console.error("canvas export failed", {
+					format: activeFormat,
+					error: err,
+				});
+				setError(err instanceof Error ? err.message : String(err));
+			}
 		} finally {
 			setBusy(false);
 		}
@@ -141,7 +153,13 @@ export function ExportMenu({
 
 	return (
 		<div data-testid="canvas-export-bar">
-			<Popover open={open} onOpenChange={setOpen}>
+			<Popover
+				open={open}
+				onOpenChange={(next) => {
+					setOpen(next);
+					if (next) setError(null);
+				}}
+			>
 				<PopoverTrigger
 					data-testid="canvas-export-trigger"
 					className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}
@@ -278,6 +296,18 @@ export function ExportMenu({
 							aria-label={t("canvas.export.removeMetadata", "Remove metadata")}
 						/>
 					</section>
+
+					{/* Inline failure surface (W6) — shown only when the host did not
+					    wire `onError`; cleared on a new attempt or on reopen. */}
+					{error ? (
+						<p
+							role="alert"
+							data-testid="canvas-export-error"
+							className="rounded-md bg-destructive/10 px-2.5 py-1.5 text-[0.7rem] text-destructive"
+						>
+							{t("canvas.export.failed", "Export failed:")} {error}
+						</p>
+					) : null}
 
 					{/* Actions */}
 					<div className="flex justify-end gap-2 pt-1">

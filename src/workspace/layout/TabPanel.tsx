@@ -4,6 +4,7 @@ import { Button } from "@anvilkit/ui/button";
 import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { type ReactNode, useEffect, useState } from "react";
+import { CanvasErrorBoundary } from "../../CanvasErrorBoundary.js";
 import { useCanvasT } from "../../context/canvas-studio-context.js";
 import type {
 	CanvasPanelDescriptor,
@@ -80,7 +81,15 @@ export function TabPanel({
 				</div>
 			) : null}
 			<div className="min-h-0 flex-1 overflow-y-auto">
-				<PanelBody descriptor={descriptor} search={search} />
+				{/* Contain a panel render failure (W10) — a throwing builtin/plugin/
+				    remote panel degrades to a recover affordance here instead of
+				    crashing the whole editor. Resets when the dock changes. */}
+				<CanvasErrorBoundary
+					label={t("canvas.tabpanel.error", "This panel failed to render.")}
+					resetKey={activeDockId}
+				>
+					<PanelBody descriptor={descriptor} search={search} />
+				</CanvasErrorBoundary>
 			</div>
 		</section>
 	);
