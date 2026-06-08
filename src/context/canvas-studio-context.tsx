@@ -4,10 +4,15 @@ import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { createContext, use } from "react";
 import type { BrandKit } from "../brand/brand-kit.js";
+import type {
+	CanvasKindInspector,
+	CanvasKindRenderer,
+} from "../extensions/editor-extension.js";
 import type { AiJobStoreApi } from "../stores/ai-job-store.js";
 import type { CropStoreApi } from "../stores/crop-store.js";
 import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
+import type { CanvasFocusStoreApi } from "../stores/focus-store.js";
 import type { GuidesStoreApi } from "../stores/guides-store.js";
 import type { HistoryStoreApi } from "../stores/history-store.js";
 import type { PagesStoreApi } from "../stores/pages-store.js";
@@ -34,6 +39,8 @@ export interface CanvasStudioContextValue {
 	historyStore: HistoryStoreApi;
 	toolStore: ToolStoreApi;
 	selectionStore: SelectionStoreApi;
+	/** Roving keyboard focus (a11y), distinct from selection. */
+	focusStore: CanvasFocusStoreApi;
 	viewportStore: ViewportStoreApi;
 	guidesStore: GuidesStoreApi;
 	draftStore: DraftStoreApi;
@@ -72,6 +79,12 @@ export interface CanvasStudioContextValue {
 	pathEditStore: PathEditStoreApi;
 	getIR: CanvasIRGetter;
 	commit: (cmd: CanvasCommand) => CanvasIR;
+	/**
+	 * Apply many commands as one undoable transaction — a single undo step.
+	 * Mirrors {@link commit} for multi-command gestures (multi-select move,
+	 * transform commit, ungroup). Fires `onChange`/`onChanges` once for the batch.
+	 */
+	commitBatch: (commands: readonly CanvasCommand[], label?: string) => CanvasIR;
 	pickAsset: () => Promise<string>;
 	/**
 	 * Hand an AI gesture to the host (I1-7). Optional — present only when the
@@ -85,6 +98,13 @@ export interface CanvasStudioContextValue {
 	 * absent case to an empty kit.
 	 */
 	brandKit?: BrandKit;
+	/**
+	 * Renderers for custom (extension) node kinds, keyed by kind. Consulted by
+	 * `<CanvasNodeRenderer>` for any node whose `type` is not a built-in kind.
+	 */
+	kindRenderers?: Readonly<Record<string, CanvasKindRenderer>>;
+	/** Inspector field renderers for custom node kinds, keyed by kind. */
+	kindInspectors?: Readonly<Record<string, CanvasKindInspector>>;
 	/** Konva.Stage instance — null until <CanvasStage>'s onReady fires. */
 	stage: Konva.Stage | null;
 	/**
