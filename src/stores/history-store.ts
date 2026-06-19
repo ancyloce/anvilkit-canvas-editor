@@ -8,7 +8,7 @@ import {
 import { createStore, type StoreApi } from "zustand/vanilla";
 
 export const DEFAULT_HISTORY_LIMIT = 100;
-export const DEFAULT_MERGE_WINDOW_MS = 400;
+const DEFAULT_MERGE_WINDOW_MS = 400;
 
 export interface CreateHistoryStoreOptions {
 	/**
