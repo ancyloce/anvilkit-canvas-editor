@@ -33,7 +33,7 @@ const EDITABLE_TAG = /^(INPUT|TEXTAREA|SELECT)$/;
  * keystrokes originating in form fields / contenteditable. Must be called inside
  * a `<CanvasStudio>` tree.
  */
-export function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
+function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 	const ctx = useCanvasStudio();
 	const { stage, selectionStore, getIR, activePageId, commit, commitBatch } =
 		ctx;
