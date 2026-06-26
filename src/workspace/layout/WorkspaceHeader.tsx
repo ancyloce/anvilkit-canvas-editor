@@ -16,7 +16,10 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "@/context/canvas-studio-context.js";
-import type { CanvasHeaderPlugin } from "@/header/types.js";
+// Relative (not @/) on purpose: this type surfaces in the emitted .d.ts, and
+// rslib rewrites alias paths only in .js, not in declarations — an aliased
+// import here would ship an unresolvable "@/" to consumers.
+import type { CanvasHeaderPlugin } from "../../header/types.js";
 
 export interface WorkspaceHeaderProps {
 	/** Host back action. When omitted, the Back button is hidden. */

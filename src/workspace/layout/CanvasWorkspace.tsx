@@ -5,10 +5,13 @@ import { cn } from "@anvilkit/ui/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { ToolAnnouncer } from "@/a11y/ToolAnnouncer.js";
-import { CanvasStudio, type CanvasStudioProps } from "@/CanvasStudio.js";
 import { useCanvasT } from "@/context/canvas-studio-context.js";
-import type { CanvasHeaderPlugin } from "@/header/types.js";
 import { PropertyInspector } from "@/panels/PropertyInspector.js";
+// CanvasStudio's relative path (not @/): CanvasStudioProps surfaces in the
+// emitted .d.ts and rslib rewrites alias paths only in .js, not declarations.
+import { CanvasStudio, type CanvasStudioProps } from "../../CanvasStudio.js";
+// Relative (not @/): this type also surfaces in the emitted .d.ts.
+import type { CanvasHeaderPlugin } from "../../header/types.js";
 import {
 	type CanvasPanelRegistry,
 	createCanvasPanelRegistry,
