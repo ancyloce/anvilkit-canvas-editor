@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
-} from "../../context/canvas-studio-context.js";
+} from "@/context/canvas-studio-context.js";
 import { CanvasNodeRenderer } from "../CanvasNodeRenderer.js";
 
 afterEach(cleanup);

@@ -9,9 +9,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
-} from "../../context/canvas-studio-context.js";
-import { createFocusStore } from "../../stores/focus-store.js";
-import { createSelectionStore } from "../../stores/selection-store.js";
+} from "@/context/canvas-studio-context.js";
+import { createFocusStore } from "@/stores/focus-store.js";
+import { createSelectionStore } from "@/stores/selection-store.js";
 import { SceneAccessibilityTree } from "../SceneAccessibilityTree.js";
 
 afterEach(cleanup);

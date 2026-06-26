@@ -30,8 +30,8 @@ vi.mock("react-konva", () => ({
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
-} from "../../context/canvas-studio-context.js";
-import { makeHarness } from "../../tools/__tests__/_tool-test-helpers.js";
+} from "@/context/canvas-studio-context.js";
+import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { PathEditOverlay } from "../PathEditOverlay.js";
 
 function pathIR(d = "M 0 0 L 10 0"): CanvasIR {

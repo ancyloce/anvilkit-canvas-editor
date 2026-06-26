@@ -4,8 +4,8 @@ import { Button } from "@anvilkit/ui/button";
 import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { type ReactNode, useEffect, useState } from "react";
-import { CanvasErrorBoundary } from "../../CanvasErrorBoundary.js";
-import { useCanvasT } from "../../context/canvas-studio-context.js";
+import { CanvasErrorBoundary } from "@/CanvasErrorBoundary.js";
+import { useCanvasT } from "@/context/canvas-studio-context.js";
 import type {
 	CanvasPanelDescriptor,
 	CanvasPanelRegistry,

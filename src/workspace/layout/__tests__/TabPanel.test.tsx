@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { useActiveDock } from "../../state/hooks.js";
-import { WorkspaceUiStoreProvider } from "../../state/WorkspaceUiStoreProvider.js";
+import { useActiveDock } from "@/workspace/state/hooks.js";
+import { WorkspaceUiStoreProvider } from "@/workspace/state/WorkspaceUiStoreProvider.js";
 import type { CanvasPanelRegistry } from "../panel-registry.js";
 import { TabPanel } from "../TabPanel.js";
 

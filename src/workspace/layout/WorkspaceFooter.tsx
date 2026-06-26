@@ -4,11 +4,11 @@ import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { Separator } from "@anvilkit/ui/separator";
 import { useSyncExternalStore } from "react";
-import { ChromeIcons } from "../../chrome/icons.js";
+import { ChromeIcons } from "@/chrome/icons.js";
 import {
 	useCanvasStudio,
 	useCanvasT,
-} from "../../context/canvas-studio-context.js";
+} from "@/context/canvas-studio-context.js";
 
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 4;

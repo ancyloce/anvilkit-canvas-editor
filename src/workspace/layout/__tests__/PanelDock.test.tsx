@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DOCK_IDS } from "../../dock-ids.js";
-import { WorkspaceUiStoreProvider } from "../../state/WorkspaceUiStoreProvider.js";
+import { DOCK_IDS } from "@/workspace/dock-ids.js";
+import { WorkspaceUiStoreProvider } from "@/workspace/state/WorkspaceUiStoreProvider.js";
 import { PanelDock } from "../PanelDock.js";
 
 // RTL auto-cleanup is OFF in this preset; persisted store state is keyed by

@@ -9,9 +9,9 @@ import {
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { describe, expect, it, vi } from "vitest";
-import { createDraftStore } from "../../stores/draft-store.js";
-import { createEditingStore } from "../../stores/editing-store.js";
-import { createSelectionStore } from "../../stores/selection-store.js";
+import { createDraftStore } from "@/stores/draft-store.js";
+import { createEditingStore } from "@/stores/editing-store.js";
+import { createSelectionStore } from "@/stores/selection-store.js";
 import { draggedIdsKey, selectDraggedIds } from "../active-nodes.js";
 import {
 	applyGroupCache,

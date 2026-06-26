@@ -1,7 +1,7 @@
 import { type CanvasIR, createCanvasIR } from "@anvilkit/canvas-core";
 import { describe, expect, it, vi } from "vitest";
 import { applyUpdate, Doc as YDoc } from "yjs";
-import { createSceneStore } from "../../stores/scene-store.js";
+import { createSceneStore } from "@/stores/scene-store.js";
 import { createCanvasYjsBinding } from "../binding.js";
 import { CANVAS_IR_KEY, DEFAULT_CANVAS_MAP_NAME } from "../keys.js";
 

@@ -11,9 +11,9 @@ import { describe, expect, it } from "vitest";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
-} from "../../context/canvas-studio-context.js";
-import type { CropRect } from "../../stores/crop-store.js";
-import { makeHarness } from "../../tools/__tests__/_tool-test-helpers.js";
+} from "@/context/canvas-studio-context.js";
+import type { CropRect } from "@/stores/crop-store.js";
+import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { CropEditorOverlay } from "../CropEditorOverlay.js";
 
 /** image "img-a" (200×100) with a 200×100 source asset → 1:1 screen↔natural. */

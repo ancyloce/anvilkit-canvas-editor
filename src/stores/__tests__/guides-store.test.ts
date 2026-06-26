@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SmartGuide } from "../../snap/snap-types.js";
+import type { SmartGuide } from "@/snap/snap-types.js";
 import { createGuidesStore } from "../guides-store.js";
 
 const guide: SmartGuide = {

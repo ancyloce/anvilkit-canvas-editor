@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
-} from "../../context/canvas-studio-context.js";
-import { makeHarness } from "../../tools/__tests__/_tool-test-helpers.js";
+} from "@/context/canvas-studio-context.js";
+import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import {
 	type BrandColor,
 	type BrandKit,

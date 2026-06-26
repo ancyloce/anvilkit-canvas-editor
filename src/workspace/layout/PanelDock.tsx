@@ -2,7 +2,7 @@
 
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
-import { useCanvasT } from "../../context/canvas-studio-context.js";
+import { useCanvasT } from "@/context/canvas-studio-context.js";
 import { useActiveDock } from "../state/hooks.js";
 import { DOCK_ITEMS, type DockItem } from "../workspace-config.js";
 

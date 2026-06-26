@@ -10,7 +10,7 @@ import {
 	createRect,
 } from "@anvilkit/canvas-core";
 import { describe, expect, it } from "vitest";
-import { makeHarness } from "../../tools/__tests__/_tool-test-helpers.js";
+import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import {
 	addPage,
 	deletePage,

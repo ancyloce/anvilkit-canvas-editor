@@ -45,8 +45,8 @@ vi.mock("use-image", () => ({
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
-} from "../../context/canvas-studio-context.js";
-import { createAiJobStore } from "../../stores/ai-job-store.js";
+} from "@/context/canvas-studio-context.js";
+import { createAiJobStore } from "@/stores/ai-job-store.js";
 import { CanvasAssetsContext } from "../CanvasAssetsContext.js";
 import { CanvasNodeRenderer } from "../CanvasNodeRenderer.js";
 

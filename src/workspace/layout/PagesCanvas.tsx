@@ -13,15 +13,15 @@ import {
 import {
 	useCanvasStudio,
 	useCanvasT,
-} from "../../context/canvas-studio-context.js";
+} from "@/context/canvas-studio-context.js";
 import {
 	addPage,
 	deletePage,
 	duplicateCurrentPage,
 	reorderPage,
 	switchToPage,
-} from "../../pages/page-actions.js";
-import { usePageThumbnails } from "../../perf/page-thumbnails.js";
+} from "@/pages/page-actions.js";
+import { usePageThumbnails } from "@/perf/page-thumbnails.js";
 import { type ElementActions, ElementControls } from "./ElementControls.js";
 
 /** Padding (px) reserved inside the scroll viewport for the fit calculation. */

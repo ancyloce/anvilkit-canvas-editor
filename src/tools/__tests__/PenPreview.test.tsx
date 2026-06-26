@@ -19,7 +19,7 @@ vi.mock("react-konva", () => ({
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
-} from "../../context/canvas-studio-context.js";
+} from "@/context/canvas-studio-context.js";
 import { PenPreview } from "../PenPreview.js";
 import { makeHarness } from "./_tool-test-helpers.js";
 

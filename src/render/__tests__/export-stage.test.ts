@@ -3,7 +3,7 @@
 // is independent of jsdom.
 import type Konva from "konva";
 import { describe, expect, it, vi } from "vitest";
-import type { RenderLayerName } from "../../stage/RenderLayer.js";
+import type { RenderLayerName } from "@/stage/RenderLayer.js";
 import { exportStageContentDataURL } from "../export-stage.js";
 
 /** Minimal Konva.Layer fake tracking its name + visibility. */

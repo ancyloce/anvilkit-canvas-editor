@@ -8,8 +8,8 @@ import { useSyncExternalStore } from "react";
 import {
 	useCanvasStudio,
 	useCanvasT,
-} from "../../context/canvas-studio-context.js";
-import { useCommitPatch } from "../../panels/fields.js";
+} from "@/context/canvas-studio-context.js";
+import { useCommitPatch } from "@/panels/fields.js";
 
 /** Node kinds that carry a `fill`. */
 const FILL_TYPES = new Set<CanvasNode["type"]>([

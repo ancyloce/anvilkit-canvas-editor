@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
-} from "../../context/canvas-studio-context.js";
+} from "@/context/canvas-studio-context.js";
 import { PenToolOverlay } from "../PenToolOverlay.js";
 import { makeHarness } from "./_tool-test-helpers.js";
 

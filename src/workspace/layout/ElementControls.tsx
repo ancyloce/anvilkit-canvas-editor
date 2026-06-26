@@ -23,7 +23,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import {
 	useCanvasStudio,
 	useCanvasT,
-} from "../../context/canvas-studio-context.js";
+} from "@/context/canvas-studio-context.js";
 
 export type AlignDirection =
 	| "left"

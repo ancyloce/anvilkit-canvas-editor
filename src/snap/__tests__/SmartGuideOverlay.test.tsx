@@ -3,15 +3,15 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
-} from "../../context/canvas-studio-context.js";
-import { createDraftStore } from "../../stores/draft-store.js";
-import { createEditingStore } from "../../stores/editing-store.js";
-import { createGuidesStore } from "../../stores/guides-store.js";
-import { createHistoryStore } from "../../stores/history-store.js";
-import { createPagesStore } from "../../stores/pages-store.js";
-import { createSelectionStore } from "../../stores/selection-store.js";
-import { createToolStore } from "../../stores/tool-store.js";
-import { createViewportStore } from "../../stores/viewport-store.js";
+} from "@/context/canvas-studio-context.js";
+import { createDraftStore } from "@/stores/draft-store.js";
+import { createEditingStore } from "@/stores/editing-store.js";
+import { createGuidesStore } from "@/stores/guides-store.js";
+import { createHistoryStore } from "@/stores/history-store.js";
+import { createPagesStore } from "@/stores/pages-store.js";
+import { createSelectionStore } from "@/stores/selection-store.js";
+import { createToolStore } from "@/stores/tool-store.js";
+import { createViewportStore } from "@/stores/viewport-store.js";
 import { SmartGuideOverlay } from "../SmartGuideOverlay.js";
 import type { SmartGuide } from "../snap-types.js";
 

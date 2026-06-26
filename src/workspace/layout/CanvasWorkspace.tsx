@@ -4,11 +4,11 @@ import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
-import { ToolAnnouncer } from "../../a11y/ToolAnnouncer.js";
-import { CanvasStudio, type CanvasStudioProps } from "../../CanvasStudio.js";
-import { useCanvasT } from "../../context/canvas-studio-context.js";
-import type { CanvasHeaderPlugin } from "../../header/types.js";
-import { PropertyInspector } from "../../panels/PropertyInspector.js";
+import { ToolAnnouncer } from "@/a11y/ToolAnnouncer.js";
+import { CanvasStudio, type CanvasStudioProps } from "@/CanvasStudio.js";
+import { useCanvasT } from "@/context/canvas-studio-context.js";
+import type { CanvasHeaderPlugin } from "@/header/types.js";
+import { PropertyInspector } from "@/panels/PropertyInspector.js";
 import {
 	type CanvasPanelRegistry,
 	createCanvasPanelRegistry,

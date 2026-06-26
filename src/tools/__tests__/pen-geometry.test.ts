@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PenAnchor } from "../../stores/pen-store.js";
+import type { PenAnchor } from "@/stores/pen-store.js";
 import { buildPathD, penBounds } from "../pen-geometry.js";
 
 const anchor = (x: number, y: number, hx = x, hy = y): PenAnchor => ({

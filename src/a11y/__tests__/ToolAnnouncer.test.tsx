@@ -1,7 +1,7 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { CanvasStudioContext } from "../../context/canvas-studio-context.js";
-import { makeHarness } from "../../tools/__tests__/_tool-test-helpers.js";
+import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { ToolAnnouncer } from "../ToolAnnouncer.js";
 
 // react-library vitest preset runs with globals:false → RTL auto-cleanup is OFF.

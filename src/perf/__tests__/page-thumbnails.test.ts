@@ -5,7 +5,7 @@ import {
 	createRect,
 } from "@anvilkit/canvas-core";
 import { describe, expect, it, vi } from "vitest";
-import type { rasterizePage } from "../../render/rasterize-page.js";
+import type { rasterizePage } from "@/render/rasterize-page.js";
 import { pageThumbnailKey, usePageThumbnails } from "../page-thumbnails.js";
 
 function pageWith(id: string, rectIds: string[]): CanvasPage {

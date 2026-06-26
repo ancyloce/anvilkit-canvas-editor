@@ -11,12 +11,12 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
-import { ChromeIcons } from "../../chrome/icons.js";
+import { ChromeIcons } from "@/chrome/icons.js";
 import {
 	useCanvasStudio,
 	useCanvasT,
-} from "../../context/canvas-studio-context.js";
-import type { CanvasHeaderPlugin } from "../../header/types.js";
+} from "@/context/canvas-studio-context.js";
+import type { CanvasHeaderPlugin } from "@/header/types.js";
 
 export interface WorkspaceHeaderProps {
 	/** Host back action. When omitted, the Back button is hidden. */
