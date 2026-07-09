@@ -56,7 +56,9 @@
 		"i18n"
 	],
 	"license": "MIT",
-	"sideEffects": false,
+	"sideEffects": [
+		"**/*.css"
+	],
 	"publishConfig": {
 		"access": "public"
 	},
@@ -98,7 +100,7 @@
 	"scripts": {
 		"build": "rslib build && pnpm build:css",
 		"build:css": "tailwindcss -i ./src/styles.src.css -o ./dist/styles.css --minify",
-		"dev": "pnpm build:css && rslib build --watch",
+		"dev": "rslib build && pnpm build:css && rslib build --watch --no-clean",
 		"lint": "pnpm exec biome lint package.json tsconfig.json rslib.config.ts vitest.config.ts src",
 		"format": "pnpm exec biome check --write package.json tsconfig.json rslib.config.ts vitest.config.ts src",
 		"typecheck": "tsc --noEmit",
