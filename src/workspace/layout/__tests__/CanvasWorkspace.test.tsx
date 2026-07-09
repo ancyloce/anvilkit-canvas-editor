@@ -103,4 +103,20 @@ describe("CanvasWorkspace shell", () => {
 			container.querySelector("[data-testid='layer-panel']"),
 		).not.toBeNull();
 	});
+
+	// canvas-m0-012: the whole shell (header, tool rail, dock, footer) must be
+	// axe-clean. The Konva stage is mocked to a plain div here — the real scene
+	// is mirrored to AT by SceneAccessibilityTree, scanned in a11y-axe.test.tsx.
+	it("shell chrome has no axe violations", async () => {
+		const { axe } = await import("vitest-axe");
+		const { container } = render(
+			<CanvasWorkspace
+				initialIR={ir()}
+				initialActivePageId="p1"
+				storeId="ws-axe"
+			/>,
+		);
+		const results = await axe(container);
+		expect(results.violations).toHaveLength(0);
+	});
 });
