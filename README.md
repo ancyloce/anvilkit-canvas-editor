@@ -226,6 +226,12 @@ schema / command / serializer extensions for the same kinds.
 - **Collaboration peers are optional.** `yjs` and `y-protocols` are only needed
   for the `./collab` entry; omit them for single-user editing.
 
+## Release gates
+
+`pnpm check:all` runs the release-gate chain: `check:publint` (packed-tarball publint), `check:circular` (madge), `check:peer-deps` (dependency-cone rules), and `check:bundle-budget` (esbuild-based, budget and externals read from `.size-limit.json` so the two size gates cannot drift). An API-snapshot gate will join the chain once snapshot infrastructure lands.
+
+Gates assume a **full package build** first — always run `pnpm build`: for this package, a bare `rslib build` wipes `dist/styles.css` (the `build:css` step regenerates it).
+
 ## License
 
 MIT

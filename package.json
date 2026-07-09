@@ -69,6 +69,18 @@
 		"yjs": "^13.6.31"
 	},
 	"peerDependenciesMeta": {
+		"konva": {
+			"optional": false
+		},
+		"react": {
+			"optional": false
+		},
+		"react-dom": {
+			"optional": false
+		},
+		"react-konva": {
+			"optional": false
+		},
 		"y-protocols": {
 			"optional": true
 		},
@@ -93,6 +105,13 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"publint": "publint",
+		"check:publint": "node ./scripts/check-publint.mjs",
+		"check:circular": "madge --circular --extensions ts,tsx src/",
+		"check:peer-deps": "node ./scripts/check-peer-deps.mjs",
+		"check:bundle-budget": "node ./scripts/check-bundle-budget.mjs",
+		"check:api-snapshot": "node ./scripts/check-api-snapshot.mjs",
+		"check:all": "pnpm check:publint && pnpm check:circular && pnpm check:peer-deps && pnpm check:bundle-budget && pnpm check:api-snapshot",
+		"update:api-snapshot": "node ./scripts/check-api-snapshot.mjs --update",
 		"size": "size-limit"
 	},
 	"devDependencies": {
@@ -107,14 +126,18 @@
 		"@types/node": "^26.0.1",
 		"@types/react": "^19.2.17",
 		"@types/react-dom": "19.2.3",
+		"esbuild": "^0.28.0",
 		"jsdom": "^29.1.1",
 		"konva": "^10.3.0",
+		"madge": "^8.0.0",
 		"publint": "^0.3.21",
 		"react": "^19.2.7",
 		"react-dom": "^19.2.7",
 		"react-konva": "^19.2.4",
 		"tailwindcss": "4.3.1",
 		"tw-animate-css": "^1.4.0",
+		"typedoc": "^0.28.19",
+		"typedoc-plugin-markdown": "^4.11.2",
 		"typescript": "6.0.3",
 		"vitest": "^4.1.9",
 		"y-protocols": "^1.0.7",
