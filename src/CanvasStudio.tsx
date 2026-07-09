@@ -62,6 +62,7 @@ import { createSceneStore } from "./stores/scene-store.js";
 import { createSelectionStore } from "./stores/selection-store.js";
 import { createToolStore, type ToolId } from "./stores/tool-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
+import type { CanvasTemplateEntry } from "./templates/template-entry.js";
 import type { AiToolIntent } from "./tools/ai-intent.js";
 import { DraftRenderer } from "./tools/DraftRenderer.js";
 import { PenPreview } from "./tools/PenPreview.js";
@@ -139,6 +140,13 @@ export interface CanvasStudioProps {
 	 */
 	brandKit?: BrandKit;
 	/**
+	 * Host-supplied template catalog (canvas-m0-009). Plain data consumed by the
+	 * Templates dock panel; structurally compatible with
+	 * `@anvilkit/canvas-templates`' catalog values. Omit to show the panel's
+	 * empty state.
+	 */
+	templates?: readonly CanvasTemplateEntry[];
+	/**
 	 * Host-injected i18n catalog (P7). A flat `canvas.*` → string map for the
 	 * active locale; the editor resolves chrome strings via {@link useCanvasT}
 	 * (host override wins, else the inline English fallback). Omit to render
@@ -180,6 +188,7 @@ export function CanvasStudio({
 	toolRegistry,
 	hidePageNavigator,
 	brandKit,
+	templates,
 	messages,
 	extensions,
 	renderShell,
@@ -413,6 +422,7 @@ export function CanvasStudio({
 			pickAsset,
 			requestAiIntent,
 			brandKit,
+			templates,
 			t,
 			kindRenderers,
 			kindInspectors,
@@ -438,6 +448,7 @@ export function CanvasStudio({
 			pickAsset,
 			requestAiIntent,
 			brandKit,
+			templates,
 			t,
 			kindRenderers,
 			kindInspectors,

@@ -22,6 +22,7 @@ import type { SceneStoreApi } from "../stores/scene-store.js";
 import type { SelectionStoreApi } from "../stores/selection-store.js";
 import type { ToolStoreApi } from "../stores/tool-store.js";
 import type { ViewportStoreApi } from "../stores/viewport-store.js";
+import type { CanvasTemplateEntry } from "../templates/template-entry.js";
 import type { AiToolIntent } from "../tools/ai-intent.js";
 
 export type CanvasIRGetter = () => CanvasIR;
@@ -98,6 +99,11 @@ export interface CanvasStudioContextValue {
 	 * absent case to an empty kit.
 	 */
 	brandKit?: BrandKit;
+	/**
+	 * Host-supplied template catalog (canvas-m0-009). Plain data — rendered by
+	 * the Templates dock panel; absent/empty shows the panel's empty state.
+	 */
+	templates?: readonly CanvasTemplateEntry[];
 	/**
 	 * Renderers for custom (extension) node kinds, keyed by kind. Consulted by
 	 * `<CanvasNodeRenderer>` for any node whose `type` is not a built-in kind.

@@ -101,7 +101,8 @@ export {
 	PropertyInspector,
 	type PropertyInspectorProps,
 } from "./panels/PropertyInspector.js";
-
+export { TemplatesPanel } from "./panels/TemplatesPanel.js";
+export { loadTemplate } from "./panels/template-actions.js";
 // ── Render utilities (host export bridges) ───────────────────────────────────
 export type { ExportStageContentOptions } from "./render/export-stage.js";
 export { exportStageContentDataURL } from "./render/export-stage.js";
@@ -112,5 +113,6 @@ export type {
 export { rasterizePage } from "./render/rasterize-page.js";
 // ── Tool id (host may set `initialTool` / drive tool selection) ──────────────
 export type { ToolId } from "./stores/tool-store.js";
+export type { CanvasTemplateEntry } from "./templates/template-entry.js";
 // `<CanvasWorkspace>`, the panel registry, dock config, and workspace UI hooks.
 export * from "./workspace/index.js";
