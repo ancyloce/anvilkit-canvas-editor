@@ -24670,7 +24670,15 @@
 						"summary": [
 							{
 								"kind": "text",
-								"text": "MVP-7: single click commits exactly one node.create on pointerdown\n(no drag, no pointermove side effects). Editor overlay opens on the same\nevent — see <TextEditorOverlay>. pointermove/pointerup are no-ops so the\nMVP-7 single-command assertion holds for the full down→move*→up sequence."
+								"text": "MVP-7: single click commits exactly one node.create on pointerdown\n(no drag, no pointermove side effects). Editor overlay opens on the same\nevent — see "
+							},
+							{
+								"kind": "code",
+								"text": "`<TextEditorOverlay>`"
+							},
+							{
+								"kind": "text",
+								"text": ". pointermove/pointerup are no-ops so the\nMVP-7 single-command assertion holds for the full down→move*→up sequence."
 							}
 						]
 					},
@@ -27514,7 +27522,23 @@
 									},
 									{
 										"kind": "text",
-										"text": ".\nRenders no DOM — pure side-effect component. Mounts as a sibling of\n<CanvasStage> inside the CanvasStudioContext so unmount order detaches\nlisteners before <CanvasStage> calls "
+										"text": ".\nRenders no DOM — pure side-effect component. Mounts as a sibling of\n"
+									},
+									{
+										"kind": "code",
+										"text": "`<CanvasStage>`"
+									},
+									{
+										"kind": "text",
+										"text": " inside the CanvasStudioContext so unmount order detaches\nlisteners before "
+									},
+									{
+										"kind": "code",
+										"text": "`<CanvasStage>`"
+									},
+									{
+										"kind": "text",
+										"text": " calls "
 									},
 									{
 										"kind": "code",

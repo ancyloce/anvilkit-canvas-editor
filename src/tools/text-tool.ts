@@ -14,7 +14,7 @@ const DEFAULT_HEIGHT = 36;
 /**
  * MVP-7: single click commits exactly one node.create on pointerdown
  * (no drag, no pointermove side effects). Editor overlay opens on the same
- * event — see <TextEditorOverlay>. pointermove/pointerup are no-ops so the
+ * event — see `<TextEditorOverlay>`. pointermove/pointerup are no-ops so the
  * MVP-7 single-command assertion holds for the full down→move*→up sequence.
  */
 export const textTool: Tool = {

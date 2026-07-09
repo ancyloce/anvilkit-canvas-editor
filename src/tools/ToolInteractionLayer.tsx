@@ -15,8 +15,8 @@ export interface ToolInteractionLayerProps {
 /**
  * Bridges Konva.Stage pointer events to the active tool from `toolStore`.
  * Renders no DOM — pure side-effect component. Mounts as a sibling of
- * <CanvasStage> inside the CanvasStudioContext so unmount order detaches
- * listeners before <CanvasStage> calls `stage.destroy()`.
+ * `<CanvasStage>` inside the CanvasStudioContext so unmount order detaches
+ * listeners before `<CanvasStage>` calls `stage.destroy()`.
  */
 export function ToolInteractionLayer({
 	registry = defaultToolRegistry,
