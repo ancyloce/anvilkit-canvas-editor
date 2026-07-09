@@ -18,6 +18,7 @@ import { useCanvasT } from "../context/canvas-studio-context.js";
 import { BrandPanel } from "../panels/BrandPanel.js";
 import { ElementsPanel } from "../panels/ElementsPanel.js";
 import { LayerPanel } from "../panels/LayerPanel.js";
+import { TemplatesPanel } from "../panels/TemplatesPanel.js";
 import type { DockId } from "./dock-ids.js";
 
 export interface CanvasPanelContext {
@@ -142,13 +143,13 @@ export const defaultCanvasPanelRegistry: CanvasPanelRegistry = {
 		title: "Layers",
 		render: () => <LayerPanel />,
 	},
-	templates: stubPanel(
-		"templates",
-		"canvas.panel.templates",
-		"Templates",
-		"canvas.panel.templatesSoon",
-		"Templates coming soon.",
-	),
+	templates: {
+		kind: "builtin",
+		id: "templates",
+		titleKey: "canvas.panel.templates",
+		title: "Templates",
+		render: () => <TemplatesPanel />,
+	},
 	ai: stubPanel(
 		"ai",
 		"canvas.panel.ai",

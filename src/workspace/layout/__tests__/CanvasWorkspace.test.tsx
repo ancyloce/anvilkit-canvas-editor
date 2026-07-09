@@ -88,8 +88,10 @@ describe("CanvasWorkspace shell", () => {
 				.querySelector("[data-testid='panel-dock-templates']")
 				?.getAttribute("data-active"),
 		).toBe("true");
+		// The templates dock now renders the real panel (canvas-m0-009); with no
+		// host catalog supplied it shows its empty state.
 		expect(
-			container.querySelector("[data-testid='panel-stub-templates']"),
+			container.querySelector("[data-testid='templates-panel-empty']"),
 		).not.toBeNull();
 		// Switching to Layers renders the LayerPanel inside the Tab Panel.
 		fireEvent.click(
