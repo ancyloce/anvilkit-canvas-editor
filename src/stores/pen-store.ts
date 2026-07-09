@@ -14,7 +14,7 @@ export interface PenAnchor {
 }
 
 /**
- * Multi-click state for the in-progress pen path (I3-2). Unlike {@link DraftStore}
+ * Multi-click state for the in-progress pen path (I3-2). Unlike `DraftStore`
  * this persists across pointerup (anchors accumulate click-by-click); it is
  * reset on commit, cancel, and tool change. The single `node.create` fires only
  * when the path is closed/finalized (MVP-7).

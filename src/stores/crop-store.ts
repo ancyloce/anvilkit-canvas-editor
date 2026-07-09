@@ -12,7 +12,7 @@ export interface CropRect {
  * Drives the interactive image-crop editor (I3-2). `cropNodeId` is the image
  * node being cropped (null when the editor is closed). `draft` is the live,
  * in-progress crop rect updated on every handle drag — transient UI state, like
- * {@link DraftStore}; the single committed `node.update` happens on confirm
+ * `DraftStore`; the single committed `node.update` happens on confirm
  * (MVP-7: refs/transient state during interaction, one command on commit).
  */
 export interface CropState {
