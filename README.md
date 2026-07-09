@@ -228,7 +228,7 @@ schema / command / serializer extensions for the same kinds.
 
 ## Release gates
 
-`pnpm check:all` runs the release-gate chain: `check:publint` (packed-tarball publint), `check:circular` (madge), `check:peer-deps` (dependency-cone rules), and `check:bundle-budget` (esbuild-based, budget and externals read from `.size-limit.json` so the two size gates cannot drift). An API-snapshot gate will join the chain once snapshot infrastructure lands.
+`pnpm check:all` runs the release-gate chain: `check:publint` (packed-tarball publint), `check:circular` (madge), `check:peer-deps` (dependency-cone rules), and `check:bundle-budget` (esbuild-based, budget and externals read from `.size-limit.json` so the two size gates cannot drift). `check:api-snapshot` (typedoc JSON diff of the public API; regenerate with `pnpm update:api-snapshot` and commit the result).
 
 Gates assume a **full package build** first — always run `pnpm build`: for this package, a bare `rslib build` wipes `dist/styles.css` (the `build:css` step regenerates it).
 
