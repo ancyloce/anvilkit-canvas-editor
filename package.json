@@ -128,6 +128,7 @@
 		"@types/node": "^26.0.1",
 		"@types/react": "^19.2.17",
 		"@types/react-dom": "19.2.3",
+		"axe-core": "4.11.3",
 		"esbuild": "^0.28.0",
 		"jsdom": "^29.1.1",
 		"konva": "^10.3.0",
@@ -142,6 +143,7 @@
 		"typedoc-plugin-markdown": "^4.11.2",
 		"typescript": "6.0.3",
 		"vitest": "^4.1.9",
+		"vitest-axe": "^0.1.0",
 		"y-protocols": "^1.0.7",
 		"yjs": "^13.6.31"
 	}
