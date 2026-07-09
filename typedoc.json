@@ -3,5 +3,27 @@
 	"extends": ["../../../typedoc.base.json"],
 	"entryPoints": ["./src/index.ts", "./src/collab/index.ts", "./src/internal.ts"],
 	"tsconfig": "./tsconfig.json",
-	"name": "@anvilkit/canvas-editor"
+	"name": "@anvilkit/canvas-editor",
+	"intentionallyNotExported": [
+		"BuiltinToolId",
+		"CanvasErrorBoundaryState",
+		"CanvasFocusStoreApi",
+		"NodeStart",
+		"PointSnapResult"
+	],
+	"externalSymbolLinkMappings": {
+		"@types/react": {
+			"React.NewLifecycle.getSnapshotBeforeUpdate": "https://react.dev/reference/react/Component#getsnapshotbeforeupdate"
+		},
+		"@anvilkit/canvas-core": {
+			"CanvasIR": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts",
+			"CanvasIRSchema": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir-validators.ts"
+		},
+		"@anvilkit/canvas-editor": {
+			"DEFAULT_CANVAS_T": "#",
+			"SceneStoreApi": "#",
+			"isLocalOrigin": "#",
+			"CLOSE_THRESHOLD": "#"
+		}
+	}
 }
