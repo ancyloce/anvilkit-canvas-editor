@@ -16,8 +16,8 @@
 			"React.NewLifecycle.getSnapshotBeforeUpdate": "https://react.dev/reference/react/Component#getsnapshotbeforeupdate"
 		},
 		"@anvilkit/canvas-core": {
-			"CanvasIR": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts",
-			"CanvasIRSchema": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir-validators.ts"
+			"CanvasIR": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts",
+			"CanvasIRSchema": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/validators.ts"
 		},
 		"@anvilkit/canvas-editor": {
 			"DEFAULT_CANVAS_T": "#",

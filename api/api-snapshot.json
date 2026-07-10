@@ -624,12 +624,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											},
 											{
 												"type": "intrinsic",
@@ -722,12 +722,12 @@
 																		"type": "reference",
 																		"target": {
 																			"packageName": "@anvilkit/canvas-core",
-																			"packagePath": "src/types.ts",
+																			"packagePath": "src/ir/types.ts",
 																			"qualifiedName": "CanvasIR"
 																		},
 																		"name": "CanvasIR",
 																		"package": "@anvilkit/canvas-core",
-																		"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+																		"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 																	}
 																},
 																{
@@ -1748,7 +1748,7 @@
 										"kind": "inline-tag",
 										"tag": "@link",
 										"text": "CanvasIRSchema",
-										"target": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir-validators.ts"
+										"target": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/validators.ts"
 									},
 									{
 										"kind": "text",
@@ -1773,12 +1773,12 @@
 								"type": "reference",
 								"target": {
 									"packageName": "@anvilkit/canvas-core",
-									"packagePath": "src/types.ts",
+									"packagePath": "src/ir/types.ts",
 									"qualifiedName": "CanvasIR"
 								},
 								"name": "CanvasIR",
 								"package": "@anvilkit/canvas-core",
-								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 							}
 						}
 					]
@@ -1806,7 +1806,7 @@
 										"kind": "inline-tag",
 										"tag": "@link",
 										"text": "CanvasIR",
-										"target": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+										"target": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 									},
 									{
 										"kind": "text",
@@ -1841,12 +1841,12 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasIR"
 										},
 										"name": "CanvasIR",
 										"package": "@anvilkit/canvas-core",
-										"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+										"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 									}
 								}
 							],
@@ -2707,7 +2707,7 @@
 								"type": "reference",
 								"target": {
 									"packageName": "@anvilkit/canvas-core",
-									"packagePath": "src/types.ts",
+									"packagePath": "src/ir/types.ts",
 									"qualifiedName": "CanvasPageSize"
 								},
 								"name": "CanvasPageSize",
@@ -3778,12 +3778,12 @@
 								"type": "reference",
 								"target": {
 									"packageName": "@anvilkit/canvas-core",
-									"packagePath": "src/types.ts",
+									"packagePath": "src/ir/types.ts",
 									"qualifiedName": "CanvasIR"
 								},
 								"name": "CanvasIR",
 								"package": "@anvilkit/canvas-core",
-								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 							}
 						},
 						{
@@ -4375,7 +4375,7 @@
 														"type": "reference",
 														"target": {
 															"packageName": "@anvilkit/canvas-core",
-															"packagePath": "src/types.ts",
+															"packagePath": "src/ir/types.ts",
 															"qualifiedName": "CanvasNode"
 														},
 														"name": "CanvasNode",
@@ -4426,12 +4426,12 @@
 																		"type": "reference",
 																		"target": {
 																			"packageName": "@anvilkit/canvas-core",
-																			"packagePath": "src/types.ts",
+																			"packagePath": "src/ir/types.ts",
 																			"qualifiedName": "CanvasIR"
 																		},
 																		"name": "CanvasIR",
 																		"package": "@anvilkit/canvas-core",
-																		"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+																		"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 																	}
 																}
 															]
@@ -4553,7 +4553,7 @@
 																		"type": "reference",
 																		"target": {
 																			"packageName": "@anvilkit/canvas-core",
-																			"packagePath": "src/types.ts",
+																			"packagePath": "src/ir/types.ts",
 																			"qualifiedName": "CanvasNode"
 																		},
 																		"name": "CanvasNode",
@@ -4835,12 +4835,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											}
 										}
 									]
@@ -4945,12 +4945,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											}
 										}
 									]
@@ -5094,12 +5094,12 @@
 								"type": "reference",
 								"target": {
 									"packageName": "@anvilkit/canvas-core",
-									"packagePath": "src/types.ts",
+									"packagePath": "src/ir/types.ts",
 									"qualifiedName": "CanvasIR"
 								},
 								"name": "CanvasIR",
 								"package": "@anvilkit/canvas-core",
-								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 							}
 						},
 						{
@@ -5438,7 +5438,7 @@
 										"kind": "inline-tag",
 										"tag": "@link",
 										"text": "CanvasIR",
-										"target": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+										"target": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 									},
 									{
 										"kind": "text",
@@ -5979,12 +5979,12 @@
 								"type": "reference",
 								"target": {
 									"packageName": "@anvilkit/canvas-core",
-									"packagePath": "src/types.ts",
+									"packagePath": "src/ir/types.ts",
 									"qualifiedName": "CanvasIR"
 								},
 								"name": "CanvasIR",
 								"package": "@anvilkit/canvas-core",
-								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 							}
 						},
 						{
@@ -6235,12 +6235,12 @@
 														"type": "reference",
 														"target": {
 															"packageName": "@anvilkit/canvas-core",
-															"packagePath": "src/types.ts",
+															"packagePath": "src/ir/types.ts",
 															"qualifiedName": "CanvasIR"
 														},
 														"name": "CanvasIR",
 														"package": "@anvilkit/canvas-core",
-														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 													}
 												},
 												{
@@ -6346,12 +6346,12 @@
 														"type": "reference",
 														"target": {
 															"packageName": "@anvilkit/canvas-core",
-															"packagePath": "src/types.ts",
+															"packagePath": "src/ir/types.ts",
 															"qualifiedName": "CanvasIR"
 														},
 														"name": "CanvasIR",
 														"package": "@anvilkit/canvas-core",
-														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 													}
 												}
 											],
@@ -6822,12 +6822,12 @@
 								"type": "reference",
 								"target": {
 									"packageName": "@anvilkit/canvas-core",
-									"packagePath": "src/types.ts",
+									"packagePath": "src/ir/types.ts",
 									"qualifiedName": "CanvasIR"
 								},
 								"name": "CanvasIR",
 								"package": "@anvilkit/canvas-core",
-								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 							}
 						},
 						{
@@ -7367,12 +7367,12 @@
 								"type": "reference",
 								"target": {
 									"packageName": "@anvilkit/canvas-core",
-									"packagePath": "src/types.ts",
+									"packagePath": "src/ir/types.ts",
 									"qualifiedName": "CanvasIR"
 								},
 								"name": "CanvasIR",
 								"package": "@anvilkit/canvas-core",
-								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+								"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 							},
 							"inheritedFrom": {
 								"type": "reference",
@@ -7740,12 +7740,12 @@
 														"type": "reference",
 														"target": {
 															"packageName": "@anvilkit/canvas-core",
-															"packagePath": "src/types.ts",
+															"packagePath": "src/ir/types.ts",
 															"qualifiedName": "CanvasIR"
 														},
 														"name": "CanvasIR",
 														"package": "@anvilkit/canvas-core",
-														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 													}
 												},
 												{
@@ -7859,12 +7859,12 @@
 														"type": "reference",
 														"target": {
 															"packageName": "@anvilkit/canvas-core",
-															"packagePath": "src/types.ts",
+															"packagePath": "src/ir/types.ts",
 															"qualifiedName": "CanvasIR"
 														},
 														"name": "CanvasIR",
 														"package": "@anvilkit/canvas-core",
-														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 													}
 												}
 											],
@@ -9947,7 +9947,7 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasAssetRef"
 										},
 										"name": "CanvasAssetRef",
@@ -10013,7 +10013,7 @@
 								"type": "reference",
 								"target": {
 									"packageName": "@anvilkit/canvas-core",
-									"packagePath": "src/types.ts",
+									"packagePath": "src/ir/types.ts",
 									"qualifiedName": "CanvasPage"
 								},
 								"name": "CanvasPage",
@@ -11800,12 +11800,12 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasIR"
 										},
 										"name": "CanvasIR",
 										"package": "@anvilkit/canvas-core",
-										"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+										"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 									}
 								}
 							]
@@ -12155,7 +12155,7 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasNode"
 												},
 												"name": "CanvasNode",
@@ -13175,7 +13175,7 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasPage"
 										},
 										"name": "CanvasPage",
@@ -13201,7 +13201,7 @@
 								"type": "reference",
 								"target": {
 									"packageName": "@anvilkit/canvas-core",
-									"packagePath": "src/types.ts",
+									"packagePath": "src/ir/types.ts",
 									"qualifiedName": "CanvasPage"
 								},
 								"name": "CanvasPage",
@@ -16473,7 +16473,7 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasAiPlaceholderStatus"
 										},
 										"name": "CanvasAiPlaceholderStatus",
@@ -16861,7 +16861,7 @@
 								"type": "reference",
 								"target": {
 									"packageName": "@anvilkit/canvas-core",
-									"packagePath": "src/types.ts",
+									"packagePath": "src/ir/types.ts",
 									"qualifiedName": "CanvasNode"
 								},
 								"name": "CanvasNode",
@@ -18154,12 +18154,12 @@
 														"type": "reference",
 														"target": {
 															"packageName": "@anvilkit/canvas-core",
-															"packagePath": "src/types.ts",
+															"packagePath": "src/ir/types.ts",
 															"qualifiedName": "CanvasIR"
 														},
 														"name": "CanvasIR",
 														"package": "@anvilkit/canvas-core",
-														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 													}
 												},
 												{
@@ -18184,12 +18184,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											}
 										}
 									]
@@ -18252,12 +18252,12 @@
 														"type": "reference",
 														"target": {
 															"packageName": "@anvilkit/canvas-core",
-															"packagePath": "src/types.ts",
+															"packagePath": "src/ir/types.ts",
 															"qualifiedName": "CanvasIR"
 														},
 														"name": "CanvasIR",
 														"package": "@anvilkit/canvas-core",
-														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 													}
 												},
 												{
@@ -18302,12 +18302,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											}
 										}
 									]
@@ -18362,12 +18362,12 @@
 														"type": "reference",
 														"target": {
 															"packageName": "@anvilkit/canvas-core",
-															"packagePath": "src/types.ts",
+															"packagePath": "src/ir/types.ts",
 															"qualifiedName": "CanvasIR"
 														},
 														"name": "CanvasIR",
 														"package": "@anvilkit/canvas-core",
-														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 													}
 												},
 												{
@@ -18403,12 +18403,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											}
 										}
 									]
@@ -18498,12 +18498,12 @@
 														"type": "reference",
 														"target": {
 															"packageName": "@anvilkit/canvas-core",
-															"packagePath": "src/types.ts",
+															"packagePath": "src/ir/types.ts",
 															"qualifiedName": "CanvasIR"
 														},
 														"name": "CanvasIR",
 														"package": "@anvilkit/canvas-core",
-														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 													}
 												}
 											],
@@ -18511,12 +18511,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											}
 										}
 									]
@@ -18585,12 +18585,12 @@
 														"type": "reference",
 														"target": {
 															"packageName": "@anvilkit/canvas-core",
-															"packagePath": "src/types.ts",
+															"packagePath": "src/ir/types.ts",
 															"qualifiedName": "CanvasIR"
 														},
 														"name": "CanvasIR",
 														"package": "@anvilkit/canvas-core",
-														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+														"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 													}
 												}
 											],
@@ -18598,12 +18598,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											}
 										}
 									]
@@ -19276,12 +19276,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											}
 										}
 									]
@@ -20864,12 +20864,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											}
 										}
 									]
@@ -20976,12 +20976,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											}
 										}
 									]
@@ -21066,12 +21066,12 @@
 												"type": "reference",
 												"target": {
 													"packageName": "@anvilkit/canvas-core",
-													"packagePath": "src/types.ts",
+													"packagePath": "src/ir/types.ts",
 													"qualifiedName": "CanvasIR"
 												},
 												"name": "CanvasIR",
 												"package": "@anvilkit/canvas-core",
-												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+												"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 											}
 										}
 									]
@@ -23595,7 +23595,7 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasAssetRef"
 										},
 										"name": "CanvasAssetRef",
@@ -25525,12 +25525,12 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasIR"
 										},
 										"name": "CanvasIR",
 										"package": "@anvilkit/canvas-core",
-										"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+										"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 									}
 								},
 								{
@@ -25591,12 +25591,12 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasIR"
 										},
 										"name": "CanvasIR",
 										"package": "@anvilkit/canvas-core",
-										"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+										"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 									}
 								},
 								{
@@ -26722,7 +26722,7 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasNode"
 										},
 										"name": "CanvasNode",
@@ -26787,12 +26787,12 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasIR"
 										},
 										"name": "CanvasIR",
 										"package": "@anvilkit/canvas-core",
-										"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/types.ts"
+										"externalUrl": "https://github.com/ancyloce/anvilkit-canvas-core/blob/main/src/ir/types.ts"
 									}
 								},
 								{
@@ -27503,7 +27503,7 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasNode"
 										},
 										"name": "CanvasNode",
@@ -27515,7 +27515,7 @@
 								"type": "reference",
 								"target": {
 									"packageName": "@anvilkit/canvas-core",
-									"packagePath": "src/types.ts",
+									"packagePath": "src/ir/types.ts",
 									"qualifiedName": "CanvasNode"
 								},
 								"name": "CanvasNode",
@@ -28014,7 +28014,7 @@
 										"type": "reference",
 										"target": {
 											"packageName": "@anvilkit/canvas-core",
-											"packagePath": "src/types.ts",
+											"packagePath": "src/ir/types.ts",
 											"qualifiedName": "CanvasAssetRef"
 										},
 										"name": "CanvasAssetRef",
@@ -32252,152 +32252,152 @@
 		},
 		"812": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "computeSnap"
 		},
 		"813": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "computeSnap"
 		},
 		"814": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "input"
 		},
 		"815": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "DEFAULT_SNAP_THRESHOLD"
 		},
 		"816": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SmartGuide"
 		},
 		"817": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SmartGuide.axis"
 		},
 		"818": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SmartGuide.position"
 		},
 		"819": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SmartGuide.from"
 		},
 		"820": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "__type"
 		},
 		"821": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "__type.x"
 		},
 		"822": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "__type.y"
 		},
 		"823": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SmartGuide.to"
 		},
 		"824": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "__type"
 		},
 		"825": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "__type.x"
 		},
 		"826": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "__type.y"
 		},
 		"827": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapAxis"
 		},
 		"828": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapInput"
 		},
 		"829": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapInput.candidate"
 		},
 		"830": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapInput.others"
 		},
 		"831": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapInput.gridSize"
 		},
 		"832": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapInput.threshold"
 		},
 		"833": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapRect"
 		},
 		"834": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapRect.x"
 		},
 		"835": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapRect.y"
 		},
 		"836": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapRect.width"
 		},
 		"837": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapRect.height"
 		},
 		"838": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapResult"
 		},
 		"839": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapResult.dx"
 		},
 		"840": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapResult.dy"
 		},
 		"841": {
 			"packageName": "@anvilkit/canvas-core",
-			"packagePath": "src/snap.ts",
+			"packagePath": "src/geometry/snap.ts",
 			"qualifiedName": "SnapResult.guides"
 		},
 		"842": {
