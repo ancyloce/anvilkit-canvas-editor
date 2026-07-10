@@ -1,5 +1,5 @@
 /**
- * Snap geometry types now live in `@anvilkit/canvas-core` (`src/snap.ts`),
+ * Snap geometry types now live in `@anvilkit/canvas-core` (`src/geometry/snap.ts`),
  * shared by the editor, headless consumers, and tests. Re-exported here so
  * existing editor imports keep their `./snap-types.js` path. New code should
  * import these from `@anvilkit/canvas-core` directly.
