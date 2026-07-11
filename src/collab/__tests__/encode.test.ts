@@ -34,7 +34,10 @@ describe("encodeCanvasIR / decodeCanvasIR", () => {
 
 	it("rejects a payload with the wrong version", () => {
 		const ir = createCanvasIR({ id: "ir-1" });
-		const bad = JSON.stringify({ ...ir, version: "2" });
+		// `decodeCanvasIR` pins the CURRENT schema version and does not migrate, so
+		// this must be a version the schema will never accept — not merely an older
+		// one, and certainly not the current one.
+		const bad = JSON.stringify({ ...ir, version: "9" });
 		expect(() => decodeCanvasIR(bad)).toThrow();
 	});
 

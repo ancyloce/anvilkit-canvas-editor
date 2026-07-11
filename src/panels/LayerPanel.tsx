@@ -60,6 +60,7 @@ function flattenChildren(group: CanvasGroupNode): FlatRow[] {
 
 const KIND_LABEL_KEYS: Record<CanvasNodeKind, string> = {
 	group: "canvas.layer.kind.group",
+	frame: "canvas.layer.kind.frame",
 	rect: "canvas.layer.kind.rect",
 	ellipse: "canvas.layer.kind.ellipse",
 	line: "canvas.layer.kind.line",
@@ -71,6 +72,7 @@ const KIND_LABEL_KEYS: Record<CanvasNodeKind, string> = {
 
 const KIND_LABEL_FALLBACKS: Record<CanvasNodeKind, string> = {
 	group: "Group",
+	frame: "Frame",
 	rect: "Rectangle",
 	ellipse: "Ellipse",
 	line: "Line",
