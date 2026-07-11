@@ -138,6 +138,7 @@
 	"canvas.inspector.group": "Group",
 	"canvas.inspector.children": "Children",
 	"canvas.layer.kind.group": "Group",
+	"canvas.layer.kind.frame": "Frame",
 	"canvas.layer.kind.rect": "Rectangle",
 	"canvas.layer.kind.ellipse": "Ellipse",
 	"canvas.layer.kind.line": "Line",

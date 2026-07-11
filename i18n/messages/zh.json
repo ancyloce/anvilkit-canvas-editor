@@ -138,6 +138,7 @@
 	"canvas.inspector.group": "组",
 	"canvas.inspector.children": "子元素",
 	"canvas.layer.kind.group": "组",
+	"canvas.layer.kind.frame": "画框",
 	"canvas.layer.kind.rect": "矩形",
 	"canvas.layer.kind.ellipse": "椭圆",
 	"canvas.layer.kind.line": "直线",
