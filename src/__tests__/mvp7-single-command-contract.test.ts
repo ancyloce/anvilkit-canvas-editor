@@ -1,6 +1,7 @@
 import {
 	type CanvasIR,
 	createCanvasIR,
+	createFrame,
 	createGroup,
 	createPage,
 	createRect,
@@ -12,6 +13,7 @@ import {
 	pointerEvent,
 } from "../tools/__tests__/_tool-test-helpers.js";
 import { ellipseTool } from "../tools/ellipse-tool.js";
+import { frameTool } from "../tools/frame-tool.js";
 import { handTool } from "../tools/hand-tool.js";
 import { imageTool } from "../tools/image-tool.js";
 import { lineTool } from "../tools/line-tool.js";
@@ -100,6 +102,15 @@ describe("MVP-7 single-command-per-interaction contract", () => {
 		expect(h.commits[0]?.type).toBe("node.create");
 	});
 
+	it("frame tool: 1 node.create on pointerup, zero during move", () => {
+		const h = makeHarness();
+		fullSequence(frameTool, h.ctx, {
+			onDuringMove: () => expect(h.commits).toHaveLength(0),
+		});
+		expect(h.commits).toHaveLength(1);
+		expect(h.commits[0]?.type).toBe("node.create");
+	});
+
 	it("image tool: 1 node.create after async pickAsset resolves", async () => {
 		const h = makeHarness();
 		imageTool.onPointerDown?.(pointerEvent(50, 50), h.ctx);
@@ -108,6 +119,42 @@ describe("MVP-7 single-command-per-interaction contract", () => {
 		await Promise.resolve();
 		expect(h.commits).toHaveLength(1);
 		expect(h.commits[0]?.type).toBe("node.create");
+	});
+
+	// Placing into an image well needs TWO commands (insert the child image, then
+	// point the frame's placeholder at it). The single-command-per-gesture
+	// contract is about undo steps, not raw command count — so they must leave as
+	// exactly one `commitBatch`, never as two loose `commit`s. The harness
+	// flattens a batch into `commits`, which is why this asserts on the call
+	// counts rather than on `commits.length`.
+	it("image tool into a frame well: 2 commands, but exactly ONE undo step", async () => {
+		const TS = "2026-05-20T00:00:00.000Z";
+		const page = createPage({ id: "p1" });
+		page.root = createGroup({
+			id: "p1-root",
+			bounds: page.root.bounds,
+			children: [
+				createFrame({
+					id: "well",
+					bounds: { width: 200, height: 100 },
+					clip: true,
+					placeholder: { kind: "image" },
+				}),
+			],
+		});
+		const h = makeHarness({
+			ir: createCanvasIR({ id: "ir-1", pages: [page], now: () => TS }),
+		});
+		imageTool.onPointerDown?.(pointerEvent(50, 50), h.ctx);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(h.ctx.commitBatch).toHaveBeenCalledTimes(1);
+		expect(h.ctx.commit).not.toHaveBeenCalled();
+		expect(h.commits.map((c) => c.type)).toEqual([
+			"node.create",
+			"node.update",
+		]);
 	});
 
 	it("select tool — drag selected node: 1 node.move on pointerup, zero during move", () => {
@@ -182,6 +229,7 @@ describe("MVP-7 source audit: no commits inside any pointermove handler", () => 
 	// runtime test added — that combo makes accidental regressions noisy.
 	const tools = [
 		{ name: "rect", source: rectTool.onPointerMove?.toString() ?? "" },
+		{ name: "frame", source: frameTool.onPointerMove?.toString() ?? "" },
 		{ name: "ellipse", source: ellipseTool.onPointerMove?.toString() ?? "" },
 		{ name: "line", source: lineTool.onPointerMove?.toString() ?? "" },
 		{ name: "select", source: selectTool.onPointerMove?.toString() ?? "" },
