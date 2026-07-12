@@ -6,8 +6,10 @@ import {
 	createImage,
 	createLine,
 	createPage,
+	createPolygon,
 	createRect,
 	createRichText,
+	createStar,
 	createText,
 } from "@anvilkit/canvas-core";
 import { cleanup, render } from "@testing-library/react";
@@ -33,6 +35,8 @@ vi.mock("react-konva", () => ({
 	Group: makeMock("Group"),
 	Rect: makeMock("Rect"),
 	Ellipse: makeMock("Ellipse"),
+	RegularPolygon: makeMock("RegularPolygon"),
+	Star: makeMock("Star"),
 	Line: makeMock("Line"),
 	Path: makeMock("Path"),
 	Text: makeMock("Text"),
@@ -49,7 +53,9 @@ import {
 	type CanvasStudioContextValue,
 } from "@/context/canvas-studio-context.js";
 import { createAiJobStore } from "@/stores/ai-job-store.js";
+import type { BrandKit } from "../../brand/brand-kit.js";
 import { CanvasAssetsContext } from "../CanvasAssetsContext.js";
+import { CanvasBrandKitContext } from "../CanvasBrandKitContext.js";
 import { CanvasNodeRenderer } from "../CanvasNodeRenderer.js";
 
 function callsOfType(type: string): ElementCall[] {
@@ -111,6 +117,42 @@ describe("CanvasNodeRenderer", () => {
 		// Centered: x' = x + radiusX, y' = y + radiusY
 		expect(p?.x).toBe(120);
 		expect(p?.y).toBe(210);
+	});
+
+	it("dispatches to RegularPolygon with center-translated x/y and sides", () => {
+		const p = createPolygon({
+			id: "poly1",
+			bounds: { width: 40, height: 20 },
+			transform: { x: 100, y: 200 },
+			sides: 6,
+		});
+		render(<CanvasNodeRenderer node={p} />);
+		const props = callsOfType("RegularPolygon")[0]?.props;
+		expect(props?.sides).toBe(6);
+		expect(props?.radius).toBe(20);
+		// Centered: x' = x + radius, y' = y + radius
+		expect(props?.x).toBe(120);
+		expect(props?.y).toBe(210);
+		// Non-square bounds: aspect-fit scaleY = height / width = 20 / 40.
+		expect(props?.scaleY).toBe(0.5);
+	});
+
+	it("dispatches to Star with center-translated x/y, points, and radii", () => {
+		const s = createStar({
+			id: "star1",
+			bounds: { width: 40, height: 20 },
+			transform: { x: 50, y: 60 },
+			points: 5,
+			innerRadiusRatio: 0.5,
+		});
+		render(<CanvasNodeRenderer node={s} />);
+		const props = callsOfType("Star")[0]?.props;
+		expect(props?.numPoints).toBe(5);
+		expect(props?.outerRadius).toBe(20);
+		expect(props?.innerRadius).toBe(10);
+		expect(props?.x).toBe(70);
+		expect(props?.y).toBe(70);
+		expect(props?.scaleY).toBe(0.5);
 	});
 
 	it("dispatches to Line with points", () => {
@@ -327,6 +369,76 @@ describe("CanvasNodeRenderer", () => {
 			true,
 		);
 		expect(cancelGroupCall()).toBeUndefined();
+	});
+});
+
+describe("CanvasNodeRenderer — brand tokens", () => {
+	beforeEachReset();
+
+	const kit: BrandKit = {
+		colors: [{ id: "brand.primary", name: "Primary", value: "#2563eb" }],
+		fonts: ["Inter"],
+	};
+
+	const renderWithKit = (
+		node: Parameters<typeof CanvasNodeRenderer>[0]["node"],
+		brandKit: BrandKit = kit,
+	) =>
+		render(
+			<CanvasBrandKitContext.Provider value={brandKit}>
+				<CanvasNodeRenderer node={node} />
+			</CanvasBrandKitContext.Provider>,
+		);
+
+	it("resolves a color-token fill against the provided brand kit", () => {
+		const rect = createRect({
+			id: "r1",
+			bounds: { width: 10, height: 10 },
+			fill: { type: "brand-token", tokenType: "color", id: "brand.primary" },
+		});
+		renderWithKit(rect);
+		expect(callsOfType("Rect")[0]?.props.fill).toBe("#2563eb");
+	});
+
+	it("resolves a font-token fontFamily against the provided brand kit", () => {
+		const text = createText({
+			id: "t1",
+			bounds: { width: 100, height: 20 },
+			text: "hi",
+			fontFamily: { type: "brand-token", tokenType: "font", id: "inter" },
+		});
+		renderWithKit(text);
+		expect(callsOfType("Text")[0]?.props.fontFamily).toBe("Inter");
+	});
+
+	it("degrades an unresolved color token to no fill, without crashing", () => {
+		const rect = createRect({
+			id: "r1",
+			bounds: { width: 10, height: 10 },
+			fill: { type: "brand-token", tokenType: "color", id: "does-not-exist" },
+		});
+		expect(() => renderWithKit(rect)).not.toThrow();
+		expect(callsOfType("Rect")[0]?.props.fill).toBeUndefined();
+	});
+
+	it("degrades a token fill to no fill when rendered with no CanvasBrandKitContext at all", () => {
+		const rect = createRect({
+			id: "r1",
+			bounds: { width: 10, height: 10 },
+			fill: { type: "brand-token", tokenType: "color", id: "brand.primary" },
+		});
+		expect(() => render(<CanvasNodeRenderer node={rect} />)).not.toThrow();
+		expect(callsOfType("Rect")[0]?.props.fill).toBeUndefined();
+	});
+
+	it("still renders a plain string fill unchanged inside a brand-kit provider", () => {
+		const rect = createRect({
+			id: "r1",
+			bounds: { width: 10, height: 10 },
+			fill: "#abc",
+		});
+		renderWithKit(rect);
+		expect(callsOfType("Rect")[0]?.props.fill).toBe("#abc");
 	});
 });
 

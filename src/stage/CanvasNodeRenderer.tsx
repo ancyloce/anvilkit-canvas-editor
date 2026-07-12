@@ -12,9 +12,11 @@ import {
 	type CanvasNode,
 	type CanvasNodeBase,
 	type CanvasPathNode,
+	type CanvasPolygonNode,
 	type CanvasRectNode,
 	type CanvasRichTextNode,
 	type CanvasShadow,
+	type CanvasStarNode,
 	type CanvasTextNode,
 	type FramePlaceholderKind,
 	resolveSpanStyle,
@@ -28,9 +30,16 @@ import {
 	Line,
 	Path,
 	Rect,
+	RegularPolygon,
+	Star,
 	Text,
 } from "react-konva";
 import useImage from "use-image";
+import type { BrandKit } from "../brand/brand-kit.js";
+import {
+	resolveFillForDisplay,
+	resolveFontFamilyForDisplay,
+} from "../brand/resolve-brand-token.js";
 import {
 	CanvasStudioContext,
 	useCanvasT,
@@ -43,6 +52,7 @@ import {
 	DEFAULT_RICH_TEXT_STYLE,
 } from "../text/rich-text-style.js";
 import { useCanvasAsset } from "./CanvasAssetsContext.js";
+import { useCanvasBrandKit } from "./CanvasBrandKitContext.js";
 import { nodeRenderOffset } from "./node-render-offset.js";
 
 export interface CanvasNodeRendererProps {
@@ -75,20 +85,31 @@ function commonProps(node: CanvasNodeBase & { id: string }): CommonProps {
 	};
 }
 
-/** Map a node fill (string or gradient) to Konva fill props. */
+/**
+ * Map a node fill (string, gradient, or brand-token ref) to Konva fill props.
+ * A token resolves against `brandKit`; unresolved (no match) degrades to no
+ * fill — the same neutral fallback core's SVG serializer uses — rather than
+ * throwing on the missing `.stops`/`.from`/`.to` a `BrandTokenRef` has none of.
+ */
 function fillProps(
 	fill: CanvasFill | undefined,
 	bounds: { width: number; height: number },
+	brandKit: BrandKit,
 ): Konva.ShapeConfig {
-	if (fill === undefined) return {};
-	if (typeof fill === "string") return { fill };
-	const stops = fill.stops.flatMap((s) => [s.offset, s.color]);
+	const resolved = resolveFillForDisplay(fill, brandKit).value;
+	if (resolved === undefined) return {};
+	if (typeof resolved === "string") return { fill: resolved };
+	const gradient = resolved;
+	const stops = gradient.stops.flatMap((s) => [s.offset, s.color]);
 	const start = {
-		x: fill.from.x * bounds.width,
-		y: fill.from.y * bounds.height,
+		x: gradient.from.x * bounds.width,
+		y: gradient.from.y * bounds.height,
 	};
-	const end = { x: fill.to.x * bounds.width, y: fill.to.y * bounds.height };
-	if (fill.kind === "radial") {
+	const end = {
+		x: gradient.to.x * bounds.width,
+		y: gradient.to.y * bounds.height,
+	};
+	if (gradient.kind === "radial") {
 		return {
 			fillRadialGradientStartPoint: start,
 			fillRadialGradientEndPoint: end,
@@ -185,6 +206,7 @@ const PLACEHOLDER_LABEL_COLOR = "#64748b";
 function CanvasFrameNodeRenderer({ node }: { node: CanvasFrameNode }) {
 	const { width, height } = node.bounds;
 	const t = useCanvasT();
+	const brandKit = useCanvasBrandKit();
 	const isInteractive = use(CanvasStudioContext) !== null;
 	// Hooks cannot be conditional, so probe the asset map unconditionally: a
 	// placeholder is "filled" only once its asset actually exists in the document.
@@ -209,7 +231,7 @@ function CanvasFrameNodeRenderer({ node }: { node: CanvasFrameNode }) {
 					width={width}
 					height={height}
 					cornerRadius={node.radius}
-					{...fillProps(fill, node.bounds)}
+					{...fillProps(fill, node.bounds, brandKit)}
 				/>
 			) : null}
 			{emptyWell && isInteractive ? (
@@ -255,12 +277,13 @@ function placeholderLabel(
 }
 
 function CanvasRectNodeRenderer({ node }: { node: CanvasRectNode }) {
+	const brandKit = useCanvasBrandKit();
 	return (
 		<Rect
 			{...commonProps(node)}
 			width={node.bounds.width}
 			height={node.bounds.height}
-			{...fillProps(node.fill, node.bounds)}
+			{...fillProps(node.fill, node.bounds, brandKit)}
 			{...shadowProps(node.shadow)}
 			stroke={node.stroke}
 			strokeWidth={node.strokeWidth}
@@ -277,6 +300,7 @@ function CanvasEllipseNodeRenderer({ node }: { node: CanvasEllipseNode }) {
 	const radiusY = node.bounds.height / 2;
 	const base = commonProps(node);
 	const offset = nodeRenderOffset(node);
+	const brandKit = useCanvasBrandKit();
 	return (
 		<Ellipse
 			{...base}
@@ -284,7 +308,64 @@ function CanvasEllipseNodeRenderer({ node }: { node: CanvasEllipseNode }) {
 			y={base.y + offset.y}
 			radiusX={radiusX}
 			radiusY={radiusY}
-			{...fillProps(node.fill, node.bounds)}
+			{...fillProps(node.fill, node.bounds, brandKit)}
+			{...shadowProps(node.shadow)}
+			stroke={node.stroke}
+			strokeWidth={node.strokeWidth}
+		/>
+	);
+}
+
+/**
+ * `Konva.RegularPolygon` and `Konva.Star` (used below) are both centered at
+ * `(x, y)` like `Konva.Ellipse`, but unlike Ellipse they take a single
+ * `radius` — no separate radiusX/radiusY for a non-square bounding box. A
+ * uniform `radius = bounds.width / 2` plus this aspect-fit `scaleY`
+ * (layered on TOP of the node's own `transform.scaleY`, matching how bounds
+ * and transform.scale already compose for every other kind) stretches the
+ * shape to fill a non-square box the same way core's SVG vertex helper does
+ * (`computePolygonVertices`/`computeStarVertices` support independent
+ * rx/ry), so the stage and an export agree.
+ */
+function aspectFitScaleY(bounds: { width: number; height: number }): number {
+	return bounds.width > 0 ? bounds.height / bounds.width : 1;
+}
+
+function CanvasPolygonNodeRenderer({ node }: { node: CanvasPolygonNode }) {
+	const base = commonProps(node);
+	const offset = nodeRenderOffset(node);
+	const brandKit = useCanvasBrandKit();
+	return (
+		<RegularPolygon
+			{...base}
+			x={base.x + offset.x}
+			y={base.y + offset.y}
+			scaleY={base.scaleY * aspectFitScaleY(node.bounds)}
+			sides={node.sides}
+			radius={node.bounds.width / 2}
+			{...fillProps(node.fill, node.bounds, brandKit)}
+			{...shadowProps(node.shadow)}
+			stroke={node.stroke}
+			strokeWidth={node.strokeWidth}
+		/>
+	);
+}
+
+function CanvasStarNodeRenderer({ node }: { node: CanvasStarNode }) {
+	const base = commonProps(node);
+	const offset = nodeRenderOffset(node);
+	const outerRadius = node.bounds.width / 2;
+	const brandKit = useCanvasBrandKit();
+	return (
+		<Star
+			{...base}
+			x={base.x + offset.x}
+			y={base.y + offset.y}
+			scaleY={base.scaleY * aspectFitScaleY(node.bounds)}
+			numPoints={node.points}
+			innerRadius={outerRadius * node.innerRadiusRatio}
+			outerRadius={outerRadius}
+			{...fillProps(node.fill, node.bounds, brandKit)}
 			{...shadowProps(node.shadow)}
 			stroke={node.stroke}
 			strokeWidth={node.strokeWidth}
@@ -304,11 +385,12 @@ function CanvasLineNodeRenderer({ node }: { node: CanvasLineNode }) {
 }
 
 function CanvasPathNodeRenderer({ node }: { node: CanvasPathNode }) {
+	const brandKit = useCanvasBrandKit();
 	return (
 		<Path
 			{...commonProps(node)}
 			data={node.d}
-			{...fillProps(node.fill, node.bounds)}
+			{...fillProps(node.fill, node.bounds, brandKit)}
 			{...shadowProps(node.shadow)}
 			stroke={node.stroke}
 			strokeWidth={node.strokeWidth}
@@ -317,14 +399,19 @@ function CanvasPathNodeRenderer({ node }: { node: CanvasPathNode }) {
 }
 
 function CanvasTextNodeRenderer({ node }: { node: CanvasTextNode }) {
+	const brandKit = useCanvasBrandKit();
+	const fontFamily = resolveFontFamilyForDisplay(
+		node.fontFamily,
+		brandKit,
+	).value;
 	return (
 		<Text
 			{...commonProps(node)}
 			text={node.text}
-			fontFamily={node.fontFamily}
+			{...(fontFamily !== undefined ? { fontFamily } : {})}
 			fontSize={node.fontSize}
 			fontStyle={node.fontWeight}
-			{...fillProps(node.fill, node.bounds)}
+			{...fillProps(node.fill, node.bounds, brandKit)}
 			{...shadowProps(node.shadow)}
 			align={node.align}
 			width={node.bounds.width}
@@ -370,6 +457,7 @@ function richTextClipProps(
  */
 function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 	const wrap = node.wrap ?? "word";
+	const brandKit = useCanvasBrandKit();
 	const measured = getCachedLayout(node.paragraphs, node.width, wrap, () =>
 		layoutRichText(
 			{
@@ -390,21 +478,29 @@ function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 					const span = paragraph?.spans[run.spanIndex];
 					if (!span) return null;
 					const style = resolveSpanStyle(span, DEFAULT_RICH_TEXT_STYLE);
+					const fontFamily = resolveFontFamilyForDisplay(
+						style.fontFamily,
+						brandKit,
+					).value;
 					return (
 						<Text
 							key={`${line.paragraphIndex}-${run.spanIndex}-${run.start}`}
 							x={line.x + run.x}
 							y={line.y}
 							text={applyRichTextTransform(run.text, style.textTransform)}
-							fontFamily={style.fontFamily}
+							{...(fontFamily !== undefined ? { fontFamily } : {})}
 							fontSize={style.fontSize}
 							fontStyle={`${style.italic ? "italic " : ""}${style.fontWeight}`}
 							letterSpacing={style.letterSpacing}
 							textDecoration={style.underline ? "underline" : ""}
-							{...fillProps(style.fill, {
-								width: run.width,
-								height: line.height,
-							})}
+							{...fillProps(
+								style.fill,
+								{
+									width: run.width,
+									height: line.height,
+								},
+								brandKit,
+							)}
 						/>
 					);
 				}),
@@ -588,6 +684,10 @@ export function CanvasNodeRenderer({
 			return <CanvasRectNodeRenderer node={node} />;
 		case "ellipse":
 			return <CanvasEllipseNodeRenderer node={node} />;
+		case "polygon":
+			return <CanvasPolygonNodeRenderer node={node} />;
+		case "star":
+			return <CanvasStarNodeRenderer node={node} />;
 		case "line":
 			return <CanvasLineNodeRenderer node={node} />;
 		case "path":

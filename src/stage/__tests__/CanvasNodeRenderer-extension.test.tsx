@@ -9,9 +9,15 @@ import { CanvasNodeRenderer } from "../CanvasNodeRenderer.js";
 
 afterEach(cleanup);
 
-const star = {
+/**
+ * Fake CUSTOM (non-built-in) node kind. Named "pinwheel", not "star" — "star"
+ * is now a real built-in kind (canvas-m1-011) with its own dispatch case, so
+ * the switch would render it before ever reaching the custom-kindRenderers
+ * fallback these tests exist to exercise.
+ */
+const pinwheel = {
 	id: "s1",
-	type: "star",
+	type: "pinwheel",
 	transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
 	bounds: { width: 20, height: 20 },
 	zIndex: 0,
@@ -26,15 +32,17 @@ function ctxWith(
 
 describe("CanvasNodeRenderer — custom kinds", () => {
 	it("renders a custom node kind via the registered renderer", () => {
-		const renderStar = vi.fn(() => null);
-		const ctx = ctxWith({ star: { kind: "star", render: renderStar } });
+		const renderPinwheel = vi.fn(() => null);
+		const ctx = ctxWith({
+			pinwheel: { kind: "pinwheel", render: renderPinwheel },
+		});
 		render(
 			<CanvasStudioContext.Provider value={ctx}>
-				<CanvasNodeRenderer node={star} />
+				<CanvasNodeRenderer node={pinwheel} />
 			</CanvasStudioContext.Provider>,
 		);
-		expect(renderStar).toHaveBeenCalledTimes(1);
-		expect(renderStar.mock.calls[0]?.[0]).toMatchObject({ node: star });
+		expect(renderPinwheel).toHaveBeenCalledTimes(1);
+		expect(renderPinwheel.mock.calls[0]?.[0]).toMatchObject({ node: pinwheel });
 	});
 
 	it("renders nothing (no throw) for a custom kind with no registered renderer", () => {
@@ -42,7 +50,7 @@ describe("CanvasNodeRenderer — custom kinds", () => {
 		expect(() =>
 			render(
 				<CanvasStudioContext.Provider value={ctx}>
-					<CanvasNodeRenderer node={star} />
+					<CanvasNodeRenderer node={pinwheel} />
 				</CanvasStudioContext.Provider>,
 			),
 		).not.toThrow();
