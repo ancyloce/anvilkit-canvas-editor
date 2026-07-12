@@ -17,8 +17,11 @@ import { frameTool } from "../tools/frame-tool.js";
 import { handTool } from "../tools/hand-tool.js";
 import { imageTool } from "../tools/image-tool.js";
 import { lineTool } from "../tools/line-tool.js";
+import { polygonTool } from "../tools/polygon-tool.js";
 import { rectTool } from "../tools/rect-tool.js";
+import { richTextTool } from "../tools/rich-text-tool.js";
 import { selectTool } from "../tools/select-tool.js";
+import { starTool } from "../tools/star-tool.js";
 import { textTool } from "../tools/text-tool.js";
 
 /**
@@ -82,6 +85,24 @@ describe("MVP-7 single-command-per-interaction contract", () => {
 		expect(h.commits[0]?.type).toBe("node.create");
 	});
 
+	it("polygon tool: 1 node.create on pointerup, zero during move", () => {
+		const h = makeHarness();
+		fullSequence(polygonTool, h.ctx, {
+			onDuringMove: () => expect(h.commits).toHaveLength(0),
+		});
+		expect(h.commits).toHaveLength(1);
+		expect(h.commits[0]?.type).toBe("node.create");
+	});
+
+	it("star tool: 1 node.create on pointerup, zero during move", () => {
+		const h = makeHarness();
+		fullSequence(starTool, h.ctx, {
+			onDuringMove: () => expect(h.commits).toHaveLength(0),
+		});
+		expect(h.commits).toHaveLength(1);
+		expect(h.commits[0]?.type).toBe("node.create");
+	});
+
 	it("line tool: 1 node.create on pointerup, zero during move", () => {
 		const h = makeHarness();
 		fullSequence(lineTool, h.ctx, {
@@ -96,6 +117,17 @@ describe("MVP-7 single-command-per-interaction contract", () => {
 		fullSequence(textTool, h.ctx, {
 			onDuringMove: () =>
 				// text tool has no onPointerMove — count should hold at 1.
+				expect(h.commits).toHaveLength(1),
+		});
+		expect(h.commits).toHaveLength(1);
+		expect(h.commits[0]?.type).toBe("node.create");
+	});
+
+	it("rich-text tool: 1 node.create on pointerdown; move/up undefined so still 1", () => {
+		const h = makeHarness();
+		fullSequence(richTextTool, h.ctx, {
+			onDuringMove: () =>
+				// rich-text tool has no onPointerMove — count should hold at 1.
 				expect(h.commits).toHaveLength(1),
 		});
 		expect(h.commits).toHaveLength(1);
@@ -231,6 +263,8 @@ describe("MVP-7 source audit: no commits inside any pointermove handler", () => 
 		{ name: "rect", source: rectTool.onPointerMove?.toString() ?? "" },
 		{ name: "frame", source: frameTool.onPointerMove?.toString() ?? "" },
 		{ name: "ellipse", source: ellipseTool.onPointerMove?.toString() ?? "" },
+		{ name: "polygon", source: polygonTool.onPointerMove?.toString() ?? "" },
+		{ name: "star", source: starTool.onPointerMove?.toString() ?? "" },
 		{ name: "line", source: lineTool.onPointerMove?.toString() ?? "" },
 		{ name: "select", source: selectTool.onPointerMove?.toString() ?? "" },
 		{ name: "hand", source: handTool.onPointerMove?.toString() ?? "" },

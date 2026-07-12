@@ -17,6 +17,10 @@ export { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
 // ── Brand kit ────────────────────────────────────────────────────────────────
 export type { BrandColor, BrandKit } from "./brand/brand-kit.js";
 export { EMPTY_BRAND_KIT } from "./brand/brand-kit.js";
+// Resolve a `BrandTokenRef` the SAME way the stage does — pass
+// `(ref) => resolveBrandToken(ref, brandKit)` to core's SVG serializer's
+// `resolveBrandToken` option so a host's SVG export agrees with the canvas.
+export { resolveBrandToken } from "./brand/resolve-brand-token.js";
 export {
 	useBrandColors,
 	useBrandFonts,

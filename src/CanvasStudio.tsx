@@ -20,6 +20,7 @@ import { SceneAccessibilityTree } from "./a11y/SceneAccessibilityTree.js";
 import { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
 import { CanvasKeyboardLayer } from "./a11y/useCanvasKeyboard.js";
 import type { BrandKit } from "./brand/brand-kit.js";
+import { EMPTY_BRAND_KIT } from "./brand/brand-kit.js";
 import { CanvasErrorBoundary } from "./CanvasErrorBoundary.js";
 import {
 	CanvasStudioContext,
@@ -41,6 +42,7 @@ import { CropEditorOverlay } from "./selection/CropEditorOverlay.js";
 import { PathEditOverlay } from "./selection/PathEditOverlay.js";
 import { SmartGuideOverlay } from "./snap/SmartGuideOverlay.js";
 import { CanvasAssetsContext } from "./stage/CanvasAssetsContext.js";
+import { CanvasBrandKitContext } from "./stage/CanvasBrandKitContext.js";
 import { CanvasNodeRenderer } from "./stage/CanvasNodeRenderer.js";
 import { CanvasStage } from "./stage/CanvasStage.js";
 import { DesignBackground } from "./stage/DesignBackground.js";
@@ -485,51 +487,53 @@ export function CanvasStudio({
 			resetKey={activePageId}
 		>
 			<CanvasAssetsContext.Provider value={ir.assets}>
-				<CanvasStage
-					width={stageWidth}
-					height={stageHeight}
-					zoom={zoom}
-					panX={panX}
-					panY={panY}
-					onReady={handleStageReady}
-				>
-					<RenderLayer name="background" listening={false}>
-						<DesignBackground />
-						<Grid />
-					</RenderLayer>
-					<RenderLayer name="objects">
-						{activePage.root.children.flatMap((node) =>
-							draggedIds.has(node.id)
-								? []
-								: [<CanvasNodeRenderer key={node.id} node={node} />],
-						)}
-					</RenderLayer>
-					{/* I2-5: dragged nodes float on their own layer so only it
+				<CanvasBrandKitContext.Provider value={brandKit ?? EMPTY_BRAND_KIT}>
+					<CanvasStage
+						width={stageWidth}
+						height={stageHeight}
+						zoom={zoom}
+						panX={panX}
+						panY={panY}
+						onReady={handleStageReady}
+					>
+						<RenderLayer name="background" listening={false}>
+							<DesignBackground />
+							<Grid />
+						</RenderLayer>
+						<RenderLayer name="objects">
+							{activePage.root.children.flatMap((node) =>
+								draggedIds.has(node.id)
+									? []
+									: [<CanvasNodeRenderer key={node.id} node={node} />],
+							)}
+						</RenderLayer>
+						{/* I2-5: dragged nodes float on their own layer so only it
 				    redraws during a drag; the (cached) objects layer stays put. */}
-					<RenderLayer name="drag">
-						{activePage.root.children.flatMap((node) =>
-							draggedIds.has(node.id)
-								? [<CanvasNodeRenderer key={node.id} node={node} />]
-								: [],
-						)}
-					</RenderLayer>
-					<RenderLayer name="selection">
-						<DraftRenderer />
-						<SmartGuideOverlay />
-						<PenPreview />
-						<PathEditOverlay />
-						<CanvasTransformer />
-						<CanvasFocusRing />
-					</RenderLayer>
-					<RenderLayer name="presence" listening={false}>
-						<RemoteCursors />
-						<RemoteSelections />
-					</RenderLayer>
-				</CanvasStage>
-				<ToolInteractionLayer registry={effectiveToolRegistry} />
-				<TextEditorOverlay />
-				<CropEditorOverlay />
-				<PenToolOverlay />
+						<RenderLayer name="drag">
+							{activePage.root.children.flatMap((node) =>
+								draggedIds.has(node.id)
+									? [<CanvasNodeRenderer key={node.id} node={node} />]
+									: [],
+							)}
+						</RenderLayer>
+						<RenderLayer name="selection">
+							<DraftRenderer />
+							<SmartGuideOverlay />
+							<PenPreview />
+							<PathEditOverlay />
+							<CanvasTransformer />
+							<CanvasFocusRing />
+						</RenderLayer>
+						<RenderLayer name="presence" listening={false}>
+							<RemoteCursors />
+							<RemoteSelections />
+						</RenderLayer>
+					</CanvasStage>
+					<ToolInteractionLayer registry={effectiveToolRegistry} />
+					<TextEditorOverlay />
+					<CropEditorOverlay />
+					<PenToolOverlay />
+				</CanvasBrandKitContext.Provider>
 			</CanvasAssetsContext.Provider>
 		</CanvasErrorBoundary>
 	);
