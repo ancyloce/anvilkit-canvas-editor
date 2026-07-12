@@ -3,6 +3,16 @@
  * pickers, the property inspector) so designs stay on-brand.
  */
 export interface BrandColor {
+	/**
+	 * Stable identifier a `BrandTokenRef` (`@anvilkit/canvas-core`,
+	 * `tokenType: "color"`) resolves against. Optional, forward-compatible
+	 * bridge (canvas-m1-013) until FR-031's canonical brand-kit contract
+	 * lands in M2: when omitted, {@link resolveBrandToken} falls back to a
+	 * slug of `name` (lowercased, non-alphanumeric runs collapsed to `-`) —
+	 * e.g. `"Primary Blue"` → `"primary-blue"`. A host that wants stable ids
+	 * independent of a color's display name should set this explicitly.
+	 */
+	readonly id?: string;
 	/** Human label, e.g. "Primary", "Accent". */
 	readonly name: string;
 	/** Any CSS color value, e.g. "#2563eb" or "var(--brand)". */
