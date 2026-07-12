@@ -8,13 +8,27 @@ import {
 	type CanvasLineNode,
 	type CanvasNode,
 	type CanvasPathNode,
+	type CanvasPolygonNode,
 	type CanvasRectNode,
+	type CanvasRichTextNode,
+	type CanvasStarNode,
+	type CanvasTextAlign,
 	type CanvasTextNode,
 	findNode,
+	type RichTextOverflow,
+	type RichTextTransform,
+	type RichTextWrap,
+	resolveSpanStyle,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { Switch } from "@anvilkit/ui/components/animate-ui/components/base/switch";
 import { useSyncExternalStore } from "react";
+import type { BrandKit } from "../brand/brand-kit.js";
+import { EMPTY_BRAND_KIT } from "../brand/brand-kit.js";
+import {
+	resolveFillForDisplay,
+	resolveFontFamilyForDisplay,
+} from "../brand/resolve-brand-token.js";
 import type {
 	CanvasStudioContextValue,
 	CanvasT,
@@ -32,6 +46,7 @@ import {
 	wellImage,
 } from "../selection/frame-image-actions.js";
 import { beginPathEdit } from "../selection/path-edit-actions.js";
+import { DEFAULT_RICH_TEXT_STYLE } from "../text/rich-text-style.js";
 import {
 	ColorField,
 	type CommitPatch,
@@ -199,10 +214,26 @@ function renderTypeSpecificFields(
 			return renderRectFields(node, commitPatch, t);
 		case "ellipse":
 			return renderEllipseFields(node, commitPatch, t);
+		case "polygon":
+			return renderPolygonFields(node, commitPatch, t);
+		case "star":
+			return renderStarFields(node, commitPatch, t);
 		case "line":
 			return renderLineFields(node, commitPatch, t);
 		case "text":
-			return renderTextFields(node, commitPatch, t);
+			return renderTextFields(
+				node,
+				commitPatch,
+				ctx.brandKit ?? EMPTY_BRAND_KIT,
+				t,
+			);
+		case "rich-text":
+			return renderRichTextFields(
+				node,
+				commitPatch,
+				ctx.brandKit ?? EMPTY_BRAND_KIT,
+				t,
+			);
 		case "image":
 			return renderImageFields(node, commitPatch, ctx, t);
 		case "path":
@@ -291,6 +322,93 @@ function renderEllipseFields(
 	);
 }
 
+function renderPolygonFields(
+	node: CanvasPolygonNode,
+	commitPatch: CommitPatch,
+	t: CanvasT,
+): React.JSX.Element {
+	return (
+		<Section title={t("canvas.inspector.shape", "Shape")}>
+			<NumberField
+				label={t("canvas.inspector.sides", "Sides")}
+				value={node.sides}
+				min={3}
+				step={1}
+				dataTestId="prop-polygon-sides"
+				onCommit={(v) => commitPatch(node, { sides: Math.round(v) })}
+			/>
+			<FillAndShadowFields
+				node={node}
+				fill={node.fill}
+				shadow={node.shadow}
+				commitPatch={commitPatch}
+				t={t}
+			/>
+			<ColorField
+				label={t("canvas.inspector.stroke", "Stroke")}
+				value={node.stroke}
+				dataTestId="prop-stroke"
+				onCommit={(v) => commitPatch(node, { stroke: v })}
+			/>
+			<NumberField
+				label={t("canvas.inspector.strokeWidth", "Stroke W")}
+				value={node.strokeWidth ?? 0}
+				min={0}
+				dataTestId="prop-stroke-width"
+				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
+			/>
+		</Section>
+	);
+}
+
+function renderStarFields(
+	node: CanvasStarNode,
+	commitPatch: CommitPatch,
+	t: CanvasT,
+): React.JSX.Element {
+	return (
+		<Section title={t("canvas.inspector.shape", "Shape")}>
+			<NumberField
+				label={t("canvas.inspector.points", "Points")}
+				value={node.points}
+				min={3}
+				step={1}
+				dataTestId="prop-star-points"
+				onCommit={(v) => commitPatch(node, { points: Math.round(v) })}
+			/>
+			<NumberField
+				label={t("canvas.inspector.innerRadiusRatio", "Inner radius")}
+				value={node.innerRadiusRatio}
+				min={0}
+				max={1}
+				step={0.05}
+				dataTestId="prop-star-inner-radius"
+				onCommit={(v) => commitPatch(node, { innerRadiusRatio: v })}
+			/>
+			<FillAndShadowFields
+				node={node}
+				fill={node.fill}
+				shadow={node.shadow}
+				commitPatch={commitPatch}
+				t={t}
+			/>
+			<ColorField
+				label={t("canvas.inspector.stroke", "Stroke")}
+				value={node.stroke}
+				dataTestId="prop-stroke"
+				onCommit={(v) => commitPatch(node, { stroke: v })}
+			/>
+			<NumberField
+				label={t("canvas.inspector.strokeWidth", "Stroke W")}
+				value={node.strokeWidth ?? 0}
+				min={0}
+				dataTestId="prop-stroke-width"
+				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
+			/>
+		</Section>
+	);
+}
+
 function renderLineFields(
 	node: CanvasLineNode,
 	commitPatch: CommitPatch,
@@ -318,8 +436,27 @@ function renderLineFields(
 function renderTextFields(
 	node: CanvasTextNode,
 	commitPatch: CommitPatch,
+	brandKit: BrandKit,
 	t: CanvasT,
 ): React.JSX.Element {
+	// fontFamily/fill may be a brand-token ref (canvas-m1-013): resolve for
+	// display so a token never crashes a `string`-typed field; editing either
+	// field always commits a plain literal (the fields never re-wrap into a
+	// token), which is the natural "detach" behavior. `unresolved` flags a
+	// token that couldn't resolve (vs. simply absent) with a title tooltip —
+	// the minimal affordance; there is no new picker UI (FR-033 is out of
+	// scope for this task).
+	const fontFamilyResolved = resolveFontFamilyForDisplay(
+		node.fontFamily,
+		brandKit,
+	);
+	const fillResolved = resolveFillForDisplay(node.fill, brandKit);
+	const fontFamily = fontFamilyResolved.value;
+	const fill = fillResolved.value;
+	const unresolvedTitle = t(
+		"canvas.inspector.unresolvedToken",
+		"Unresolved brand token — showing fallback",
+	);
 	return (
 		<Section title={t("canvas.inspector.text", "Text")}>
 			<TextField
@@ -330,9 +467,10 @@ function renderTextFields(
 			/>
 			<TextField
 				label={t("canvas.inspector.font", "Font")}
-				value={node.fontFamily}
+				value={fontFamily ?? ""}
 				dataTestId="prop-font-family"
 				onCommit={(v) => commitPatch(node, { fontFamily: v })}
+				title={fontFamilyResolved.unresolved ? unresolvedTitle : undefined}
 			/>
 			<NumberField
 				label={t("canvas.inspector.size", "Size")}
@@ -343,11 +481,240 @@ function renderTextFields(
 			/>
 			<ColorField
 				label={t("canvas.inspector.color", "Color")}
-				value={typeof node.fill === "string" ? node.fill : undefined}
+				value={typeof fill === "string" ? fill : undefined}
 				dataTestId="prop-text-fill"
 				onCommit={(v) => commitPatch(node, { fill: v })}
+				title={fillResolved.unresolved ? unresolvedTitle : undefined}
 			/>
 		</Section>
+	);
+}
+
+/**
+ * Rich-text controls. MVP scope (canvas-m1-009): paragraph align/lineHeight
+ * and span styling apply UNIFORMLY to every paragraph/span on the node —
+ * there is no per-paragraph or per-span selection UI. Field values read from
+ * the first paragraph's first span as the representative "current" value;
+ * committing a field rewrites that field on every paragraph/span.
+ */
+function renderRichTextFields(
+	node: CanvasRichTextNode,
+	commitPatch: CommitPatch,
+	brandKit: BrandKit,
+	t: CanvasT,
+): React.JSX.Element {
+	const firstParagraph = node.paragraphs[0];
+	const style = resolveSpanStyle(
+		firstParagraph?.spans[0] ?? { text: "" },
+		DEFAULT_RICH_TEXT_STYLE,
+	);
+	// style.fontFamily/.fill may be a brand-token ref (canvas-m1-013) — resolve
+	// for display the same way renderTextFields does; see its comment.
+	const fontFamilyResolved = resolveFontFamilyForDisplay(
+		style.fontFamily,
+		brandKit,
+	);
+	const fillResolved = resolveFillForDisplay(style.fill, brandKit);
+	const fontFamily = fontFamilyResolved.value;
+	const fill = fillResolved.value;
+	const unresolvedTitle = t(
+		"canvas.inspector.unresolvedToken",
+		"Unresolved brand token — showing fallback",
+	);
+	const align = firstParagraph?.align ?? DEFAULT_RICH_TEXT_STYLE.align;
+	const lineHeight =
+		firstParagraph?.lineHeight ?? DEFAULT_RICH_TEXT_STYLE.lineHeight;
+	const wrap = node.wrap ?? "word";
+	const overflow = node.overflow ?? "visible";
+
+	const commitAllParagraphs = (
+		patch: Pick<
+			CanvasRichTextNode["paragraphs"][number],
+			"align" | "lineHeight"
+		>,
+	): void => {
+		commitPatch(node, {
+			paragraphs: node.paragraphs.map((p) => ({ ...p, ...patch })),
+		});
+	};
+	const commitAllSpans = (
+		patch: Partial<CanvasRichTextNode["paragraphs"][number]["spans"][number]>,
+	): void => {
+		commitPatch(node, {
+			paragraphs: node.paragraphs.map((p) => ({
+				...p,
+				spans: p.spans.map((s) => ({ ...s, ...patch })),
+			})),
+		});
+	};
+
+	return (
+		<>
+			<Section title={t("canvas.inspector.text", "Text")}>
+				<FieldRow label={t("canvas.inspector.wrap", "Wrap")}>
+					<select
+						aria-label={t("canvas.inspector.wrap", "Wrap")}
+						data-testid="prop-rich-text-wrap"
+						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
+						value={wrap}
+						onChange={(e) =>
+							commitPatch(node, {
+								wrap: e.currentTarget.value as RichTextWrap,
+							})
+						}
+					>
+						<option value="word">
+							{t("canvas.inspector.wrapWord", "Word")}
+						</option>
+						<option value="character">
+							{t("canvas.inspector.wrapCharacter", "Character")}
+						</option>
+						<option value="none">
+							{t("canvas.inspector.wrapNone", "None")}
+						</option>
+					</select>
+				</FieldRow>
+				<FieldRow label={t("canvas.inspector.overflow", "Overflow")}>
+					<select
+						aria-label={t("canvas.inspector.overflow", "Overflow")}
+						data-testid="prop-rich-text-overflow"
+						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
+						value={overflow}
+						onChange={(e) =>
+							commitPatch(node, {
+								overflow: e.currentTarget.value as RichTextOverflow,
+							})
+						}
+					>
+						<option value="visible">
+							{t("canvas.inspector.overflowVisible", "Visible")}
+						</option>
+						<option value="clip">
+							{t("canvas.inspector.overflowClip", "Clip")}
+						</option>
+						<option value="auto-height">
+							{t("canvas.inspector.overflowAutoHeight", "Auto height")}
+						</option>
+						<option value="ellipsis">
+							{t("canvas.inspector.overflowEllipsis", "Ellipsis")}
+						</option>
+					</select>
+				</FieldRow>
+			</Section>
+			<Section title={t("canvas.inspector.paragraph", "Paragraph")}>
+				<FieldRow label={t("canvas.inspector.align", "Align")}>
+					<select
+						aria-label={t("canvas.inspector.align", "Align")}
+						data-testid="prop-rich-text-align"
+						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
+						value={align}
+						onChange={(e) =>
+							commitAllParagraphs({
+								align: e.currentTarget.value as CanvasTextAlign,
+							})
+						}
+					>
+						<option value="left">
+							{t("canvas.inspector.alignLeft", "Left")}
+						</option>
+						<option value="center">
+							{t("canvas.inspector.alignCenter", "Center")}
+						</option>
+						<option value="right">
+							{t("canvas.inspector.alignRight", "Right")}
+						</option>
+					</select>
+				</FieldRow>
+				<NumberField
+					label={t("canvas.inspector.lineHeight", "Line height")}
+					value={lineHeight}
+					step={0.1}
+					min={0}
+					dataTestId="prop-rich-text-line-height"
+					onCommit={(v) => commitAllParagraphs({ lineHeight: v })}
+				/>
+			</Section>
+			<Section title={t("canvas.inspector.span", "Text style")}>
+				<TextField
+					label={t("canvas.inspector.font", "Font")}
+					value={fontFamily ?? ""}
+					dataTestId="prop-rich-text-font-family"
+					onCommit={(v) => commitAllSpans({ fontFamily: v })}
+					title={fontFamilyResolved.unresolved ? unresolvedTitle : undefined}
+				/>
+				<NumberField
+					label={t("canvas.inspector.size", "Size")}
+					value={style.fontSize}
+					min={1}
+					dataTestId="prop-rich-text-font-size"
+					onCommit={(v) => commitAllSpans({ fontSize: v })}
+				/>
+				<TextField
+					label={t("canvas.inspector.fontWeight", "Weight")}
+					value={style.fontWeight}
+					dataTestId="prop-rich-text-font-weight"
+					onCommit={(v) => commitAllSpans({ fontWeight: v })}
+				/>
+				<NumberField
+					label={t("canvas.inspector.letterSpacing", "Letter spacing")}
+					value={style.letterSpacing}
+					step={0.1}
+					dataTestId="prop-rich-text-letter-spacing"
+					onCommit={(v) => commitAllSpans({ letterSpacing: v })}
+				/>
+				<ColorField
+					label={t("canvas.inspector.color", "Color")}
+					value={typeof fill === "string" ? fill : undefined}
+					dataTestId="prop-rich-text-fill"
+					onCommit={(v) => commitAllSpans({ fill: v })}
+					title={fillResolved.unresolved ? unresolvedTitle : undefined}
+				/>
+				<FieldRow label={t("canvas.inspector.italic", "Italic")}>
+					<Switch
+						checked={style.italic}
+						onCheckedChange={(checked) => commitAllSpans({ italic: checked })}
+						aria-label={t("canvas.inspector.italic", "Italic")}
+						data-testid="prop-rich-text-italic"
+					/>
+				</FieldRow>
+				<FieldRow label={t("canvas.inspector.underline", "Underline")}>
+					<Switch
+						checked={style.underline}
+						onCheckedChange={(checked) =>
+							commitAllSpans({ underline: checked })
+						}
+						aria-label={t("canvas.inspector.underline", "Underline")}
+						data-testid="prop-rich-text-underline"
+					/>
+				</FieldRow>
+				<FieldRow label={t("canvas.inspector.textTransform", "Transform")}>
+					<select
+						aria-label={t("canvas.inspector.textTransform", "Transform")}
+						data-testid="prop-rich-text-transform"
+						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
+						value={style.textTransform}
+						onChange={(e) =>
+							commitAllSpans({
+								textTransform: e.currentTarget.value as RichTextTransform,
+							})
+						}
+					>
+						<option value="none">
+							{t("canvas.inspector.transformNone", "None")}
+						</option>
+						<option value="uppercase">
+							{t("canvas.inspector.transformUppercase", "UPPERCASE")}
+						</option>
+						<option value="lowercase">
+							{t("canvas.inspector.transformLowercase", "lowercase")}
+						</option>
+						<option value="capitalize">
+							{t("canvas.inspector.transformCapitalize", "Capitalize")}
+						</option>
+					</select>
+				</FieldRow>
+			</Section>
+		</>
 	);
 }
 

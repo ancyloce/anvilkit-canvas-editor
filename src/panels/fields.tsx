@@ -58,13 +58,19 @@ export function Section({
 
 export function FieldRow({
 	label,
+	title,
 	children,
 }: {
 	label: string;
+	/** Native tooltip, e.g. flagging an unresolved brand-token value (canvas-m1-013). */
+	title?: string;
 	children: ReactNode;
 }): React.JSX.Element {
 	return (
-		<label className="grid grid-cols-[64px_1fr] items-center gap-2.5">
+		<label
+			className="grid grid-cols-[64px_1fr] items-center gap-2.5"
+			title={title}
+		>
 			<span className="text-[11.5px] text-muted-foreground">{label}</span>
 			{children}
 		</label>
@@ -122,6 +128,8 @@ export interface TextFieldProps {
 	value: string;
 	dataTestId: string;
 	onCommit: (next: string) => void;
+	/** Native tooltip, e.g. flagging an unresolved brand-token value (canvas-m1-013). */
+	title?: string;
 }
 
 export function TextField({
@@ -129,12 +137,13 @@ export function TextField({
 	value,
 	dataTestId,
 	onCommit,
+	title,
 }: TextFieldProps): React.JSX.Element {
 	// See NumberField: re-key uncontrolled input on external change, frozen
 	// while focused (W3) so typing is never interrupted.
 	const fk = useFrozenKey(value);
 	return (
-		<FieldRow label={label}>
+		<FieldRow label={label} title={title}>
 			<Input
 				key={fk.key}
 				type="text"
@@ -157,6 +166,8 @@ export interface ColorFieldProps {
 	value: string | undefined;
 	dataTestId: string;
 	onCommit: (next: string) => void;
+	/** Native tooltip, e.g. flagging an unresolved brand-token value (canvas-m1-013). */
+	title?: string;
 }
 
 export function ColorField({
@@ -164,12 +175,13 @@ export function ColorField({
 	value,
 	dataTestId,
 	onCommit,
+	title,
 }: ColorFieldProps): React.JSX.Element {
 	// See NumberField: re-key uncontrolled input on external change, frozen
 	// while focused (W3).
 	const fk = useFrozenKey(value ?? "#000000");
 	return (
-		<FieldRow label={label}>
+		<FieldRow label={label} title={title}>
 			<div className="flex items-center gap-2">
 				<span
 					className="size-5 shrink-0 rounded-sm ring-1 ring-border"

@@ -10,7 +10,10 @@ import {
 	createImage,
 	createPage,
 	createPath,
+	createPolygon,
 	createRect,
+	createRichText,
+	createStar,
 	createText,
 } from "@anvilkit/canvas-core";
 import { fireEvent, render } from "@testing-library/react";
@@ -20,6 +23,7 @@ import {
 	type CanvasStudioContextValue,
 } from "@/context/canvas-studio-context.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
+import type { BrandKit } from "../../brand/brand-kit.js";
 import { PropertyInspector } from "../PropertyInspector.js";
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
@@ -43,6 +47,43 @@ function withRectIR(): CanvasIR {
 	return ir;
 }
 
+function withPolygonIR(): CanvasIR {
+	const ir = createCanvasIR({
+		id: "ir-1",
+		pages: [createPage({ id: "p1" })],
+		now: () => FIXED_TS,
+	});
+	const polygon = createPolygon({
+		id: "polygon-a",
+		bounds: { width: 50, height: 60 },
+		sides: 6,
+		fill: "#ff0000",
+	});
+	const firstPage = ir.pages[0];
+	if (!firstPage) throw new Error("expected at least one page");
+	firstPage.root.children = [polygon];
+	return ir;
+}
+
+function withStarIR(): CanvasIR {
+	const ir = createCanvasIR({
+		id: "ir-1",
+		pages: [createPage({ id: "p1" })],
+		now: () => FIXED_TS,
+	});
+	const star = createStar({
+		id: "star-a",
+		bounds: { width: 50, height: 60 },
+		points: 6,
+		innerRadiusRatio: 0.4,
+		fill: "#00ff00",
+	});
+	const firstPage = ir.pages[0];
+	if (!firstPage) throw new Error("expected at least one page");
+	firstPage.root.children = [star];
+	return ir;
+}
+
 function withTextIR(): CanvasIR {
 	const ir = createCanvasIR({
 		id: "ir-1",
@@ -61,15 +102,21 @@ function withTextIR(): CanvasIR {
 	return ir;
 }
 
-function withStarIR(): CanvasIR {
+/**
+ * Fake CUSTOM (non-built-in) node kind. Named "pinwheel", not "star" — "star"
+ * is now a real built-in kind (canvas-m1-011) with its own renderTypeSpecificFields
+ * case, so the switch would render it before ever reaching the
+ * ctx.kindInspectors fallback this test exists to exercise.
+ */
+function withPinwheelIR(): CanvasIR {
 	const ir = createCanvasIR({
 		id: "ir-1",
 		pages: [createPage({ id: "p1" })],
 		now: () => FIXED_TS,
 	});
-	const star = {
-		id: "star-1",
-		type: "star",
+	const pinwheel = {
+		id: "pinwheel-1",
+		type: "pinwheel",
 		transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
 		bounds: { width: 10, height: 10 },
 		zIndex: 0,
@@ -77,7 +124,7 @@ function withStarIR(): CanvasIR {
 	};
 	const firstPage = ir.pages[0];
 	if (!firstPage) throw new Error("expected at least one page");
-	firstPage.root.children = [star as never];
+	firstPage.root.children = [pinwheel as never];
 	return ir;
 }
 
@@ -196,21 +243,21 @@ describe("PropertyInspector — fill type", () => {
 
 describe("PropertyInspector — custom (extension) kind", () => {
 	it("renders the registered inspector fields for a custom node kind", () => {
-		const h = makeHarness({ ir: withStarIR() });
+		const h = makeHarness({ ir: withPinwheelIR() });
 		h.studioCtx.kindInspectors = {
-			star: {
-				kind: "star",
+			pinwheel: {
+				kind: "pinwheel",
 				render: (node) => (
-					<div data-testid="star-fields">
+					<div data-testid="pinwheel-fields">
 						points:{(node as unknown as { points: number }).points}
 					</div>
 				),
 			},
 		};
-		h.studioCtx.selectionStore.getState().setSelection(["star-1"]);
+		h.studioCtx.selectionStore.getState().setSelection(["pinwheel-1"]);
 		const { container } = mount(h.studioCtx);
 		expect(
-			container.querySelector("[data-testid='star-fields']"),
+			container.querySelector("[data-testid='pinwheel-fields']"),
 		).not.toBeNull();
 	});
 });
@@ -303,6 +350,69 @@ describe("PropertyInspector — rect selected", () => {
 	});
 });
 
+describe("PropertyInspector — polygon selected", () => {
+	it("renders the sides field seeded from the node's current value", () => {
+		const h = makeHarness({ ir: withPolygonIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["polygon-a"]);
+		const { container } = mount(h.studioCtx);
+		const sides = container.querySelector(
+			"[data-testid='prop-polygon-sides']",
+		) as HTMLInputElement;
+		expect(sides.defaultValue).toBe("6");
+		expect(container.querySelector("[data-testid='prop-fill']")).not.toBeNull();
+	});
+
+	it("editing sides fires a node.update, rounded to the nearest integer", () => {
+		const h = makeHarness({ ir: withPolygonIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["polygon-a"]);
+		const { container } = mount(h.studioCtx);
+		const sides = container.querySelector(
+			"[data-testid='prop-polygon-sides']",
+		) as HTMLInputElement;
+		fireEvent.input(sides, { target: { value: "8" } });
+		fireEvent.blur(sides);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasNodeUpdateCommand<"polygon">;
+		expect(cmd.type).toBe("node.update");
+		expect(cmd.nodeId).toBe("polygon-a");
+		expect((cmd.patch as { sides?: number }).sides).toBe(8);
+	});
+});
+
+describe("PropertyInspector — star selected", () => {
+	it("renders points and inner-radius fields seeded from the node's current values", () => {
+		const h = makeHarness({ ir: withStarIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["star-a"]);
+		const { container } = mount(h.studioCtx);
+		const points = container.querySelector(
+			"[data-testid='prop-star-points']",
+		) as HTMLInputElement;
+		expect(points.defaultValue).toBe("6");
+		const innerRadius = container.querySelector(
+			"[data-testid='prop-star-inner-radius']",
+		) as HTMLInputElement;
+		expect(innerRadius.defaultValue).toBe("0.4");
+	});
+
+	it("editing innerRadiusRatio fires a node.update", () => {
+		const h = makeHarness({ ir: withStarIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["star-a"]);
+		const { container } = mount(h.studioCtx);
+		const innerRadius = container.querySelector(
+			"[data-testid='prop-star-inner-radius']",
+		) as HTMLInputElement;
+		fireEvent.input(innerRadius, { target: { value: "0.6" } });
+		fireEvent.blur(innerRadius);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasNodeUpdateCommand<"star">;
+		expect(cmd.type).toBe("node.update");
+		expect(cmd.nodeId).toBe("star-a");
+		expect((cmd.patch as { innerRadiusRatio?: number }).innerRadiusRatio).toBe(
+			0.6,
+		);
+	});
+});
+
 describe("PropertyInspector — text selected", () => {
 	it("renders text-specific fields", () => {
 		const h = makeHarness({ ir: withTextIR() });
@@ -329,6 +439,295 @@ describe("PropertyInspector — text selected", () => {
 		expect(h.commits).toHaveLength(1);
 		const cmd = h.commits[0] as CanvasNodeUpdateCommand<CanvasNodeKind>;
 		expect((cmd.patch as { text?: string }).text).toBe("World");
+	});
+});
+
+const TEST_BRAND_KIT: BrandKit = {
+	colors: [{ id: "brand.primary", name: "Primary", value: "#2563eb" }],
+	fonts: ["Inter"],
+};
+
+function withTokenTextIR(fill: unknown, fontFamily: unknown): CanvasIR {
+	const ir = createCanvasIR({
+		id: "ir-1",
+		pages: [createPage({ id: "p1" })],
+		now: () => FIXED_TS,
+	});
+	const text = createText({
+		id: "text-a",
+		text: "Hello",
+		bounds: { width: 100, height: 20 },
+		now: () => FIXED_TS,
+	});
+	const firstPage = ir.pages[0];
+	if (!firstPage) throw new Error("expected at least one page");
+	firstPage.root.children = [
+		{ ...text, fill: fill as never, fontFamily: fontFamily as never },
+	];
+	return ir;
+}
+
+describe("PropertyInspector — brand tokens (canvas-m1-013)", () => {
+	it("resolves a color/font token against the injected brandKit, with no unresolved title", () => {
+		const h = makeHarness({
+			ir: withTokenTextIR(
+				{ type: "brand-token", tokenType: "color", id: "brand.primary" },
+				{ type: "brand-token", tokenType: "font", id: "inter" },
+			),
+		});
+		h.studioCtx.brandKit = TEST_BRAND_KIT;
+		h.studioCtx.selectionStore.getState().setSelection(["text-a"]);
+		const { container } = mount(h.studioCtx);
+		const fillInput = container.querySelector(
+			"[data-testid='prop-text-fill']",
+		) as HTMLInputElement;
+		const fontInput = container.querySelector(
+			"[data-testid='prop-font-family']",
+		) as HTMLInputElement;
+		expect(fillInput.defaultValue.toLowerCase()).toBe("#2563eb");
+		expect(fontInput.defaultValue).toBe("Inter");
+		expect(fillInput.closest("label")?.title).toBe("");
+		expect(fontInput.closest("label")?.title).toBe("");
+	});
+
+	it("degrades an unresolved token to a neutral fallback + title affordance, without crashing", () => {
+		const h = makeHarness({
+			ir: withTokenTextIR(
+				{ type: "brand-token", tokenType: "color", id: "does-not-exist" },
+				{ type: "brand-token", tokenType: "font", id: "does-not-exist" },
+			),
+		});
+		h.studioCtx.brandKit = TEST_BRAND_KIT;
+		h.studioCtx.selectionStore.getState().setSelection(["text-a"]);
+		expect(() => mount(h.studioCtx)).not.toThrow();
+		const { container } = mount(h.studioCtx);
+		const fillInput = container.querySelector(
+			"[data-testid='prop-text-fill']",
+		) as HTMLInputElement;
+		const fontInput = container.querySelector(
+			"[data-testid='prop-font-family']",
+		) as HTMLInputElement;
+		// Neutral deterministic fallback (ColorField's own default), not a crash.
+		expect(fillInput.defaultValue.toLowerCase()).toBe("#000000");
+		expect(fontInput.defaultValue).toBe("");
+		expect(fillInput.closest("label")?.title).toBe(
+			"Unresolved brand token — showing fallback",
+		);
+		expect(fontInput.closest("label")?.title).toBe(
+			"Unresolved brand token — showing fallback",
+		);
+	});
+
+	// Deliverable #4: the inspector has no picker UI to write a token back — any
+	// edit through these commit-on-blur fields necessarily commits a plain
+	// literal, which naturally detaches the node from the token.
+	it("detaches to a literal color when editing a token-filled field", () => {
+		const h = makeHarness({
+			ir: withTokenTextIR(
+				{ type: "brand-token", tokenType: "color", id: "brand.primary" },
+				"Georgia",
+			),
+		});
+		h.studioCtx.brandKit = TEST_BRAND_KIT;
+		h.studioCtx.selectionStore.getState().setSelection(["text-a"]);
+		const { container } = mount(h.studioCtx);
+		const fillInput = container.querySelector(
+			"[data-testid='prop-text-fill']",
+		) as HTMLInputElement;
+		fireEvent.input(fillInput, { target: { value: "#00ff00" } });
+		fireEvent.blur(fillInput);
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasNodeUpdateCommand<CanvasNodeKind>;
+		expect((cmd.patch as { fill?: unknown }).fill).toBe("#00ff00");
+	});
+
+	// FillAndShadowFields (shared by rect/ellipse/polygon/star/frame) reads
+	// brandKit via useBrandKit(), a separate path from renderTextFields' direct
+	// ctx.brandKit read — cover it independently.
+	it("resolves a rect's solid-fill color token via FillAndShadowFields", () => {
+		const h = makeHarness({ ir: withRectIR() });
+		h.studioCtx.brandKit = TEST_BRAND_KIT;
+		const rectIR = h.ir.pages[0]?.root.children[0];
+		if (!rectIR || rectIR.type !== "rect")
+			throw new Error("expected the fixture rect");
+		rectIR.fill = {
+			type: "brand-token",
+			tokenType: "color",
+			id: "brand.primary",
+		} as never;
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		const fillInput = container.querySelector(
+			"[data-testid='prop-fill']",
+		) as HTMLInputElement;
+		expect(fillInput.defaultValue.toLowerCase()).toBe("#2563eb");
+		expect(fillInput.closest("label")?.title).toBe("");
+	});
+
+	it("flags an unresolved rect fill token with the title affordance, without crashing", () => {
+		const h = makeHarness({ ir: withRectIR() });
+		h.studioCtx.brandKit = TEST_BRAND_KIT;
+		const rectIR = h.ir.pages[0]?.root.children[0];
+		if (!rectIR || rectIR.type !== "rect")
+			throw new Error("expected the fixture rect");
+		rectIR.fill = {
+			type: "brand-token",
+			tokenType: "color",
+			id: "does-not-exist",
+		} as never;
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		expect(() => mount(h.studioCtx)).not.toThrow();
+		const { container } = mount(h.studioCtx);
+		const fillInput = container.querySelector(
+			"[data-testid='prop-fill']",
+		) as HTMLInputElement;
+		expect(fillInput.defaultValue.toLowerCase()).toBe("#000000");
+		expect(fillInput.closest("label")?.title).toBe(
+			"Unresolved brand token — showing fallback",
+		);
+	});
+});
+
+function withRichTextIR(): CanvasIR {
+	const ir = createCanvasIR({
+		id: "ir-1",
+		pages: [createPage({ id: "p1" })],
+		now: () => FIXED_TS,
+	});
+	const richText = createRichText({
+		id: "rt-a",
+		bounds: { width: 240, height: 60 },
+		paragraphs: [
+			{
+				align: "center",
+				lineHeight: 1.5,
+				spans: [
+					{
+						text: "First",
+						fontFamily: "Georgia",
+						fontSize: 20,
+						fontWeight: "700",
+						italic: true,
+						underline: true,
+						letterSpacing: 0.5,
+						textTransform: "uppercase",
+						fill: "#ff0000",
+					},
+				],
+			},
+			{ spans: [{ text: "Second" }] },
+		],
+		wrap: "character",
+		overflow: "clip",
+	});
+	const firstPage = ir.pages[0];
+	if (!firstPage) throw new Error("expected at least one page");
+	firstPage.root.children = [richText];
+	return ir;
+}
+
+describe("PropertyInspector — rich-text selected", () => {
+	it("renders rich-text fields seeded from the node's current values", () => {
+		const h = makeHarness({ ir: withRichTextIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rt-a"]);
+		const { container } = mount(h.studioCtx);
+		const wrap = container.querySelector(
+			"[data-testid='prop-rich-text-wrap']",
+		) as HTMLSelectElement;
+		expect(wrap.value).toBe("character");
+		const overflow = container.querySelector(
+			"[data-testid='prop-rich-text-overflow']",
+		) as HTMLSelectElement;
+		expect(overflow.value).toBe("clip");
+		const align = container.querySelector(
+			"[data-testid='prop-rich-text-align']",
+		) as HTMLSelectElement;
+		expect(align.value).toBe("center");
+		const lineHeight = container.querySelector(
+			"[data-testid='prop-rich-text-line-height']",
+		) as HTMLInputElement;
+		expect(lineHeight.defaultValue).toBe("1.5");
+		const fontFamily = container.querySelector(
+			"[data-testid='prop-rich-text-font-family']",
+		) as HTMLInputElement;
+		expect(fontFamily.defaultValue).toBe("Georgia");
+		const fontSize = container.querySelector(
+			"[data-testid='prop-rich-text-font-size']",
+		) as HTMLInputElement;
+		expect(fontSize.defaultValue).toBe("20");
+	});
+
+	it("changing wrap commits a node-level patch, not a paragraph rewrite", () => {
+		const h = makeHarness({ ir: withRichTextIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rt-a"]);
+		const { container } = mount(h.studioCtx);
+		const wrap = container.querySelector(
+			"[data-testid='prop-rich-text-wrap']",
+		) as HTMLSelectElement;
+		fireEvent.change(wrap, { target: { value: "none" } });
+		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rich-text">;
+		expect(last.type).toBe("node.update");
+		expect(last.kind).toBe("rich-text");
+		expect(last.patch).toEqual({ wrap: "none" });
+	});
+
+	it("changing align commits the new align onto every paragraph", () => {
+		const h = makeHarness({ ir: withRichTextIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rt-a"]);
+		const { container } = mount(h.studioCtx);
+		const align = container.querySelector(
+			"[data-testid='prop-rich-text-align']",
+		) as HTMLSelectElement;
+		fireEvent.change(align, { target: { value: "right" } });
+		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rich-text">;
+		const paragraphs = (
+			last.patch as { paragraphs?: Array<{ align?: string }> }
+		).paragraphs;
+		expect(paragraphs).toHaveLength(2);
+		expect(paragraphs?.every((p) => p.align === "right")).toBe(true);
+		// The second paragraph's span text is untouched by the align commit.
+		expect(
+			(paragraphs as unknown as Array<{ spans: Array<{ text: string }> }>)[1]
+				?.spans[0]?.text,
+		).toBe("Second");
+	});
+
+	it("changing the font family commits onto every span across every paragraph", () => {
+		const h = makeHarness({ ir: withRichTextIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rt-a"]);
+		const { container } = mount(h.studioCtx);
+		const fontFamily = container.querySelector(
+			"[data-testid='prop-rich-text-font-family']",
+		) as HTMLInputElement;
+		fireEvent.input(fontFamily, { target: { value: "Courier" } });
+		fireEvent.blur(fontFamily);
+		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rich-text">;
+		const paragraphs = (
+			last.patch as {
+				paragraphs?: Array<{ spans: Array<{ fontFamily?: string }> }>;
+			}
+		).paragraphs;
+		expect(paragraphs?.[0]?.spans[0]?.fontFamily).toBe("Courier");
+		expect(paragraphs?.[1]?.spans[0]?.fontFamily).toBe("Courier");
+	});
+
+	it("toggling italic commits true onto every span", () => {
+		const h = makeHarness({ ir: withRichTextIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rt-a"]);
+		const { container } = mount(h.studioCtx);
+		const italic = container.querySelector(
+			"[data-testid='prop-rich-text-italic']",
+		) as HTMLElement;
+		// Fixture's first span already has italic: true — toggling flips to false.
+		fireEvent.click(italic);
+		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rich-text">;
+		const paragraphs = (
+			last.patch as {
+				paragraphs?: Array<{ spans: Array<{ italic?: boolean }> }>;
+			}
+		).paragraphs;
+		expect(paragraphs?.[0]?.spans[0]?.italic).toBe(false);
+		expect(paragraphs?.[1]?.spans[0]?.italic).toBe(false);
 	});
 });
 

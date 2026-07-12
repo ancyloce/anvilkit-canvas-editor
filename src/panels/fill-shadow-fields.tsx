@@ -6,6 +6,8 @@ import type {
 	CanvasShadow,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
+import { resolveFillForDisplay } from "../brand/resolve-brand-token.js";
+import { useBrandKit } from "../brand/use-brand-kit.js";
 import type { CanvasT } from "../context/canvas-studio-context.js";
 import {
 	ColorField,
@@ -16,8 +18,10 @@ import {
 
 type FillKind = "solid" | "linear" | "radial";
 
+/** Takes an ALREADY-RESOLVED value (see `resolveFillForDisplay`) — never a
+ * `BrandTokenRef`, so `typeof === "object"` unambiguously means a gradient. */
 function asGradient(
-	fill: CanvasFill | undefined,
+	fill: string | CanvasGradientFill | undefined,
 ): CanvasGradientFill | undefined {
 	return fill && typeof fill === "object" ? fill : undefined;
 }
@@ -68,9 +72,23 @@ export function FillAndShadowFields({
 	/** Frames have no `shadow` field, so they hide the shadow controls. */
 	showShadow?: boolean;
 }): React.JSX.Element {
-	const grad = asGradient(fill);
+	// `fill` may be a brand-token ref (canvas-m1-013): resolve it FIRST so
+	// every read below sees only a plain color or a gradient, never a
+	// `BrandTokenRef`. An unresolved token gets a title/tooltip affordance on
+	// the solid color swatch — the minimal signal; no new picker UI.
+	const brandKit = useBrandKit();
+	const fillDisplay = resolveFillForDisplay(fill, brandKit);
+	const resolvedFill = fillDisplay.value;
+	const grad = asGradient(resolvedFill);
 	const kind: FillKind = grad?.kind ?? "solid";
-	const solidColor = typeof fill === "string" ? fill : "#000000";
+	const solidColor =
+		typeof resolvedFill === "string" ? resolvedFill : "#000000";
+	const unresolvedFillTitle = fillDisplay.unresolved
+		? t(
+				"canvas.inspector.unresolvedToken",
+				"Unresolved brand token — showing fallback",
+			)
+		: undefined;
 
 	const commitFill = (next: CanvasFill): void => {
 		commitPatch(node, { [fillKey]: next });
@@ -181,9 +199,10 @@ export function FillAndShadowFields({
 			) : (
 				<ColorField
 					label={t("canvas.inspector.fill", "Fill")}
-					value={typeof fill === "string" ? fill : undefined}
+					value={typeof resolvedFill === "string" ? resolvedFill : undefined}
 					dataTestId="prop-fill"
 					onCommit={(v) => commitFill(v)}
+					title={unresolvedFillTitle}
 				/>
 			)}
 			{showShadow ? (
