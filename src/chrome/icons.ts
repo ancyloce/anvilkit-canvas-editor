@@ -12,6 +12,7 @@ import {
 	Brush,
 	Circle,
 	Copy,
+	Frame,
 	Hand,
 	Image,
 	Layers,
@@ -58,6 +59,12 @@ export const TOOL_RAIL_ITEMS: readonly ToolDescriptor[] = [
 		icon: MousePointer2,
 	},
 	{ id: "text", labelKey: "canvas.tool.text", label: "Text", icon: Type },
+	{
+		id: "frame",
+		labelKey: "canvas.tool.frame",
+		label: "Frame",
+		icon: Frame,
+	},
 	{
 		id: "rect",
 		labelKey: "canvas.tool.rect",
