@@ -44,6 +44,10 @@ const DEFAULT_SHADOW = { color: "#000000", blur: 4, offsetX: 2, offsetY: 2 };
  * by every fill-bearing node kind's inspector section. Gradients support N stops
  * (each an editable color + position, add/remove, min 2); direction defaults to
  * the box diagonal (from 0,0 to 1,1).
+ *
+ * Most kinds store their fill under `fill` and support a shadow. A frame is the
+ * exception on both counts — its fill lives under `background` and it has no
+ * `shadow` field at all — hence `fillKey` and `showShadow`.
  */
 export function FillAndShadowFields({
 	node,
@@ -51,19 +55,29 @@ export function FillAndShadowFields({
 	shadow,
 	commitPatch,
 	t,
+	fillKey = "fill",
+	showShadow = true,
 }: {
 	node: CanvasNode;
 	fill: CanvasFill | undefined;
 	shadow: CanvasShadow | undefined;
 	commitPatch: CommitPatch;
 	t: CanvasT;
+	/** Which node property the fill is written back to. Frames use `background`. */
+	fillKey?: "fill" | "background";
+	/** Frames have no `shadow` field, so they hide the shadow controls. */
+	showShadow?: boolean;
 }): React.JSX.Element {
 	const grad = asGradient(fill);
 	const kind: FillKind = grad?.kind ?? "solid";
 	const solidColor = typeof fill === "string" ? fill : "#000000";
 
+	const commitFill = (next: CanvasFill): void => {
+		commitPatch(node, { [fillKey]: next });
+	};
+
 	const commitStops = (stops: CanvasGradientStop[]): void => {
-		if (grad) commitPatch(node, { fill: { ...grad, stops } });
+		if (grad) commitFill({ ...grad, stops });
 	};
 
 	return (
@@ -77,11 +91,11 @@ export function FillAndShadowFields({
 					onChange={(e) => {
 						const next = e.currentTarget.value as FillKind;
 						if (next === "solid") {
-							commitPatch(node, { fill: grad?.stops[0]?.color ?? solidColor });
+							commitFill(grad?.stops[0]?.color ?? solidColor);
 						} else if (grad) {
-							commitPatch(node, { fill: { ...grad, kind: next } });
+							commitFill({ ...grad, kind: next });
 						} else {
-							commitPatch(node, { fill: defaultGradient(next, solidColor) });
+							commitFill(defaultGradient(next, solidColor));
 						}
 					}}
 				>
@@ -169,20 +183,22 @@ export function FillAndShadowFields({
 					label={t("canvas.inspector.fill", "Fill")}
 					value={typeof fill === "string" ? fill : undefined}
 					dataTestId="prop-fill"
-					onCommit={(v) => commitPatch(node, { fill: v })}
+					onCommit={(v) => commitFill(v)}
 				/>
 			)}
-			<ColorField
-				label={t("canvas.inspector.shadow", "Shadow")}
-				value={shadow?.color}
-				dataTestId="prop-shadow-color"
-				onCommit={(v) =>
-					commitPatch(node, {
-						shadow: { ...(shadow ?? DEFAULT_SHADOW), color: v },
-					})
-				}
-			/>
-			{shadow ? (
+			{showShadow ? (
+				<ColorField
+					label={t("canvas.inspector.shadow", "Shadow")}
+					value={shadow?.color}
+					dataTestId="prop-shadow-color"
+					onCommit={(v) =>
+						commitPatch(node, {
+							shadow: { ...(shadow ?? DEFAULT_SHADOW), color: v },
+						})
+					}
+				/>
+			) : null}
+			{showShadow && shadow ? (
 				<>
 					<NumberField
 						label={t("canvas.inspector.shadowBlur", "Sh blur")}

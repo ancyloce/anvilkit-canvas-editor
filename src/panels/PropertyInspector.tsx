@@ -2,6 +2,7 @@
 
 import {
 	type CanvasEllipseNode,
+	type CanvasFrameNode,
 	type CanvasGroupNode,
 	type CanvasImageNode,
 	type CanvasLineNode,
@@ -12,6 +13,7 @@ import {
 	findNode,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
+import { Switch } from "@anvilkit/ui/components/animate-ui/components/base/switch";
 import { useSyncExternalStore } from "react";
 import type {
 	CanvasStudioContextValue,
@@ -22,6 +24,13 @@ import {
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
 import { beginCrop } from "../selection/crop-actions.js";
+import {
+	isImageWell,
+	pickAndReplaceImage,
+	replaceFrameImage,
+	resetFrameCrop,
+	wellImage,
+} from "../selection/frame-image-actions.js";
 import { beginPathEdit } from "../selection/path-edit-actions.js";
 import {
 	ColorField,
@@ -200,6 +209,8 @@ function renderTypeSpecificFields(
 			return renderPathFields(node, commitPatch, ctx, t);
 		case "group":
 			return renderGroupFields(node, t);
+		case "frame":
+			return renderFrameFields(node, commitPatch, ctx, t);
 		case "ai-placeholder":
 			return null;
 		default: {
@@ -361,6 +372,18 @@ function renderImageFields(
 						{node.assetId}
 					</span>
 				</FieldRow>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					className="w-full"
+					data-testid="prop-image-replace"
+					onClick={() => {
+						void pickAndReplaceImage(ctx, node);
+					}}
+				>
+					{t("canvas.inspector.replaceImage", "Replace image")}
+				</Button>
 			</Section>
 			<Section title={t("canvas.inspector.crop", "Crop")}>
 				<Button
@@ -472,6 +495,104 @@ function renderGroupFields(
 ): React.JSX.Element {
 	return (
 		<Section title={t("canvas.inspector.group", "Group")}>
+			<FieldRow label={t("canvas.inspector.children", "Children")}>
+				<span
+					data-testid="prop-children-count"
+					className="text-xs text-foreground"
+				>
+					{node.children.length}
+				</span>
+			</FieldRow>
+		</Section>
+	);
+}
+
+/**
+ * A frame's own controls: clip toggle, corner radius, and background fill.
+ *
+ * The background reuses {@link FillAndShadowFields} through its `fillKey` seam —
+ * a frame stores its fill under `background`, not `fill`, and has no `shadow`
+ * field at all, so the shadow controls are hidden.
+ */
+function renderFrameFields(
+	node: CanvasFrameNode,
+	commitPatch: CommitPatch,
+	ctx: CanvasStudioContextValue,
+	t: CanvasT,
+): React.JSX.Element {
+	// Only an image WELL (a frame carrying a placeholder) gets image controls; a
+	// plain frame is just a container and has no single image to replace.
+	const well = isImageWell(node) ? wellImage(node) : undefined;
+	return (
+		<Section title={t("canvas.inspector.frame", "Frame")}>
+			<FieldRow label={t("canvas.inspector.imageWell", "Image well")}>
+				<Switch
+					checked={isImageWell(node)}
+					onCheckedChange={(checked) =>
+						// Turning a well off is non-destructive: any image already inside
+						// stays as an ordinary child of a now-plain frame.
+						commitPatch(node, {
+							placeholder: checked ? { kind: "image" } : undefined,
+						})
+					}
+					aria-label={t("canvas.inspector.imageWell", "Image well")}
+					data-testid="prop-frame-well"
+				/>
+			</FieldRow>
+			{isImageWell(node) ? (
+				<>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						className="w-full"
+						data-testid="prop-frame-replace"
+						onClick={() => {
+							void replaceFrameImage(ctx, node);
+						}}
+					>
+						{well
+							? t("canvas.inspector.replaceImage", "Replace image")
+							: t("canvas.inspector.addImage", "Add image")}
+					</Button>
+					{well?.crop ? (
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							className="w-full"
+							data-testid="prop-frame-reset-crop"
+							onClick={() => resetFrameCrop(ctx, node)}
+						>
+							{t("canvas.inspector.resetCrop", "Reset crop")}
+						</Button>
+					) : null}
+				</>
+			) : null}
+			<FieldRow label={t("canvas.inspector.clip", "Clip")}>
+				<Switch
+					checked={node.clip ?? false}
+					onCheckedChange={(checked) => commitPatch(node, { clip: checked })}
+					aria-label={t("canvas.inspector.clip", "Clip")}
+					data-testid="prop-frame-clip"
+				/>
+			</FieldRow>
+			<NumberField
+				label={t("canvas.inspector.radius", "Radius")}
+				value={node.radius ?? 0}
+				min={0}
+				dataTestId="prop-frame-radius"
+				onCommit={(v) => commitPatch(node, { radius: v })}
+			/>
+			<FillAndShadowFields
+				node={node}
+				fill={node.background}
+				fillKey="background"
+				showShadow={false}
+				shadow={undefined}
+				commitPatch={commitPatch}
+				t={t}
+			/>
 			<FieldRow label={t("canvas.inspector.children", "Children")}>
 				<span
 					data-testid="prop-children-count"

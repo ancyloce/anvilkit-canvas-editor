@@ -6,7 +6,7 @@ import {
 	type CanvasNode,
 	type CanvasNodeKind,
 	type CanvasPage,
-	isGroupNode,
+	isContainerNode,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
@@ -49,7 +49,7 @@ function flattenChildren(group: CanvasGroupNode): FlatRow[] {
 			const child = children[i];
 			if (!child) continue;
 			rows.push({ node: child, depth });
-			if (isGroupNode(child)) {
+			if (isContainerNode(child)) {
 				walk(child.children, depth + 1);
 			}
 		}

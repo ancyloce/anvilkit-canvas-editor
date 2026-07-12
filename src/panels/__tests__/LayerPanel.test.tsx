@@ -6,6 +6,7 @@ import {
 	type CanvasNodeUngroupCommand,
 	type CanvasNodeUpdateCommand,
 	createCanvasIR,
+	createFrame,
 	createGroup,
 	createPage,
 	createRect,
@@ -72,6 +73,43 @@ describe("LayerPanel — render", () => {
 		expect(
 			container.querySelector("[data-testid='layer-panel-empty']"),
 		).not.toBeNull();
+	});
+
+	// A frame is a container: it must list its children as indented rows, exactly
+	// as a group does. Before this, a frame rendered a single childless row.
+	it("lists frame children as indented rows", () => {
+		const ir = createCanvasIR({
+			id: "ir-1",
+			pages: [createPage({ id: "p1" })],
+			now: () => FIXED_TS,
+		});
+		const firstPage = ir.pages[0];
+		if (!firstPage) throw new Error("expected at least one page");
+		firstPage.root.children = [
+			createFrame({
+				id: "frame-a",
+				bounds: { width: 100, height: 100 },
+				clip: true,
+				children: [
+					createRect({
+						id: "rect-in-frame",
+						bounds: { width: 10, height: 10 },
+						now: () => FIXED_TS,
+					}),
+				],
+			}),
+		];
+		const h = makeHarness({ ir });
+		const { container } = mount(h.studioCtx);
+		expect(
+			container.querySelector("[data-testid='layer-row-frame-a']"),
+		).not.toBeNull();
+		const childRow = container.querySelector(
+			"[data-testid='layer-row-rect-in-frame']",
+		);
+		expect(childRow).not.toBeNull();
+		// depth 1 → indented one level past the frame row.
+		expect(childRow?.getAttribute("style")).toContain("padding-left");
 	});
 });
 
