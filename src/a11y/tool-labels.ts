@@ -9,6 +9,7 @@ import type { ToolId } from "../stores/tool-store.js";
 export const TOOL_LABELS: Record<ToolId, string> = {
 	select: "Select",
 	text: "Text",
+	frame: "Frame",
 	rect: "Rectangle",
 	ellipse: "Ellipse",
 	line: "Line",
@@ -27,6 +28,7 @@ export const TOOL_LABELS: Record<ToolId, string> = {
 export const TOOL_LABEL_KEYS: Record<ToolId, string> = {
 	select: "canvas.tool.select",
 	text: "canvas.tool.text",
+	frame: "canvas.tool.frame",
 	rect: "canvas.tool.rect",
 	ellipse: "canvas.tool.ellipse",
 	line: "canvas.tool.line",
