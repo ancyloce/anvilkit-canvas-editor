@@ -1,8 +1,10 @@
 import type { CanvasIR, CanvasNodeUpdateCommand } from "@anvilkit/canvas-core";
 import {
 	createCanvasIR,
+	createFrame,
 	createGroup,
 	createPage,
+	createRichText,
 	createText,
 } from "@anvilkit/canvas-core";
 import { act, fireEvent, render } from "@testing-library/react";
@@ -38,6 +40,67 @@ function fixtureIR(): CanvasIR {
 				fontFamily: "Inter",
 				fontSize: 16,
 				fill: "#000000",
+			}),
+		],
+	});
+	return createCanvasIR({ id: "ir-1", pages: [page], now: () => FIXED_TS });
+}
+
+/** A text node nested inside a frame — not a top-level child of the page root. */
+function fixtureIRWithNestedText(): CanvasIR {
+	const page = createPage({ id: "p1" });
+	page.root = createGroup({
+		id: "p1-root",
+		bounds: page.root.bounds,
+		children: [
+			createFrame({
+				id: "frame1",
+				bounds: { width: 300, height: 200 },
+				children: [
+					createText({
+						id: "nested-text1",
+						bounds: { width: 100, height: 36 },
+						transform: { x: 10, y: 10 },
+						text: "Nested",
+						fontFamily: "Inter",
+						fontSize: 16,
+						fill: "#000000",
+					}),
+				],
+			}),
+		],
+	});
+	return createCanvasIR({ id: "ir-1", pages: [page], now: () => FIXED_TS });
+}
+
+/** A rich-text node with two distinctly-styled paragraphs. */
+function fixtureIRWithRichText(): CanvasIR {
+	const page = createPage({ id: "p1" });
+	page.root = createGroup({
+		id: "p1-root",
+		bounds: page.root.bounds,
+		children: [
+			createRichText({
+				id: "rt1",
+				bounds: { width: 240, height: 60 },
+				transform: { x: 20, y: 30 },
+				paragraphs: [
+					{
+						align: "center",
+						lineHeight: 1.5,
+						spans: [
+							{
+								text: "First",
+								fontFamily: "Georgia",
+								fontSize: 20,
+								fill: "#ff0000",
+							},
+						],
+					},
+					{
+						spans: [{ text: "Second", fontFamily: "Arial", fontSize: 14 }],
+					},
+				],
 			}),
 		],
 	});
@@ -127,6 +190,26 @@ describe("TextEditorOverlay", () => {
 		expect(ta?.value).toBe("Hello");
 	});
 
+	it("renders a textarea for a text node nested inside a frame (container-aware lookup)", () => {
+		const ir = fixtureIRWithNestedText();
+		const { ctx } = makeCtx(ir, makeFakeStage());
+		ctx.editingStore.getState().setEditing("nested-text1");
+		// Scoped to this render's own container (not global `document`): earlier
+		// tests in this file render via global `document.querySelector` without
+		// RTL cleanup between them, so a global query here could match a stale
+		// textarea left over from an earlier test.
+		const { container } = render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<TextEditorOverlay />
+			</CanvasStudioContext.Provider>,
+		);
+		const ta = container.querySelector(
+			"[data-testid=text-editor-overlay]",
+		) as HTMLTextAreaElement | null;
+		expect(ta).not.toBeNull();
+		expect(ta?.value).toBe("Nested");
+	});
+
 	it("calls stage.container() bound to the stage (no 'getContainer' crash)", () => {
 		// Regression: the overlay used to extract `const fn = stage.container`
 		// and call `fn()` unbound, which threw against a real Konva stage.
@@ -214,5 +297,101 @@ describe("TextEditorOverlay", () => {
 		fireEvent.keyDown(ta, { key: "Escape" });
 		expect(commits).toHaveLength(0);
 		expect(ctx.editingStore.getState().editingNodeId).toBeNull();
+	});
+
+	describe("rich-text nodes", () => {
+		it("flattens paragraphs into newline-joined draft text", () => {
+			const ir = fixtureIRWithRichText();
+			const { ctx } = makeCtx(ir, makeFakeStage());
+			ctx.editingStore.getState().setEditing("rt1");
+			const { container } = render(
+				<CanvasStudioContext.Provider value={ctx}>
+					<TextEditorOverlay />
+				</CanvasStudioContext.Provider>,
+			);
+			const ta = container.querySelector(
+				"[data-testid=text-editor-overlay]",
+			) as HTMLTextAreaElement | null;
+			expect(ta).not.toBeNull();
+			expect(ta?.value).toBe("First\nSecond");
+		});
+
+		it("commits node.update (kind rich-text) on blur, preserving each paragraph's style and adding a new line styled like the last paragraph", () => {
+			const ir = fixtureIRWithRichText();
+			const { ctx, commits } = makeCtx(ir, makeFakeStage());
+			ctx.editingStore.getState().setEditing("rt1");
+			const { container } = render(
+				<CanvasStudioContext.Provider value={ctx}>
+					<TextEditorOverlay />
+				</CanvasStudioContext.Provider>,
+			);
+			const ta = container.querySelector(
+				"[data-testid=text-editor-overlay]",
+			) as HTMLTextAreaElement;
+			fireEvent.change(ta, { target: { value: "First\nSecond\nThird" } });
+			fireEvent.blur(ta);
+			expect(commits).toHaveLength(1);
+			const cmd = commits[0] as CanvasNodeUpdateCommand<"rich-text">;
+			expect(cmd.type).toBe("node.update");
+			expect(cmd.nodeId).toBe("rt1");
+			expect(cmd.kind).toBe("rich-text");
+			expect(cmd.patch.paragraphs).toEqual([
+				{
+					align: "center",
+					lineHeight: 1.5,
+					spans: [
+						{
+							text: "First",
+							fontFamily: "Georgia",
+							fontSize: 20,
+							fill: "#ff0000",
+						},
+					],
+				},
+				{
+					spans: [{ text: "Second", fontFamily: "Arial", fontSize: 14 }],
+				},
+				// New third line inherits the last original paragraph's style.
+				{
+					spans: [{ text: "Third", fontFamily: "Arial", fontSize: 14 }],
+				},
+			]);
+			expect(ctx.editingStore.getState().editingNodeId).toBeNull();
+		});
+
+		it("blur with unchanged text closes overlay but does not commit", () => {
+			const ir = fixtureIRWithRichText();
+			const { ctx, commits } = makeCtx(ir, makeFakeStage());
+			ctx.editingStore.getState().setEditing("rt1");
+			const { container } = render(
+				<CanvasStudioContext.Provider value={ctx}>
+					<TextEditorOverlay />
+				</CanvasStudioContext.Provider>,
+			);
+			const ta = container.querySelector(
+				"[data-testid=text-editor-overlay]",
+			) as HTMLTextAreaElement;
+			fireEvent.blur(ta);
+			expect(commits).toHaveLength(0);
+			expect(ctx.editingStore.getState().editingNodeId).toBeNull();
+		});
+
+		it("Escape discards changes and closes overlay (no commit)", () => {
+			const ir = fixtureIRWithRichText();
+			const { ctx, commits } = makeCtx(ir, makeFakeStage());
+			ctx.editingStore.getState().setEditing("rt1");
+			const { container } = render(
+				<CanvasStudioContext.Provider value={ctx}>
+					<TextEditorOverlay />
+				</CanvasStudioContext.Provider>,
+			);
+			const ta = container.querySelector(
+				"[data-testid=text-editor-overlay]",
+			) as HTMLTextAreaElement;
+			fireEvent.change(ta, { target: { value: "Will be discarded" } });
+			fireEvent.keyDown(ta, { key: "Escape" });
+			expect(commits).toHaveLength(0);
+			expect(ctx.editingStore.getState().editingNodeId).toBeNull();
+		});
 	});
 });

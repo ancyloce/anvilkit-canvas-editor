@@ -2,8 +2,12 @@
 
 import type {
 	CanvasNodeUpdateCommand,
+	CanvasRichTextNode,
 	CanvasTextNode,
+	RichTextParagraph,
+	RichTextSpan,
 } from "@anvilkit/canvas-core";
+import { findNode, resolveSpanStyle } from "@anvilkit/canvas-core";
 import {
 	type KeyboardEvent,
 	useEffect,
@@ -11,11 +15,97 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
+import type { BrandKit } from "../brand/brand-kit.js";
+import {
+	resolveFillForDisplay,
+	resolveFontFamilyForDisplay,
+} from "../brand/resolve-brand-token.js";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import { useCanvasBrandKit } from "../stage/CanvasBrandKitContext.js";
+import { DEFAULT_RICH_TEXT_STYLE } from "../text/rich-text-style.js";
+
+type EditableNode = CanvasTextNode | CanvasRichTextNode;
+
+/** A paragraph's text, as the flat single-span line the textarea shows. */
+function flattenRichText(node: CanvasRichTextNode): string {
+	return node.paragraphs
+		.map((p) => p.spans.map((s) => s.text).join(""))
+		.join("\n");
+}
+
+function spanStyleWithoutText(
+	span: RichTextSpan | undefined,
+): Omit<RichTextSpan, "text"> {
+	if (!span) return {};
+	const { text: _text, ...rest } = span;
+	return rest;
+}
+
+/**
+ * Split edited text back into paragraphs on newlines. Per-span selection is
+ * out of scope for MVP (deliverable note), so each edited paragraph collapses
+ * to a single span that inherits its SOURCE paragraph's align/lineHeight and
+ * first span's style — the source paragraph at the same index when it existed,
+ * or the original's last paragraph for any newly-typed lines beyond it.
+ */
+function rebuildRichTextParagraphs(
+	original: CanvasRichTextNode,
+	newText: string,
+): RichTextParagraph[] {
+	const lastOriginal = original.paragraphs[original.paragraphs.length - 1];
+	return newText.split("\n").map((lineText, i) => {
+		const source = original.paragraphs[i] ?? lastOriginal;
+		const style = spanStyleWithoutText(source?.spans[0]);
+		return {
+			...(source?.align !== undefined ? { align: source.align } : {}),
+			...(source?.lineHeight !== undefined
+				? { lineHeight: source.lineHeight }
+				: {}),
+			spans: [{ ...style, text: lineText }],
+		};
+	});
+}
+
+/**
+ * Font/color to display in the overlay — resolved through the rich-text
+ * defaults for a rich-text node (its style lives per-span, not on the node).
+ * `fontFamily`/`fill` may be a brand-token ref; resolve it against `brandKit`
+ * the same way the stage does, degrading to `undefined` (the browser/DOM
+ * default) rather than handing a `BrandTokenRef` object to a CSS style prop.
+ */
+function resolveOverlayStyle(
+	node: EditableNode,
+	brandKit: BrandKit,
+): {
+	fontFamily: string | undefined;
+	fontSize: number;
+	color: string | undefined;
+} {
+	if (node.type === "text") {
+		const fill = resolveFillForDisplay(node.fill, brandKit).value;
+		return {
+			fontFamily: resolveFontFamilyForDisplay(node.fontFamily, brandKit).value,
+			fontSize: node.fontSize,
+			color: typeof fill === "string" ? fill : undefined,
+		};
+	}
+	const resolved = resolveSpanStyle(
+		node.paragraphs[0]?.spans[0] ?? { text: "" },
+		DEFAULT_RICH_TEXT_STYLE,
+	);
+	const fill = resolveFillForDisplay(resolved.fill, brandKit).value;
+	return {
+		fontFamily: resolveFontFamilyForDisplay(resolved.fontFamily, brandKit)
+			.value,
+		fontSize: resolved.fontSize,
+		color: typeof fill === "string" ? fill : undefined,
+	};
+}
 
 export function TextEditorOverlay(): React.JSX.Element | null {
-	const { editingStore, stage, getIR, activePageId, commit, viewportStore } =
+	const { editingStore, stage, getIR, commit, viewportStore } =
 		useCanvasStudio();
+	const brandKit = useCanvasBrandKit();
 	const editingNodeId = useSyncExternalStore(
 		editingStore.subscribe,
 		() => editingStore.getState().editingNodeId,
@@ -23,12 +113,19 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 	);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const [draftText, setDraftText] = useState("");
-	const editingNodeRef = useRef<CanvasTextNode | null>(null);
+	const editingNodeRef = useRef<EditableNode | null>(null);
 
 	const ir = getIR();
-	const page = ir.pages.find((p) => p.id === activePageId);
-	const editingNode = page?.root.children.find((c) => c.id === editingNodeId);
-	const isTextNode = editingNode !== undefined && editingNode.type === "text";
+	// Container-aware: the editing node may be nested inside a frame, not just
+	// a top-level child of the page root, so this can't be a shallow
+	// `page.root.children.find(...)` — findNode already walks the full tree
+	// (same helper PropertyInspector uses for the selected node).
+	const editingNode = editingNodeId
+		? (findNode(ir, editingNodeId)?.node ?? null)
+		: null;
+	const isTextNode = editingNode !== null && editingNode.type === "text";
+	const isRichTextNode =
+		editingNode !== null && editingNode.type === "rich-text";
 
 	useEffect(() => {
 		if (isTextNode) {
@@ -39,12 +136,25 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 				textareaRef.current?.focus();
 				textareaRef.current?.select();
 			});
+		} else if (isRichTextNode) {
+			const richTextNode = editingNode as CanvasRichTextNode;
+			editingNodeRef.current = richTextNode;
+			setDraftText(flattenRichText(richTextNode));
+			requestAnimationFrame(() => {
+				textareaRef.current?.focus();
+				textareaRef.current?.select();
+			});
 		} else {
 			editingNodeRef.current = null;
 		}
-	}, [editingNodeId, isTextNode, editingNode]);
+	}, [editingNodeId, isTextNode, isRichTextNode, editingNode]);
 
-	if (!editingNodeId || !editingNode || editingNode.type !== "text" || !stage) {
+	if (
+		!editingNodeId ||
+		!editingNode ||
+		(editingNode.type !== "text" && editingNode.type !== "rich-text") ||
+		!stage
+	) {
 		return null;
 	}
 
@@ -58,20 +168,33 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 	const vp = viewportStore.getState();
 	const left = (rect?.left ?? 0) + editingNode.transform.x * vp.zoom + vp.panX;
 	const top = (rect?.top ?? 0) + editingNode.transform.y * vp.zoom + vp.panY;
+	const overlayStyle = resolveOverlayStyle(editingNode, brandKit);
 
 	const commitAndClose = () => {
 		const original = editingNodeRef.current;
 		// Read the live DOM value rather than React state — state updates from
 		// `onChange` may not have re-rendered before `onBlur` fires.
 		const newText = textareaRef.current?.value ?? draftText;
-		if (original && newText !== original.text) {
-			const cmd: CanvasNodeUpdateCommand<"text"> = {
-				type: "node.update",
-				nodeId: editingNodeId,
-				kind: "text",
-				patch: { text: newText },
-			};
-			commit(cmd);
+		if (original?.type === "text") {
+			if (newText !== original.text) {
+				const cmd: CanvasNodeUpdateCommand<"text"> = {
+					type: "node.update",
+					nodeId: editingNodeId,
+					kind: "text",
+					patch: { text: newText },
+				};
+				commit(cmd);
+			}
+		} else if (original?.type === "rich-text") {
+			if (newText !== flattenRichText(original)) {
+				const cmd: CanvasNodeUpdateCommand<"rich-text"> = {
+					type: "node.update",
+					nodeId: editingNodeId,
+					kind: "rich-text",
+					patch: { paragraphs: rebuildRichTextParagraphs(original, newText) },
+				};
+				commit(cmd);
+			}
 		}
 		editingStore.getState().clearEditing();
 	};
@@ -97,10 +220,9 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 				top,
 				width: editingNode.bounds.width * vp.zoom,
 				height: editingNode.bounds.height * vp.zoom,
-				fontFamily: editingNode.fontFamily,
-				fontSize: editingNode.fontSize * vp.zoom,
-				color:
-					typeof editingNode.fill === "string" ? editingNode.fill : undefined,
+				fontFamily: overlayStyle.fontFamily,
+				fontSize: overlayStyle.fontSize * vp.zoom,
+				color: overlayStyle.color,
 				border: "1px solid #3b82f6",
 				background: "rgba(255, 255, 255, 0.9)",
 				padding: 0,

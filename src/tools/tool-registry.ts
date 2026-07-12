@@ -6,8 +6,11 @@ import { handTool } from "./hand-tool.js";
 import { imageTool } from "./image-tool.js";
 import { lineTool } from "./line-tool.js";
 import { penTool } from "./pen-tool.js";
+import { polygonTool } from "./polygon-tool.js";
 import { rectTool } from "./rect-tool.js";
+import { richTextTool } from "./rich-text-tool.js";
 import { selectTool } from "./select-tool.js";
+import { starTool } from "./star-tool.js";
 import { textTool } from "./text-tool.js";
 import type { Tool, ToolRegistry } from "./tool-types.js";
 
@@ -20,9 +23,12 @@ export const defaultToolRegistry: ToolRegistry = {
 	frame: frameTool,
 	rect: rectTool,
 	ellipse: ellipseTool,
+	polygon: polygonTool,
+	star: starTool,
 	line: lineTool,
 	path: penTool,
 	text: textTool,
+	"rich-text": richTextTool,
 	image: imageTool,
 	hand: handTool,
 	"ai-image": aiImageTool,

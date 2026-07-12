@@ -24,6 +24,8 @@ vi.mock("react-konva", () => {
 	return {
 		Rect: mock("Rect"),
 		Ellipse: mock("Ellipse"),
+		RegularPolygon: mock("RegularPolygon"),
+		Star: mock("Star"),
 		Line: mock("Line"),
 	};
 });
@@ -105,6 +107,59 @@ describe("DraftRenderer", () => {
 			y: 30,
 			radiusX: 50,
 			radiusY: 30,
+			listening: false,
+		});
+	});
+
+	it("renders a RegularPolygon with center+radius+aspect-fit scaleY", () => {
+		calls.length = 0;
+		const ctx = makeCtx();
+		ctx.draftStore.getState().setDraft({
+			type: "polygon",
+			startX: 0,
+			startY: 0,
+			currentX: 100,
+			currentY: 60,
+		});
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<DraftRenderer />
+			</CanvasStudioContext.Provider>,
+		);
+		const p = calls.find((c) => c.type === "RegularPolygon");
+		expect(p?.props).toMatchObject({
+			x: 50,
+			y: 30,
+			sides: 5,
+			radius: 50,
+			scaleY: 0.6,
+			listening: false,
+		});
+	});
+
+	it("renders a Star with center+radii+aspect-fit scaleY", () => {
+		calls.length = 0;
+		const ctx = makeCtx();
+		ctx.draftStore.getState().setDraft({
+			type: "star",
+			startX: 0,
+			startY: 0,
+			currentX: 100,
+			currentY: 60,
+		});
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<DraftRenderer />
+			</CanvasStudioContext.Provider>,
+		);
+		const s = calls.find((c) => c.type === "Star");
+		expect(s?.props).toMatchObject({
+			x: 50,
+			y: 30,
+			numPoints: 5,
+			outerRadius: 50,
+			innerRadius: 25,
+			scaleY: 0.6,
 			listening: false,
 		});
 	});
