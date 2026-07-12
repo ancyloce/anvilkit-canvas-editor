@@ -20,6 +20,13 @@ export type DrawDraft =
 			currentY: number;
 	  }
 	| {
+			type: "frame";
+			startX: number;
+			startY: number;
+			currentX: number;
+			currentY: number;
+	  }
+	| {
 			type: "ellipse";
 			startX: number;
 			startY: number;
