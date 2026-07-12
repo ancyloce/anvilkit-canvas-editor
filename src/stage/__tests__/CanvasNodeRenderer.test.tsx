@@ -7,11 +7,12 @@ import {
 	createLine,
 	createPage,
 	createRect,
+	createRichText,
 	createText,
 } from "@anvilkit/canvas-core";
-import { render } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 type ElementCall = { type: string; props: Record<string, unknown> };
 const calls: ElementCall[] = [];
@@ -585,5 +586,109 @@ describe("CanvasNodeRenderer — frame image well (placeholder)", () => {
 		expect(frameGroup()).toBeDefined();
 		expect(callsOfType("Rect")).toHaveLength(0);
 		expect(callsOfType("Text")).toHaveLength(0);
+	});
+});
+
+describe("CanvasNodeRenderer — rich text", () => {
+	beforeEachReset();
+	// jsdom has no canvas 2D backend, so the real glyph measurer falls back to
+	// a deterministic estimate (`canvas-glyph-measurer.ts`) — wrap-point precision
+	// is covered by `text/__tests__/rich-text-layout.test.ts`'s controlled stub;
+	// these tests assert structure and per-run prop mapping instead.
+	afterEach(() => {
+		cleanup();
+	});
+
+	it("renders one Konva.Text per run, carrying that run's own style + fill", () => {
+		const node = createRichText({
+			id: "rt1",
+			bounds: { width: 300, height: 60 },
+			paragraphs: [
+				{
+					spans: [
+						{ text: "Hello " },
+						{
+							text: "World",
+							fontWeight: "700",
+							italic: true,
+							underline: true,
+							fill: "#ff0000",
+						},
+					],
+				},
+			],
+		});
+		render(<CanvasNodeRenderer node={node} />);
+		const texts = callsOfType("Text");
+		expect(texts).toHaveLength(2);
+		expect(texts[0]?.props.text).toBe("Hello ");
+		expect(texts[0]?.props.textDecoration).toBe("");
+		expect(texts[1]?.props.text).toBe("World");
+		expect(texts[1]?.props.fontStyle).toBe("italic 700");
+		expect(texts[1]?.props.textDecoration).toBe("underline");
+		expect(texts[1]?.props.fill).toBe("#ff0000");
+	});
+
+	it("applies textTransform to the displayed string without mutating the source span", () => {
+		const node = createRichText({
+			id: "rt2",
+			bounds: { width: 300, height: 40 },
+			paragraphs: [{ spans: [{ text: "shout", textTransform: "uppercase" }] }],
+		});
+		render(<CanvasNodeRenderer node={node} />);
+		expect(callsOfType("Text")[0]?.props.text).toBe("SHOUT");
+		expect(node.paragraphs[0]?.spans[0]?.text).toBe("shout");
+	});
+
+	it("wraps a narrow block into multiple Konva.Text runs", () => {
+		const node = createRichText({
+			id: "rt3",
+			bounds: { width: 40, height: 200 },
+			width: 40,
+			paragraphs: [{ spans: [{ text: "one two three four five" }] }],
+		});
+		render(<CanvasNodeRenderer node={node} />);
+		expect(callsOfType("Text").length).toBeGreaterThan(1);
+	});
+
+	it("clips the Group to the box for overflow 'clip', not for the 'visible' default", () => {
+		const clipped = createRichText({
+			id: "rt-clip",
+			bounds: { width: 100, height: 40 },
+			height: 40,
+			overflow: "clip",
+			paragraphs: [{ spans: [{ text: "Hi" }] }],
+		});
+		render(<CanvasNodeRenderer node={clipped} />);
+		const clippedGroup = callsOfType("Group").find(
+			(c) => c.props.id === "rt-clip",
+		);
+		expect(clippedGroup?.props.clipWidth).toBe(100);
+		expect(clippedGroup?.props.clipHeight).toBe(40);
+
+		cleanup();
+		calls.length = 0;
+		const visible = createRichText({
+			id: "rt-visible",
+			bounds: { width: 100, height: 40 },
+			paragraphs: [{ spans: [{ text: "Hi" }] }],
+		});
+		render(<CanvasNodeRenderer node={visible} />);
+		const visibleGroup = callsOfType("Group").find(
+			(c) => c.props.id === "rt-visible",
+		);
+		expect(visibleGroup?.props.clipWidth).toBeUndefined();
+	});
+
+	it("renders no Text for an empty paragraph but still emits the wrapping Group", () => {
+		const node = createRichText({
+			id: "rt-empty",
+			bounds: { width: 100, height: 40 },
+		});
+		render(<CanvasNodeRenderer node={node} />);
+		expect(callsOfType("Text")).toHaveLength(0);
+		expect(callsOfType("Group").some((c) => c.props.id === "rt-empty")).toBe(
+			true,
+		);
 	});
 });

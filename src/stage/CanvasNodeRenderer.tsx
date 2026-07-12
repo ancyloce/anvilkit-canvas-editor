@@ -1,21 +1,23 @@
 "use client";
 
-import type {
-	CanvasAiPlaceholderNode,
-	CanvasAiPlaceholderStatus,
-	CanvasEllipseNode,
-	CanvasFill,
-	CanvasFrameNode,
-	CanvasGroupNode,
-	CanvasImageNode,
-	CanvasLineNode,
-	CanvasNode,
-	CanvasNodeBase,
-	CanvasPathNode,
-	CanvasRectNode,
-	CanvasShadow,
-	CanvasTextNode,
-	FramePlaceholderKind,
+import {
+	type CanvasAiPlaceholderNode,
+	type CanvasAiPlaceholderStatus,
+	type CanvasEllipseNode,
+	type CanvasFill,
+	type CanvasFrameNode,
+	type CanvasGroupNode,
+	type CanvasImageNode,
+	type CanvasLineNode,
+	type CanvasNode,
+	type CanvasNodeBase,
+	type CanvasPathNode,
+	type CanvasRectNode,
+	type CanvasRichTextNode,
+	type CanvasShadow,
+	type CanvasTextNode,
+	type FramePlaceholderKind,
+	resolveSpanStyle,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { use } from "react";
@@ -33,6 +35,13 @@ import {
 	CanvasStudioContext,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
+import { measureGlyphWidth } from "../text/canvas-glyph-measurer.js";
+import { getCachedLayout } from "../text/layout-cache.js";
+import { layoutRichText } from "../text/rich-text-layout.js";
+import {
+	applyRichTextTransform,
+	DEFAULT_RICH_TEXT_STYLE,
+} from "../text/rich-text-style.js";
 import { useCanvasAsset } from "./CanvasAssetsContext.js";
 import { nodeRenderOffset } from "./node-render-offset.js";
 
@@ -324,6 +333,86 @@ function CanvasTextNodeRenderer({ node }: { node: CanvasTextNode }) {
 	);
 }
 
+/**
+ * Konva clip props for a rich-text block's `overflow`. Mirrors core's SVG
+ * `richTextClip` (`serialize/svg.ts`): `"clip"` and `"ellipsis"` clip to the
+ * box (best effort — no ellipsis glyph is drawn, matching the SVG path's own
+ * documented limitation); `"visible"` and `"auto-height"` clip nothing.
+ */
+function richTextClipProps(
+	node: CanvasRichTextNode,
+	measuredHeight: number,
+): Konva.ContainerConfig {
+	const overflow = node.overflow ?? "visible";
+	if (overflow !== "clip" && overflow !== "ellipsis") return {};
+	return {
+		clipX: 0,
+		clipY: 0,
+		clipWidth: node.width,
+		clipHeight: node.height ?? measuredHeight,
+	};
+}
+
+/**
+ * Multi-span, multi-paragraph text with real wrapping.
+ *
+ * Konva.Text has exactly one font/fill for its whole string, so mixed inline
+ * styling needs one `Konva.Text` per RUN (a contiguous slice of one span that
+ * landed on one line) rather than a single wrapping Text node — the same
+ * reason the SVG serializer emits one `<tspan>` per run. Line breaks come
+ * from `layoutRichText`, the exact function the exported `CanvasTextMeasurer`
+ * adapter also wraps (`text/canvas-text-measurer.ts`), so the stage and an
+ * SVG export using that adapter always agree on where a line breaks.
+ *
+ * The layout is memoized per `node.paragraphs` reference (`text/layout-cache.ts`)
+ * so a drag/transform frame — which never touches `paragraphs` — does not
+ * re-measure.
+ */
+function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
+	const wrap = node.wrap ?? "word";
+	const measured = getCachedLayout(node.paragraphs, node.width, wrap, () =>
+		layoutRichText(
+			{
+				paragraphs: node.paragraphs,
+				width: node.width,
+				wrap,
+				defaults: DEFAULT_RICH_TEXT_STYLE,
+			},
+			measureGlyphWidth,
+		),
+	);
+
+	return (
+		<Group {...commonProps(node)} {...richTextClipProps(node, measured.height)}>
+			{measured.lines.flatMap((line) =>
+				line.runs.map((run) => {
+					const paragraph = node.paragraphs[line.paragraphIndex];
+					const span = paragraph?.spans[run.spanIndex];
+					if (!span) return null;
+					const style = resolveSpanStyle(span, DEFAULT_RICH_TEXT_STYLE);
+					return (
+						<Text
+							key={`${line.paragraphIndex}-${run.spanIndex}-${run.start}`}
+							x={line.x + run.x}
+							y={line.y}
+							text={applyRichTextTransform(run.text, style.textTransform)}
+							fontFamily={style.fontFamily}
+							fontSize={style.fontSize}
+							fontStyle={`${style.italic ? "italic " : ""}${style.fontWeight}`}
+							letterSpacing={style.letterSpacing}
+							textDecoration={style.underline ? "underline" : ""}
+							{...fillProps(style.fill, {
+								width: run.width,
+								height: line.height,
+							})}
+						/>
+					);
+				}),
+			)}
+		</Group>
+	);
+}
+
 function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 	const asset = useCanvasAsset(node.assetId);
 	const [image, status] = useImage(asset?.uri ?? "");
@@ -505,6 +594,8 @@ export function CanvasNodeRenderer({
 			return <CanvasPathNodeRenderer node={node} />;
 		case "text":
 			return <CanvasTextNodeRenderer node={node} />;
+		case "rich-text":
+			return <CanvasRichTextNodeRenderer node={node} />;
 		case "image":
 			return <CanvasImageNodeRenderer node={node} />;
 		case "ai-placeholder":
