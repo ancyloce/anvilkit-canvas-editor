@@ -1,6 +1,8 @@
 import {
+	type CanvasFrameNode,
 	type CanvasGroupNode,
 	type CanvasNode,
+	createFrame,
 	createGroup,
 	createPage,
 	createRect,
@@ -40,6 +42,41 @@ describe("regenerateIds", () => {
 		expect(group.id).not.toBe(oldGroupId);
 		expect(group.children[0]?.id).not.toBe(oldChildIds[0]);
 		expect(group.children[1]?.id).not.toBe(oldChildIds[1]);
+	});
+
+	// A frame is a container too. Recursing only into groups left every node
+	// inside a frame carrying its ORIGINAL id, so cloning a page produced
+	// duplicate ids across two pages.
+	it("recursively rewrites ids on frame children", () => {
+		const child = createRect({ id: "fc1", bounds: { width: 5, height: 5 } });
+		const frame = createFrame({
+			id: "f",
+			bounds: { width: 50, height: 50 },
+			clip: true,
+			children: [child],
+		});
+		regenerateIds(frame);
+		expect(frame.id).not.toBe("f");
+		expect(frame.children[0]?.id).not.toBe("fc1");
+	});
+
+	it("recurses through a frame nested inside a group", () => {
+		const leaf = createRect({ id: "deep", bounds: { width: 1, height: 1 } });
+		const group = createGroup({
+			id: "g",
+			bounds: { width: 50, height: 50 },
+			children: [
+				createFrame({
+					id: "f",
+					bounds: { width: 20, height: 20 },
+					children: [leaf],
+				}),
+			],
+		});
+		regenerateIds(group);
+		const frame = group.children[0] as CanvasFrameNode;
+		expect(frame.id).not.toBe("f");
+		expect(frame.children[0]?.id).not.toBe("deep");
 	});
 });
 

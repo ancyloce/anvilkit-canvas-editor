@@ -1,7 +1,8 @@
-import type {
-	CanvasGroupNode,
-	CanvasNode,
-	CanvasPage,
+import {
+	type CanvasGroupNode,
+	type CanvasNode,
+	type CanvasPage,
+	isContainerNode,
 } from "@anvilkit/canvas-core";
 
 function freshId(): string {
@@ -18,12 +19,13 @@ function freshId(): string {
 
 /**
  * Walk a structurally-cloned (JSON-roundtripped) node tree and rewrite every
- * `id` field with a fresh uuid. Recurses into `group.children`. Exported
- * separately so tests can verify id regeneration in isolation.
+ * `id` field with a fresh uuid. Recurses into every container's children
+ * (group and frame). Exported separately so tests can verify id regeneration
+ * in isolation.
  */
 export function regenerateIds(node: CanvasNode): CanvasNode {
 	node.id = freshId();
-	if (node.type === "group") {
+	if (isContainerNode(node)) {
 		for (const child of node.children) {
 			regenerateIds(child);
 		}
