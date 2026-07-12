@@ -1,6 +1,6 @@
 "use client";
 
-import type { CanvasNode } from "@anvilkit/canvas-core";
+import { type CanvasNode, isContainerNode } from "@anvilkit/canvas-core";
 import { useSyncExternalStore } from "react";
 import {
 	useCanvasStudio,
@@ -40,7 +40,9 @@ function flatten(nodes: readonly CanvasNode[], level = 1): FlatItem[] {
 	const out: FlatItem[] = [];
 	for (const node of nodes) {
 		out.push({ node, level });
-		if (node.type === "group") out.push(...flatten(node.children, level + 1));
+		if (isContainerNode(node)) {
+			out.push(...flatten(node.children, level + 1));
+		}
 	}
 	return out;
 }

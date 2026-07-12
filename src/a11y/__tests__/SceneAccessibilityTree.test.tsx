@@ -1,5 +1,6 @@
 import {
 	createCanvasIR,
+	createFrame,
 	createGroup,
 	createPage,
 	createRect,
@@ -84,5 +85,35 @@ describe("SceneAccessibilityTree", () => {
 		expect(selectionStore.getState().selectedIds).toContain("a");
 		fireEvent.keyDown(first, { key: "ArrowDown" });
 		expect(focusStore.getState().focusedId).toBe("g");
+	});
+
+	// Konva paints to <canvas>, so this tree is the ONLY thing a screen reader
+	// sees. Recursing only into groups hid every node inside a frame from AT.
+	it("exposes frame children as nested treeitems", () => {
+		const page = createPage({ id: "p1" });
+		page.root = createGroup({
+			id: "p1-root",
+			bounds: page.root.bounds,
+			children: [
+				createFrame({
+					id: "f",
+					bounds: { width: 100, height: 100 },
+					clip: true,
+					children: [
+						createRect({ id: "inner", bounds: { width: 5, height: 5 } }),
+					],
+				}),
+			],
+		});
+		const ctx = {
+			ir: createCanvasIR({ id: "ir-1", pages: [page], now: () => "T" }),
+			activePageId: "p1",
+			focusStore: createFocusStore(),
+			selectionStore: createSelectionStore(),
+		} as unknown as CanvasStudioContextValue;
+		mountTree(ctx);
+		const items = screen.getAllByRole("treeitem");
+		expect(items).toHaveLength(2); // f, inner
+		expect(items[1]?.getAttribute("aria-level")).toBe("2");
 	});
 });
