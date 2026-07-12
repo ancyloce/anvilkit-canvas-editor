@@ -20,11 +20,17 @@ const stageInstances: Array<{
 const onReadyCalls: Array<Konva.Stage> = [];
 /** Props of every <Group> rendered into the rasterize tree (frames included). */
 const groupCalls: Array<Record<string, unknown>> = [];
+/** Props of every <Rect> rendered into the rasterize tree. */
+const rectCalls: Array<Record<string, unknown>> = [];
 
 vi.mock("react-konva", () => {
 	const Group = (props: { children?: ReactNode }) => {
 		groupCalls.push(props as Record<string, unknown>);
 		return props.children ?? null;
+	};
+	const Rect = (props: Record<string, unknown>) => {
+		rectCalls.push(props);
+		return null;
 	};
 	const Container = ({ children }: { children?: ReactNode }) =>
 		children ?? null;
@@ -33,7 +39,7 @@ vi.mock("react-konva", () => {
 		Stage: Container,
 		Layer: Container,
 		Group,
-		Rect: Leaf,
+		Rect,
 		Ellipse: Leaf,
 		Line: Leaf,
 		Path: Leaf,
@@ -78,6 +84,7 @@ beforeEach(() => {
 	stageInstances.length = 0;
 	onReadyCalls.length = 0;
 	groupCalls.length = 0;
+	rectCalls.length = 0;
 	preloadedSrcs.length = 0;
 });
 
@@ -295,5 +302,46 @@ describe("rasterizePage", () => {
 		expect(richTextGroup).toBeDefined();
 		expect(richTextGroup?.clipWidth).toBe(120);
 		expect(richTextGroup?.clipHeight).toBe(40);
+	});
+
+	// canvas-m1-013: the rasterizer must resolve `BrandTokenRef` fills the
+	// SAME way the live stage does — "one resolver, three consumers" — so a
+	// raster export of a token-filled node isn't blank/wrong relative to the
+	// canvas the user is looking at.
+	it("resolves a color-token fill against a provided brandKit", async () => {
+		const tokenRect: CanvasRectNode = {
+			id: "r-token",
+			type: "rect",
+			transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+			bounds: { width: 10, height: 10 },
+			zIndex: 2,
+			fill: { type: "brand-token", tokenType: "color", id: "brand.primary" },
+		};
+		await rasterizePage({
+			page: buildPage([tokenRect]),
+			brandKit: {
+				colors: [{ id: "brand.primary", name: "Primary", value: "#2563eb" }],
+				fonts: [],
+			},
+		});
+		expect(rectCalls.some((p) => p.fill === "#2563eb")).toBe(true);
+	});
+
+	it("degrades a color-token fill to no fill when rasterized without a brandKit, without throwing", async () => {
+		const tokenRect: CanvasRectNode = {
+			id: "r-token",
+			type: "rect",
+			transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+			bounds: { width: 10, height: 10 },
+			zIndex: 2,
+			fill: { type: "brand-token", tokenType: "color", id: "brand.primary" },
+		};
+		await expect(
+			rasterizePage({ page: buildPage([tokenRect]) }),
+		).resolves.toMatchObject({ mimeType: "image/png" });
+		const tokenRectCall = rectCalls.find(
+			(p) => p.width === 10 && p.height === 10,
+		);
+		expect(tokenRectCall?.fill).toBeUndefined();
 	});
 });

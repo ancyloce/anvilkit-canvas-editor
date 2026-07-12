@@ -10,7 +10,10 @@ import type Konva from "konva";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { Rect } from "react-konva";
+import type { BrandKit } from "../brand/brand-kit.js";
+import { EMPTY_BRAND_KIT } from "../brand/brand-kit.js";
 import { CanvasAssetsContext } from "../stage/CanvasAssetsContext.js";
+import { CanvasBrandKitContext } from "../stage/CanvasBrandKitContext.js";
 import { CanvasNodeRenderer } from "../stage/CanvasNodeRenderer.js";
 import { CanvasStage } from "../stage/CanvasStage.js";
 import { RenderLayer } from "../stage/RenderLayer.js";
@@ -23,6 +26,13 @@ export interface RasterizePageInput {
 	 * nothing (matches the editor's behavior).
 	 */
 	readonly assets?: Record<string, CanvasAssetRef>;
+	/**
+	 * Brand kit to resolve `BrandTokenRef` fills/fonts against (canvas-m1-013)
+	 * — the SAME resolution `<CanvasNodeRenderer>` performs on the live stage,
+	 * via `CanvasBrandKitContext`. Defaults to an empty kit (every token
+	 * degrades to its neutral fallback, never throws).
+	 */
+	readonly brandKit?: BrandKit;
 	/** Defaults to 2 (retina-quality preview). */
 	readonly pixelRatio?: number;
 	/** Defaults to `"image/png"`. */
@@ -57,6 +67,7 @@ export async function rasterizePage(
 	const mimeType = input.mimeType ?? "image/png";
 	const quality = input.quality ?? 0.92;
 	const assets = input.assets ?? {};
+	const brandKit = input.brandKit ?? EMPTY_BRAND_KIT;
 
 	await preloadImageAssets(page, assets);
 
@@ -75,26 +86,28 @@ export async function rasterizePage(
 		flushSync(() => {
 			root?.render(
 				<CanvasAssetsContext.Provider value={assets}>
-					<CanvasStage
-						width={page.size.width}
-						height={page.size.height}
-						onReady={(s) => {
-							stage = s;
-						}}
-					>
-						<RenderLayer name="background" listening={false}>
-							<Rect
-								x={0}
-								y={0}
-								width={page.size.width}
-								height={page.size.height}
-								fill={page.background.value}
-							/>
-						</RenderLayer>
-						<RenderLayer name="objects" listening={false}>
-							<CanvasNodeRenderer node={page.root} />
-						</RenderLayer>
-					</CanvasStage>
+					<CanvasBrandKitContext.Provider value={brandKit}>
+						<CanvasStage
+							width={page.size.width}
+							height={page.size.height}
+							onReady={(s) => {
+								stage = s;
+							}}
+						>
+							<RenderLayer name="background" listening={false}>
+								<Rect
+									x={0}
+									y={0}
+									width={page.size.width}
+									height={page.size.height}
+									fill={page.background.value}
+								/>
+							</RenderLayer>
+							<RenderLayer name="objects" listening={false}>
+								<CanvasNodeRenderer node={page.root} />
+							</RenderLayer>
+						</CanvasStage>
+					</CanvasBrandKitContext.Provider>
 				</CanvasAssetsContext.Provider>,
 			);
 		});
