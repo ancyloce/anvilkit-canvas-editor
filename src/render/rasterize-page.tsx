@@ -1,9 +1,10 @@
 "use client";
 
-import type {
-	CanvasAssetRef,
-	CanvasNode,
-	CanvasPage,
+import {
+	type CanvasAssetRef,
+	type CanvasNode,
+	type CanvasPage,
+	isContainerNode,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { flushSync } from "react-dom";
@@ -175,7 +176,7 @@ function timeout(ms: number): Promise<void> {
 
 function collectImageAssetIds(node: CanvasNode): string[] {
 	if (node.type === "image") return [node.assetId];
-	if (node.type === "group") {
+	if (isContainerNode(node)) {
 		return node.children.flatMap(collectImageAssetIds);
 	}
 	return [];

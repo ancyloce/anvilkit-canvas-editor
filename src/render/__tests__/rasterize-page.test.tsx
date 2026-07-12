@@ -3,7 +3,10 @@ import {
 	type CanvasImageNode,
 	type CanvasRectNode,
 	createCanvasIR,
+	createFrame,
+	createImage,
 	createPage,
+	createRect,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { ReactNode } from "react";
@@ -14,13 +17,20 @@ const stageInstances: Array<{
 	destroy: ReturnType<typeof vi.fn>;
 }> = [];
 const onReadyCalls: Array<Konva.Stage> = [];
+/** Props of every <Group> rendered into the rasterize tree (frames included). */
+const groupCalls: Array<Record<string, unknown>> = [];
 
 vi.mock("react-konva", () => {
-	const Group = ({ children }: { children?: ReactNode }) => children ?? null;
+	const Group = (props: { children?: ReactNode }) => {
+		groupCalls.push(props as Record<string, unknown>);
+		return props.children ?? null;
+	};
+	const Container = ({ children }: { children?: ReactNode }) =>
+		children ?? null;
 	const Leaf = () => null;
 	return {
-		Stage: Group,
-		Layer: Group,
+		Stage: Container,
+		Layer: Container,
 		Group,
 		Rect: Leaf,
 		Ellipse: Leaf,
@@ -66,6 +76,8 @@ import { rasterizePage } from "../rasterize-page.js";
 beforeEach(() => {
 	stageInstances.length = 0;
 	onReadyCalls.length = 0;
+	groupCalls.length = 0;
+	preloadedSrcs.length = 0;
 });
 
 afterEach(() => {
@@ -73,7 +85,25 @@ afterEach(() => {
 	for (const node of Array.from(stragglers)) {
 		node.parentNode?.removeChild(node);
 	}
+	vi.unstubAllGlobals();
 });
+
+/** Every `uri` the rasterizer pushed through `loadImage`'s `new Image()`. */
+const preloadedSrcs: string[] = [];
+
+/** Swap in an Image that records `src` and resolves `onload` immediately. */
+function stubImageLoader(): void {
+	class RecordingImage {
+		crossOrigin: string | null = null;
+		onload: (() => void) | null = null;
+		onerror: (() => void) | null = null;
+		set src(uri: string) {
+			preloadedSrcs.push(uri);
+			queueMicrotask(() => this.onload?.());
+		}
+	}
+	vi.stubGlobal("Image", RecordingImage);
+}
 
 function buildPage(extraChildren: CanvasGroupNode["children"] = []) {
 	const ir = createCanvasIR({
@@ -179,5 +209,68 @@ describe("rasterizePage", () => {
 			assets: { a1: { id: "a1", uri: "data:image/png;base64,iVBORw0=" } },
 		});
 		expect(result.url.startsWith("data:")).toBe(true);
+	});
+
+	// PDF/PNG export fidelity (canvas-m1-003) rides on the rasterizer honouring
+	// the frame's clip — it renders through the same CanvasNodeRenderer as the
+	// live stage, so the clip must reach the Konva tree here too.
+	it("clips a frame's children in the rasterized tree", async () => {
+		const frame = createFrame({
+			id: "f1",
+			bounds: { width: 120, height: 80 },
+			clip: true,
+			children: [
+				createRect({ id: "clipped", bounds: { width: 999, height: 999 } }),
+			],
+		});
+		await rasterizePage({ page: buildPage([frame]) });
+		const frameGroup = groupCalls.find((p) => p.id === "f1");
+		expect(frameGroup).toBeDefined();
+		expect(frameGroup?.clipWidth).toBe(120);
+		expect(frameGroup?.clipHeight).toBe(80);
+	});
+
+	it("emits a rounded clipFunc for a frame with a radius", async () => {
+		const frame = createFrame({
+			id: "f1",
+			bounds: { width: 120, height: 80 },
+			clip: true,
+			radius: 10,
+			children: [createRect({ id: "c", bounds: { width: 10, height: 10 } })],
+		});
+		await rasterizePage({ page: buildPage([frame]) });
+		const frameGroup = groupCalls.find((p) => p.id === "f1");
+		const clipFunc = frameGroup?.clipFunc as
+			| ((ctx: { roundRect: (...a: number[]) => void }) => void)
+			| undefined;
+		expect(clipFunc).toBeTypeOf("function");
+		const ctx = { roundRect: vi.fn() };
+		clipFunc?.(ctx);
+		expect(ctx.roundRect).toHaveBeenCalledWith(0, 0, 120, 80, 10);
+	});
+
+	// Regression: `collectImageAssetIds` used to recurse only into groups, so an
+	// image inside a frame was never preloaded and could rasterize blank.
+	it("preloads image assets nested inside a frame", async () => {
+		stubImageLoader();
+		const frame = createFrame({
+			id: "f1",
+			bounds: { width: 100, height: 100 },
+			clip: true,
+			children: [
+				createImage({
+					id: "i-in-frame",
+					bounds: { width: 32, height: 32 },
+					assetId: "nested",
+				}),
+			],
+		});
+		await rasterizePage({
+			page: buildPage([frame]),
+			assets: {
+				nested: { id: "nested", uri: "data:image/png;base64,NESTED=" },
+			},
+		});
+		expect(preloadedSrcs).toContain("data:image/png;base64,NESTED=");
 	});
 });
