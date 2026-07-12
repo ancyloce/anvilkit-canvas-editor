@@ -1,8 +1,9 @@
-import type {
-	CanvasNode,
-	CanvasNodeMoveCommand,
-	CanvasNodeResizeCommand,
-	CanvasNodeRotateCommand,
+import {
+	type CanvasNode,
+	type CanvasNodeMoveCommand,
+	type CanvasNodeResizeCommand,
+	type CanvasNodeRotateCommand,
+	isContainerNode,
 } from "@anvilkit/canvas-core";
 
 /**
@@ -71,7 +72,7 @@ function flattenNodes(nodes: readonly CanvasNode[]): CanvasNode[] {
 	const out: CanvasNode[] = [];
 	const visit = (n: CanvasNode): void => {
 		out.push(n);
-		if (n.type === "group") {
+		if (isContainerNode(n)) {
 			for (const child of n.children) visit(child);
 		}
 	};
@@ -81,8 +82,9 @@ function flattenNodes(nodes: readonly CanvasNode[]): CanvasNode[] {
 
 /**
  * Resolve a focus-navigation keypress to the next focused node id, walking the
- * page's nodes in pre-order (so Down/Right step into group children, Up/Left step
- * back out). Wraps at the ends. `Escape` clears focus; `Enter` keeps the current.
+ * page's nodes in pre-order (so Down/Right step into container children — group
+ * or frame — and Up/Left step back out). Wraps at the ends. `Escape` clears
+ * focus; `Enter` keeps the current.
  */
 export function nextFocusId(
 	page: { root: CanvasNode },
@@ -91,7 +93,7 @@ export function nextFocusId(
 ): string | null {
 	if (key === "Escape") return null;
 	const root = page.root;
-	const flat = root.type === "group" ? flattenNodes(root.children) : [];
+	const flat = isContainerNode(root) ? flattenNodes(root.children) : [];
 	if (flat.length === 0) return null;
 	if (key === "Enter") return current;
 

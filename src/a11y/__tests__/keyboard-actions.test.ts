@@ -1,4 +1,4 @@
-import { createGroup, createRect } from "@anvilkit/canvas-core";
+import { createFrame, createGroup, createRect } from "@anvilkit/canvas-core";
 import { describe, expect, it } from "vitest";
 import {
 	nextFocusId,
@@ -83,5 +83,32 @@ describe("keyboard-actions — nextFocusId", () => {
 	it("Escape clears, Enter keeps current", () => {
 		expect(nextFocusId(page, "b", "Escape")).toBeNull();
 		expect(nextFocusId(page, "b", "Enter")).toBe("b");
+	});
+
+	// Frames hold children just like groups; walking only into groups made every
+	// node inside a frame unreachable by keyboard focus.
+	it("steps into frame children in pre-order", () => {
+		const framed = {
+			root: createGroup({
+				id: "root",
+				bounds: { width: 0, height: 0 },
+				children: [
+					rect("a"),
+					createFrame({
+						id: "f",
+						bounds: { width: 100, height: 100 },
+						clip: true,
+						children: [rect("b"), rect("c")],
+					}),
+					rect("d"),
+				],
+			}),
+		};
+		// pre-order: a, f, b, c, d
+		expect(nextFocusId(framed, "a", "ArrowDown")).toBe("f");
+		expect(nextFocusId(framed, "f", "ArrowDown")).toBe("b");
+		expect(nextFocusId(framed, "b", "ArrowDown")).toBe("c");
+		expect(nextFocusId(framed, "c", "ArrowDown")).toBe("d");
+		expect(nextFocusId(framed, "b", "ArrowUp")).toBe("f");
 	});
 });
