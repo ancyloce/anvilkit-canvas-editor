@@ -66,6 +66,7 @@ const KIND_LABEL_KEYS: Record<CanvasNodeKind, string> = {
 	line: "canvas.layer.kind.line",
 	path: "canvas.layer.kind.path",
 	text: "canvas.layer.kind.text",
+	"rich-text": "canvas.layer.kind.richText",
 	image: "canvas.layer.kind.image",
 	"ai-placeholder": "canvas.layer.kind.aiPlaceholder",
 };
@@ -78,6 +79,7 @@ const KIND_LABEL_FALLBACKS: Record<CanvasNodeKind, string> = {
 	line: "Line",
 	path: "Path",
 	text: "Text",
+	"rich-text": "Rich text",
 	image: "Image",
 	"ai-placeholder": "AI placeholder",
 };

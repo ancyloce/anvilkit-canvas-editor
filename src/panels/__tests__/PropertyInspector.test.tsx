@@ -771,6 +771,8 @@ describe("PropertyInspector — image-well toggle", () => {
 		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"frame">;
 		// The image child is untouched; only `placeholder` is dropped.
 		expect(Object.keys(last.patch)).toEqual(["placeholder"]);
-		expect((last.patch as { placeholder?: unknown }).placeholder).toBeUndefined();
+		expect(
+			(last.patch as { placeholder?: unknown }).placeholder,
+		).toBeUndefined();
 	});
 });
