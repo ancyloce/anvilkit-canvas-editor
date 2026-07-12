@@ -10,9 +10,12 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 export type BuiltinToolId =
 	| "select"
 	| "text"
+	| "rich-text"
 	| "frame"
 	| "rect"
 	| "ellipse"
+	| "polygon"
+	| "star"
 	| "line"
 	| "path"
 	| "image"

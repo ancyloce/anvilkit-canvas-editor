@@ -1,7 +1,7 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 
 /**
- * Transient draft node geometry used by draw tools (rect/ellipse/line) and
+ * Transient draft node geometry used by draw tools (rect/ellipse/polygon/star/line) and
  * the marquee selection box. Lives outside `CanvasIR` because it never commits
  * — `clearDraft()` runs on pointerup (and on tool change / unmount).
  */
@@ -28,6 +28,20 @@ export type DrawDraft =
 	  }
 	| {
 			type: "ellipse";
+			startX: number;
+			startY: number;
+			currentX: number;
+			currentY: number;
+	  }
+	| {
+			type: "polygon";
+			startX: number;
+			startY: number;
+			currentX: number;
+			currentY: number;
+	  }
+	| {
+			type: "star";
 			startX: number;
 			startY: number;
 			currentX: number;
