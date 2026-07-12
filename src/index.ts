@@ -114,5 +114,9 @@ export { rasterizePage } from "./render/rasterize-page.js";
 // ── Tool id (host may set `initialTool` / drive tool selection) ──────────────
 export type { ToolId } from "./stores/tool-store.js";
 export type { CanvasTemplateEntry } from "./templates/template-entry.js";
+// The stage's `CanvasTextMeasurer` — pass to core's `serializePageToSvg` (or
+// `@anvilkit/plugin-export-canvas`'s `canvasToSvg`) so a rich-text export
+// wraps at the same points the stage does.
+export { createCanvasTextMeasurer } from "./text/canvas-text-measurer.js";
 // `<CanvasWorkspace>`, the panel registry, dock config, and workspace UI hooks.
 export * from "./workspace/index.js";

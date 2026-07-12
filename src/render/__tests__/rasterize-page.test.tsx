@@ -7,6 +7,7 @@ import {
 	createImage,
 	createPage,
 	createRect,
+	createRichText,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { ReactNode } from "react";
@@ -272,5 +273,27 @@ describe("rasterizePage", () => {
 			},
 		});
 		expect(preloadedSrcs).toContain("data:image/png;base64,NESTED=");
+	});
+
+	// canvas-m1-008 acceptance criterion: rich text renders in rasterizePage
+	// output. `Text` is mocked to a no-op leaf here (this file only asserts
+	// structure/wiring), so the meaningful check is that the real
+	// `CanvasRichTextNodeRenderer` runs end-to-end without throwing and its
+	// clip wiring reaches the Group exactly like every other node kind's does
+	// — per-run text content/styling is covered by
+	// `stage/__tests__/CanvasNodeRenderer.test.tsx`.
+	it("renders a rich-text node without throwing, with overflow clip wired to its Group", async () => {
+		const richText = createRichText({
+			id: "rt1",
+			bounds: { width: 120, height: 40 },
+			height: 40,
+			overflow: "clip",
+			paragraphs: [{ spans: [{ text: "Hello rich text" }] }],
+		});
+		await rasterizePage({ page: buildPage([richText]) });
+		const richTextGroup = groupCalls.find((g) => g.id === "rt1");
+		expect(richTextGroup).toBeDefined();
+		expect(richTextGroup?.clipWidth).toBe(120);
+		expect(richTextGroup?.clipHeight).toBe(40);
 	});
 });
