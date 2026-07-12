@@ -5,6 +5,7 @@ import type {
 	CanvasAiPlaceholderStatus,
 	CanvasEllipseNode,
 	CanvasFill,
+	CanvasFrameNode,
 	CanvasGroupNode,
 	CanvasImageNode,
 	CanvasLineNode,
@@ -14,6 +15,7 @@ import type {
 	CanvasRectNode,
 	CanvasShadow,
 	CanvasTextNode,
+	FramePlaceholderKind,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { use } from "react";
@@ -113,6 +115,134 @@ function CanvasGroupNodeRenderer({ node }: { node: CanvasGroupNode }) {
 			))}
 		</Group>
 	);
+}
+
+/**
+ * Konva clip props for a frame. Konva applies the clip in the container's LOCAL
+ * space (it runs `clipFunc` after the group's absolute transform is pushed), so
+ * the clip box is simply `(0, 0, width, height)` regardless of the frame's own
+ * position, rotation, or scale.
+ *
+ * A square clip rides the declarative `clipX/Y/Width/Height` props. A rounded one
+ * has to go through `clipFunc` — Konva has no `clipRadius`. Konva calls
+ * `beginPath()` before the callback and `clip()` after it, so the callback only
+ * draws the path; it must not call `clip()` itself.
+ */
+function frameClipProps(node: CanvasFrameNode): Konva.ContainerConfig {
+	if (!node.clip) return {};
+	const { width, height } = node.bounds;
+	const radius = node.radius ?? 0;
+	if (radius > 0) {
+		return {
+			clipFunc: (ctx) => {
+				ctx.roundRect(0, 0, width, height, radius);
+			},
+		};
+	}
+	return { clipX: 0, clipY: 0, clipWidth: width, clipHeight: height };
+}
+
+/**
+ * Neutral fill painted behind an unresolved image well. Must stay byte-identical
+ * to core's `FRAME_PLACEHOLDER_FALLBACK_FILL` (`serialize/svg.ts`) — the stage,
+ * the PNG rasterizer and the SVG exporter all have to agree on it, and the SVG
+ * golden snapshots pin the value.
+ */
+const FRAME_PLACEHOLDER_FALLBACK_FILL = "#e2e8f0";
+
+/** Stage-only chrome for an empty well. Never document content — see below. */
+const PLACEHOLDER_OUTLINE = "#94a3b8";
+const PLACEHOLDER_LABEL_COLOR = "#64748b";
+
+/**
+ * A frame is a container that owns its bounds: unlike a group it can paint a
+ * background and clip its children to that box.
+ *
+ * A frame carrying a `placeholder` is an image *well*. While that well is empty
+ * it paints a fallback background, mirroring core's `resolveFrameBackground` so
+ * an export and the stage look the same, and — on the stage only — an "add an
+ * image" affordance so an empty well reads differently from an empty group.
+ *
+ * That affordance is EDITOR CHROME, not document content, so it is gated on the
+ * studio context: `rasterizePage` renders this same component with no provider,
+ * which is exactly what keeps the dashed outline and label out of exported PNGs.
+ * The fallback FILL is deliberately outside that gate — core's SVG serializer
+ * paints it, so the rasterizer must too.
+ *
+ * Double-click-to-enter-frame (isolation mode) is deliberately NOT implemented —
+ * explicitly deferred past canvas-m1-004. Selecting a frame selects the frame
+ * itself; its children stay reachable via the LayerPanel and the a11y scene tree.
+ */
+function CanvasFrameNodeRenderer({ node }: { node: CanvasFrameNode }) {
+	const { width, height } = node.bounds;
+	const t = useCanvasT();
+	const isInteractive = use(CanvasStudioContext) !== null;
+	// Hooks cannot be conditional, so probe the asset map unconditionally: a
+	// placeholder is "filled" only once its asset actually exists in the document.
+	const placeholderAsset = useCanvasAsset(node.placeholder?.assetId ?? "");
+	const emptyWell = node.placeholder !== undefined && !placeholderAsset;
+	const fill = emptyWell
+		? (node.background ?? FRAME_PLACEHOLDER_FALLBACK_FILL)
+		: node.background;
+
+	return (
+		<Group {...commonProps(node)} {...frameClipProps(node)}>
+			{fill !== undefined ? (
+				<Rect
+					// Deliberately carries NO id/name. `findHitNodeId` resolves a click by
+					// walking UP the Konva tree to the first node whose name matches a
+					// top-level IR id, so an anonymous backdrop makes a click on the
+					// frame's background select the FRAME. An id here would instead
+					// collide with the Group's, and `listening={false}` would make the
+					// background unclickable entirely.
+					x={0}
+					y={0}
+					width={width}
+					height={height}
+					cornerRadius={node.radius}
+					{...fillProps(fill, node.bounds)}
+				/>
+			) : null}
+			{emptyWell && isInteractive ? (
+				<Group listening={false}>
+					<Rect
+						x={0}
+						y={0}
+						width={width}
+						height={height}
+						cornerRadius={node.radius}
+						stroke={PLACEHOLDER_OUTLINE}
+						strokeWidth={1}
+						dash={[6, 4]}
+					/>
+					<Text
+						x={0}
+						y={0}
+						width={width}
+						height={height}
+						align="center"
+						verticalAlign="middle"
+						fontSize={12}
+						fontFamily="Inter"
+						fill={PLACEHOLDER_LABEL_COLOR}
+						text={placeholderLabel(node.placeholder?.kind, t)}
+					/>
+				</Group>
+			) : null}
+			{node.children.map((child) => (
+				<CanvasNodeRenderer key={child.id} node={child} />
+			))}
+		</Group>
+	);
+}
+
+function placeholderLabel(
+	kind: FramePlaceholderKind | undefined,
+	t: ReturnType<typeof useCanvasT>,
+): string {
+	return kind === "logo"
+		? t("canvas.frame.placeholderLogo", "Add a logo")
+		: t("canvas.frame.placeholderImage", "Add an image");
 }
 
 function CanvasRectNodeRenderer({ node }: { node: CanvasRectNode }) {
@@ -363,6 +493,8 @@ export function CanvasNodeRenderer({
 	switch (node.type) {
 		case "group":
 			return <CanvasGroupNodeRenderer node={node} />;
+		case "frame":
+			return <CanvasFrameNodeRenderer node={node} />;
 		case "rect":
 			return <CanvasRectNodeRenderer node={node} />;
 		case "ellipse":
