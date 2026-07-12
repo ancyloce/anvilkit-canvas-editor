@@ -2,6 +2,7 @@ import type { CanvasIR, CanvasNodeMoveCommand } from "@anvilkit/canvas-core";
 import {
 	createCanvasIR,
 	createEllipse,
+	createFrame,
 	createGroup,
 	createPage,
 	createRect,
@@ -327,5 +328,84 @@ describe("selectTool — drag-to-move", () => {
 		);
 		selectTool.onDeactivate?.(h.ctx);
 		expect(h.ctx.draftStore.getState().draft).toBeNull();
+	});
+});
+
+/**
+ * A pointer target with no IR id of its own, whose parent carries `parentId` —
+ * exactly the shape of a click landing on a frame's anonymous background Rect,
+ * or on any child rendered inside a container Group.
+ */
+function fakeAnonymousChildOf(parentId: string): Konva.Node {
+	const parent = {
+		name: () => parentId,
+		getParent: () => null,
+	} as unknown as Konva.Node;
+	return {
+		name: () => "",
+		getParent: () => parent,
+	} as unknown as Konva.Node;
+}
+
+function frameIR(): CanvasIR {
+	const page = createPage({ id: "p1" });
+	page.root = createGroup({
+		id: "p1-root",
+		bounds: page.root.bounds,
+		children: [
+			createFrame({
+				id: "frameA",
+				bounds: { width: 200, height: 100 },
+				transform: { x: 10, y: 20 },
+				clip: true,
+				background: "#0af",
+				children: [
+					createRect({ id: "inFrame", bounds: { width: 20, height: 20 } }),
+				],
+			}),
+		],
+	});
+	return createCanvasIR({ id: "ir-1", pages: [page], now: () => FIXED_TS });
+}
+
+describe("selectTool — frame selection", () => {
+	it("selects the frame when its background Rect is clicked", () => {
+		const h = makeHarness();
+		h.ctx.getIR = () => frameIR();
+		// The backdrop is anonymous, so findHitNodeId walks up to the frame Group.
+		selectTool.onPointerDown?.(
+			pointerEvent(50, 50, { target: fakeAnonymousChildOf("frameA") }),
+			h.ctx,
+		);
+		expect(h.ctx.selectionStore.getState().selectedIds).toEqual(["frameA"]);
+	});
+
+	it("selects the frame (not the child) when a node inside the frame is clicked", () => {
+		const h = makeHarness();
+		h.ctx.getIR = () => frameIR();
+		// Children of a container are not top-level ids, so the walk-up resolves to
+		// the frame — the same behaviour a group has. (Enter-frame is deferred.)
+		selectTool.onPointerDown?.(
+			pointerEvent(20, 30, { target: fakeAnonymousChildOf("frameA") }),
+			h.ctx,
+		);
+		expect(h.ctx.selectionStore.getState().selectedIds).toEqual(["frameA"]);
+	});
+
+	it("marquee selects a frame by its own bounds", () => {
+		const h = makeHarness();
+		h.ctx.getIR = () => frameIR();
+		selectTool.onPointerDown?.(
+			pointerEvent(0, 0, {
+				target: {
+					name: () => "",
+					getParent: () => null,
+				} as unknown as Konva.Node,
+			}),
+			h.ctx,
+		);
+		selectTool.onPointerMove?.(pointerEvent(400, 400), h.ctx);
+		selectTool.onPointerUp?.(pointerEvent(400, 400), h.ctx);
+		expect(h.ctx.selectionStore.getState().selectedIds).toContain("frameA");
 	});
 });

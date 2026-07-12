@@ -35,6 +35,7 @@ export function DraftRenderer(): React.JSX.Element | null {
 	}
 	switch (draft.type) {
 		case "rect":
+		case "frame":
 			return (
 				<Rect
 					x={Math.min(startX, currentX)}
