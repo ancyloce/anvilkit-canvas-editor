@@ -153,6 +153,7 @@
 	"canvas.layer.kind.line": "Line",
 	"canvas.layer.kind.path": "Path",
 	"canvas.layer.kind.text": "Text",
+	"canvas.layer.kind.richText": "Rich text",
 	"canvas.layer.kind.image": "Image",
 	"canvas.layer.kind.aiPlaceholder": "AI placeholder",
 	"canvas.layer.title": "Layers",
