@@ -1,6 +1,7 @@
 import {
 	type CanvasIR,
 	createCanvasIR,
+	createFrame,
 	createGroup,
 	createImage,
 	createPage,
@@ -93,7 +94,7 @@ describe("selectStaticGroupIds", () => {
 		expect(selectStaticGroupIds(ir, "p1", NO_ACTIVE)).toEqual(["gOk"]);
 	});
 
-	it("excludes empty groups and ignores non-group top-level nodes", () => {
+	it("excludes empty groups and ignores non-container top-level nodes", () => {
 		const empty = createGroup({
 			id: "gEmpty",
 			bounds: { width: 1, height: 1 },
@@ -104,6 +105,63 @@ describe("selectStaticGroupIds", () => {
 			shapeGroup("g1", "r1"),
 		]);
 		expect(selectStaticGroupIds(ir, "p1", NO_ACTIVE)).toEqual(["g1"]);
+	});
+
+	it("includes a shape-only top-level frame", () => {
+		const frame = createFrame({
+			id: "f1",
+			bounds: { width: 100, height: 100 },
+			clip: true,
+			children: [createRect({ id: "r1", bounds: { width: 10, height: 10 } })],
+		});
+		expect(selectStaticGroupIds(irWith([frame]), "p1", NO_ACTIVE)).toEqual([
+			"f1",
+		]);
+	});
+
+	// The active-id sweep must see through a frame, or selecting a node inside a
+	// frame would leave the frame's stale bitmap cached.
+	it("excludes a frame whose descendant is active", () => {
+		const frame = createFrame({
+			id: "f1",
+			bounds: { width: 100, height: 100 },
+			children: [createRect({ id: "r1", bounds: { width: 10, height: 10 } })],
+		});
+		const ir = irWith([frame]);
+		expect(
+			selectStaticGroupIds(ir, "p1", { ...NO_ACTIVE, selectedIds: ["r1"] }),
+		).toEqual([]);
+	});
+
+	// A placeholder resolves to an asset and starts rendering asynchronously —
+	// same stale-bitmap hazard that keeps `image` out of CACHEABLE_LEAF_TYPES.
+	it("excludes a frame carrying a placeholder", () => {
+		const frame = createFrame({
+			id: "f1",
+			bounds: { width: 100, height: 100 },
+			placeholder: { kind: "image" },
+			children: [createRect({ id: "r1", bounds: { width: 10, height: 10 } })],
+		});
+		expect(selectStaticGroupIds(irWith([frame]), "p1", NO_ACTIVE)).toEqual([]);
+	});
+
+	it("includes a group holding a shape-only frame", () => {
+		const group = createGroup({
+			id: "g1",
+			bounds: { width: 200, height: 200 },
+			children: [
+				createFrame({
+					id: "f1",
+					bounds: { width: 100, height: 100 },
+					children: [
+						createRect({ id: "r1", bounds: { width: 10, height: 10 } }),
+					],
+				}),
+			],
+		});
+		expect(selectStaticGroupIds(irWith([group]), "p1", NO_ACTIVE)).toEqual([
+			"g1",
+		]);
 	});
 
 	it("includes a nested shape-only group", () => {

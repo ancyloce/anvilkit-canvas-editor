@@ -1,6 +1,11 @@
 "use client";
 
-import type { CanvasIR, CanvasNode } from "@anvilkit/canvas-core";
+import {
+	type CanvasIR,
+	type CanvasNode,
+	isContainerNode,
+	isFrameNode,
+} from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { useEffect, useRef } from "react";
 import type { DraftStoreApi } from "../stores/draft-store.js";
@@ -25,17 +30,22 @@ const CACHEABLE_LEAF_TYPES: ReadonlySet<string> = new Set([
 /** Collect a node's id plus every descendant id into `into`. */
 function collectSubtreeIds(node: CanvasNode, into: Set<string>): void {
 	into.add(node.id);
-	if (node.type === "group") {
+	if (isContainerNode(node)) {
 		for (const child of node.children) collectSubtreeIds(child, into);
 	}
 }
 
 /**
- * True when every leaf in the subtree is a cacheable shape/path type (groups
- * are traversed). Empty groups are not cacheable (nothing to rasterize).
+ * True when every leaf in the subtree is a cacheable shape/path type (containers
+ * are traversed). Empty containers are not cacheable (nothing to rasterize).
+ *
+ * A frame carrying a `placeholder` is never cacheable: once that placeholder
+ * resolves to an asset its render turns async, so a cached bitmap could go stale
+ * — the same reason `image` is absent from {@link CACHEABLE_LEAF_TYPES}.
  */
 function isCacheableSubtree(node: CanvasNode): boolean {
-	if (node.type === "group") {
+	if (isContainerNode(node)) {
+		if (isFrameNode(node) && node.placeholder) return false;
 		if (node.children.length === 0) return false;
 		return node.children.every(isCacheableSubtree);
 	}
@@ -49,9 +59,10 @@ export interface ActiveNodeIds {
 }
 
 /**
- * Top-level group nodes on the active page that are safe to `node.cache()`:
- * a non-empty, shape/path-only subtree containing NONE of the active ids
- * (selected / editing / dragged). Pure — unit-testable without a Konva stage.
+ * Top-level container nodes (group or frame) on the active page that are safe to
+ * `node.cache()`: a non-empty, shape/path-only subtree containing NONE of the
+ * active ids (selected / editing / dragged). Pure — unit-testable without a
+ * Konva stage.
  */
 export function selectStaticGroupIds(
 	ir: CanvasIR,
@@ -67,7 +78,7 @@ export function selectStaticGroupIds(
 	]);
 	const result: string[] = [];
 	for (const node of page.root.children) {
-		if (node.type !== "group" || !isCacheableSubtree(node)) continue;
+		if (!isContainerNode(node) || !isCacheableSubtree(node)) continue;
 		const subtree = new Set<string>();
 		collectSubtreeIds(node, subtree);
 		let hasActive = false;
