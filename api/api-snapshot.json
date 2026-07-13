@@ -14666,7 +14666,15 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Deep-clone a CanvasPage with a brand-new page id and fresh ids on every\ndescendant node. Uses structured JSON cloning — safe because the IR is\npure data (per "
+										"text": "Deep-clone a CanvasPage with a brand-new page id and fresh ids on every\ndescendant node. Uses "
+									},
+									{
+										"kind": "code",
+										"text": "`structuredClone`"
+									},
+									{
+										"kind": "text",
+										"text": " — safe because the IR is\npure data (per "
 									},
 									{
 										"kind": "code",
@@ -27450,11 +27458,7 @@
 								"kind": "inline-tag",
 								"tag": "@link",
 								"text": "findFrameAtPoint",
-								"target": {
-									"packageName": "@anvilkit/canvas-editor",
-									"packagePath": "src/tools/frame-target.ts",
-									"qualifiedName": "findFrameAtPoint"
-								}
+								"target": "#"
 							},
 							{
 								"kind": "text",

@@ -23,7 +23,8 @@
 			"DEFAULT_CANVAS_T": "#",
 			"SceneStoreApi": "#",
 			"isLocalOrigin": "#",
-			"CLOSE_THRESHOLD": "#"
+			"CLOSE_THRESHOLD": "#",
+			"findFrameAtPoint": "#"
 		}
 	}
 }
