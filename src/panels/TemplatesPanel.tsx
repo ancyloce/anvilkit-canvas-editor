@@ -245,8 +245,12 @@ export function TemplatesPanel(): React.JSX.Element {
 									className="mt-1.5 text-[11px] text-destructive"
 								>
 									{entryFeedback.ok
-										? entryFeedback.warnings.map((warning, index) => (
-												<div key={index}>{warningMessage(t, warning)}</div>
+										? entryFeedback.warnings.map((warning) => (
+												<div
+													key={`${warning.code}-${warning.variableId ?? warning.slotId ?? warning.nodeId ?? ""}`}
+												>
+													{warningMessage(t, warning)}
+												</div>
 											))
 										: entryFeedback.message}
 								</div>

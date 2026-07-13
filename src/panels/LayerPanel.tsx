@@ -317,6 +317,8 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 		<div
 			data-testid="layer-panel"
 			className="flex h-full min-w-[220px] max-w-[320px] flex-col bg-card text-sm text-foreground select-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
+			role="group"
+			aria-label={t("canvas.layer.title", "Layers")}
 			tabIndex={0}
 			onKeyDown={handleKeyDown}
 			{...(id !== undefined ? { id } : {})}

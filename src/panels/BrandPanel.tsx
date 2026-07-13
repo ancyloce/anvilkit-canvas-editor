@@ -218,8 +218,8 @@ export function BrandPanel({
 									)}
 								</span>
 							) : (
-								complianceReport.issues.map((issue, index) => (
-									<span key={index}>
+								complianceReport.issues.map((issue) => (
+									<span key={`${issue.nodeId}-${issue.code}-${issue.property}`}>
 										{issue.property}: {complianceIssueMessage(t, issue)}
 									</span>
 								))
