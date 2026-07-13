@@ -2,12 +2,14 @@ import {
 	type CanvasGroupNode,
 	type CanvasImageNode,
 	type CanvasRectNode,
+	type CanvasSvgNode,
 	createCanvasIR,
 	createFrame,
 	createImage,
 	createPage,
 	createRect,
 	createRichText,
+	createSvg,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { ReactNode } from "react";
@@ -217,6 +219,25 @@ describe("rasterizePage", () => {
 			assets: { a1: { id: "a1", uri: "data:image/png;base64,iVBORw0=" } },
 		});
 		expect(result.url.startsWith("data:")).toBe(true);
+	});
+
+	it("walks svg nodes when preloading assets, same as image nodes", async () => {
+		stubImageLoader();
+		const svgNode: CanvasSvgNode = {
+			id: "s1",
+			type: "svg",
+			transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+			bounds: { width: 32, height: 32 },
+			zIndex: 1,
+			assetId: "a1",
+		};
+		const page = buildPage([svgNode]);
+		const result = await rasterizePage({
+			page,
+			assets: { a1: { id: "a1", uri: "data:image/svg+xml;base64,PHN2Zz4=" } },
+		});
+		expect(result.url.startsWith("data:")).toBe(true);
+		expect(preloadedSrcs).toContain("data:image/svg+xml;base64,PHN2Zz4=");
 	});
 
 	// PDF/PNG export fidelity (canvas-m1-003) rides on the rasterizer honouring

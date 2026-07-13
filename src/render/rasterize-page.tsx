@@ -188,7 +188,7 @@ function timeout(ms: number): Promise<void> {
 }
 
 function collectImageAssetIds(node: CanvasNode): string[] {
-	if (node.type === "image") return [node.assetId];
+	if (node.type === "image" || node.type === "svg") return [node.assetId];
 	if (isContainerNode(node)) {
 		return node.children.flatMap(collectImageAssetIds);
 	}
