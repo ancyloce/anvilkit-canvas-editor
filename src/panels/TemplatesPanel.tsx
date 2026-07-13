@@ -38,6 +38,10 @@ import {
 
 const ALL_CATEGORIES = "all";
 
+// Stable fallback for hosts that pass no catalog, so the `categories`/
+// `filtered` memos don't recompute on a fresh `[]` identity every render.
+const NO_TEMPLATES: readonly CanvasTemplateEntry[] = [];
+
 function sizeCaption(entry: CanvasTemplateEntry): string {
 	const size = entry.document.pages[0]?.size;
 	if (!size) return "";
@@ -125,7 +129,7 @@ export function TemplatesPanel(): React.JSX.Element {
 	const [feedback, setFeedback] = useState<
 		Record<string, TemplateActionResult | undefined>
 	>({});
-	const templates = ctx.templates ?? [];
+	const templates = ctx.templates ?? NO_TEMPLATES;
 
 	const categories = useMemo(
 		() => Array.from(new Set(templates.map((entry) => entry.category))).sort(),

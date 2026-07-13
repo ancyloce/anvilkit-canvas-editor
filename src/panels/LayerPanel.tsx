@@ -303,7 +303,14 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 				</div>
 			);
 		},
-		[selectedSet, t, handleSelect, handleToggleVisibility, handleToggleLock],
+		[
+			selectedSet,
+			t,
+			handleSelect,
+			handleToggleVisibility,
+			handleToggleLock,
+			ctx.kindInspectors,
+		],
 	);
 
 	return (
