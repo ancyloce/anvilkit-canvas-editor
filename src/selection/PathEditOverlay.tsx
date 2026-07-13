@@ -89,13 +89,15 @@ function PathEditOverlayInner({
 	const controls = pathControlPoints(draft);
 
 	// Connector lines: each segment's c1 ties to its start anchor, c2 to its end.
-	const connectors: Array<[Pt, Pt]> = [];
+	// Keyed by segment index (not array position) so edits elsewhere in the
+	// path don't reshuffle unrelated connectors' identity.
+	const connectors: Array<{ key: string; a: Pt; b: Pt }> = [];
 	draft.segs.forEach((seg, idx) => {
 		if (seg.kind !== "C") return;
 		const from =
 			idx === 0 ? draft.start : (draft.segs[idx - 1]?.to ?? draft.start);
-		connectors.push([from, seg.c1]);
-		connectors.push([seg.to, seg.c2]);
+		connectors.push({ key: `seg-${idx}-c1`, a: from, b: seg.c1 });
+		connectors.push({ key: `seg-${idx}-c2`, a: seg.to, b: seg.c2 });
 	});
 
 	return (
@@ -108,12 +110,12 @@ function PathEditOverlayInner({
 				strokeWidth={1}
 				listening={false}
 			/>
-			{connectors.map(([a, b], i) => {
+			{connectors.map(({ key, a, b }) => {
 				const wa = world(a);
 				const wb = world(b);
 				return (
 					<Line
-						key={`conn-${i}-${wa.x}-${wa.y}-${wb.x}-${wb.y}`}
+						key={key}
 						points={[wa.x, wa.y, wb.x, wb.y]}
 						stroke="#93c5fd"
 						strokeWidth={1}

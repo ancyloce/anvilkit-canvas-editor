@@ -1,4 +1,12 @@
+import type {
+	CanvasAnyNodeUpdateCommand,
+	CanvasCommand,
+	CanvasNode,
+	CanvasNodeResizeCommand,
+	CanvasNodeRotateCommand,
+} from "@anvilkit/canvas-core";
 import type Konva from "konva";
+import { nodeRenderOffset } from "../stage/node-render-offset.js";
 
 /**
  * Selection-chrome colors, sourced from the editor's shadcn/Tailwind theme
@@ -131,4 +139,138 @@ export function selectionBox(
 	}
 	if (!found) return null;
 	return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+const EPSILON = 0.5;
+
+/**
+ * Nodes sized by their geometry × transform scale, NOT by `bounds`:
+ * `Konva.Path` renders from its `d`, `Konva.Line` from its `points`, each
+ * scaled by `transform.scaleX/Y`. A resize must PERSIST that scale — baking it
+ * into `bounds` (the bounds-sized path) is ignored by the renderer, so the
+ * element snaps back to its intrinsic size the instant the commit re-renders.
+ */
+const SCALE_SIZED: ReadonlySet<CanvasNode["type"]> = new Set(["path", "line"]);
+
+/**
+ * Translate the live Konva transforms of the selected nodes into IR commands
+ * on `transformend` — one resize and/or rotate command per affected node so
+ * the caller can commit a whole gesture (incl. simultaneous resize + rotate,
+ * and multi-node transforms) as ONE undo entry. Locked nodes are reset to
+ * their IR transform and skipped. Bounds-sized nodes get their Konva scale
+ * baked into bounds and reset to 1 (the next transform starts from 1×);
+ * path/line nodes keep the scale, persisted into the IR transform instead.
+ */
+export function collectTransformEndCommands(
+	stage: Konva.Stage,
+	selectedIds: readonly string[],
+	childById: ReadonlyMap<string, CanvasNode>,
+): CanvasCommand[] {
+	const cmds: CanvasCommand[] = [];
+	for (const id of selectedIds) {
+		const knode = stage.findOne(`.${id}`) as Konva.Node | undefined;
+		const irNode = childById.get(id);
+		if (!knode || !irNode) continue;
+		// Locked nodes are protected from resize/rotate. If one slipped into
+		// the selection (e.g. via the layer panel) and the user dragged a
+		// handle anyway, reset the live Konva transform on commit and skip.
+		if (irNode.locked === true) {
+			knode.scaleX(1);
+			knode.scaleY(1);
+			knode.rotation(irNode.transform.rotation);
+			knode.x(irNode.transform.x);
+			knode.y(irNode.transform.y);
+			continue;
+		}
+		const { transform, bounds } = irNode;
+
+		const scaleX = knode.scaleX();
+		const scaleY = knode.scaleY();
+		const konvaX = knode.x();
+		const konvaY = knode.y();
+		const newRotation = knode.rotation();
+
+		if (SCALE_SIZED.has(irNode.type)) {
+			// Path/line: persist the Transformer's scale into the IR transform so
+			// the new size survives the commit (the renderer scales the geometry
+			// by `transform.scaleX/Y`). Don't reset the Konva scale — the
+			// re-render reapplies it from the IR. Position offset is 0 here.
+			const offset = nodeRenderOffset(irNode);
+			const nextX = konvaX - offset.x;
+			const nextY = konvaY - offset.y;
+			const changed =
+				Math.abs(scaleX - transform.scaleX) > EPSILON ||
+				Math.abs(scaleY - transform.scaleY) > EPSILON ||
+				Math.abs(nextX - transform.x) > EPSILON ||
+				Math.abs(nextY - transform.y) > EPSILON ||
+				Math.abs(newRotation - transform.rotation) > EPSILON;
+			if (changed) {
+				const cmd: CanvasAnyNodeUpdateCommand = {
+					type: "node.update",
+					nodeId: id,
+					kind: irNode.type,
+					patch: {
+						transform: {
+							...transform,
+							x: nextX,
+							y: nextY,
+							scaleX,
+							scaleY,
+							rotation: newRotation,
+						},
+					},
+				} as CanvasAnyNodeUpdateCommand;
+				cmds.push(cmd);
+			}
+			continue;
+		}
+
+		// Bounds-sized nodes (rect/ellipse/image/text/group): bake the scale
+		// into bounds and reset the Konva scale so the next transform starts
+		// from 1×.
+		knode.scaleX(1);
+		knode.scaleY(1);
+		const newW = bounds.width * scaleX;
+		const newH = bounds.height * scaleY;
+		// Konva.Ellipse positions by its CENTER, so `knode.x()` is the center.
+		// Convert back to the IR top-left using the NEW bounds, or a resized
+		// ellipse drifts by half its new size on commit.
+		const offset = nodeRenderOffset({
+			...irNode,
+			bounds: { width: newW, height: newH },
+		} as CanvasNode);
+		const newX = konvaX - offset.x;
+		const newY = konvaY - offset.y;
+
+		const boundsChanged =
+			Math.abs(newW - bounds.width) > EPSILON ||
+			Math.abs(newH - bounds.height) > EPSILON ||
+			Math.abs(newX - transform.x) > EPSILON ||
+			Math.abs(newY - transform.y) > EPSILON;
+		if (boundsChanged) {
+			const cmd: CanvasNodeResizeCommand = {
+				type: "node.resize",
+				nodeId: id,
+				from: {
+					x: transform.x,
+					y: transform.y,
+					width: bounds.width,
+					height: bounds.height,
+				},
+				to: { x: newX, y: newY, width: newW, height: newH },
+			};
+			cmds.push(cmd);
+		}
+
+		if (Math.abs(newRotation - transform.rotation) > EPSILON) {
+			const cmd: CanvasNodeRotateCommand = {
+				type: "node.rotate",
+				nodeId: id,
+				from: transform.rotation,
+				to: newRotation,
+			};
+			cmds.push(cmd);
+		}
+	}
+	return cmds;
 }

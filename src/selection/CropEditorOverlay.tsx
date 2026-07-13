@@ -12,6 +12,9 @@ import {
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
 import type { CropRect, CropStoreApi } from "../stores/crop-store.js";
+
+const overlayBase: CSSProperties = { position: "fixed", zIndex: 9999 };
+
 import {
 	type CropDragMode,
 	cancelCrop,
@@ -167,8 +170,6 @@ function CropEditorOverlayInner({
 		window.addEventListener("pointermove", onMove);
 		window.addEventListener("pointerup", onUp);
 	};
-
-	const overlayBase: CSSProperties = { position: "fixed", zIndex: 9999 };
 
 	return (
 		<>

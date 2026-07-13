@@ -1,12 +1,5 @@
 "use client";
 
-import type {
-	CanvasAnyNodeUpdateCommand,
-	CanvasCommand,
-	CanvasNode,
-	CanvasNodeResizeCommand,
-	CanvasNodeRotateCommand,
-} from "@anvilkit/canvas-core";
 import Konva from "konva";
 import {
 	useCallback,
@@ -18,10 +11,10 @@ import {
 import { Label, Tag, Text, Transformer } from "react-konva";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { draggedIdsKey } from "../perf/active-nodes.js";
-import { nodeRenderOffset } from "../stage/node-render-offset.js";
 import {
 	activeAnchorName,
 	type ChromeTheme,
+	collectTransformEndCommands,
 	FALLBACK_CHROME_THEME,
 	normalizeAngle,
 	resolveChromeTheme,
@@ -29,16 +22,7 @@ import {
 	setAnchorHovered,
 } from "./transformer-helpers.js";
 
-const EPSILON = 0.5;
-
-/**
- * Nodes sized by their geometry × transform scale, NOT by `bounds`:
- * `Konva.Path` renders from its `d`, `Konva.Line` from its `points`, each
- * scaled by `transform.scaleX/Y`. A resize must PERSIST that scale — baking it
- * into `bounds` (the bounds-sized path) is ignored by the renderer, so the
- * element snaps back to its intrinsic size the instant the commit re-renders.
- */
-const SCALE_SIZED: ReadonlySet<CanvasNode["type"]> = new Set(["path", "line"]);
+type StudioCtx = ReturnType<typeof useCanvasStudio>;
 
 /**
  * Binds a react-konva <Transformer> to the currently-selected Konva nodes.
@@ -118,6 +102,339 @@ function shapeSelectionAnchor(anchor: Konva.Rect): void {
 	}
 }
 
+/**
+ * Chrome colors from the host's shadcn/Tailwind theme. `theme` drives the
+ * declarative props (re-renders on change); `themeRef` mirrors it for the
+ * imperative anchorStyleFunc, which runs outside React on every Konva frame.
+ */
+function useChromeTheme(
+	stage: Konva.Stage | null,
+	selectedIds: readonly string[],
+) {
+	const [theme, setTheme] = useState<ChromeTheme>(FALLBACK_CHROME_THEME);
+	const themeRef = useRef<ChromeTheme>(FALLBACK_CHROME_THEME);
+	useEffect(() => {
+		const next = resolveChromeTheme(stage?.container?.() ?? null);
+		themeRef.current = next;
+		setTheme(next);
+	}, [stage, selectedIds]);
+	return { theme, themeRef };
+}
+
+/**
+ * Create the rotate-icon glyph imperatively and add it as a CHILD of the
+ * Transformer node. Because both the icon and the rotate handle now share
+ * the SAME parent transform (the Transformer's screen-space frame, which
+ * already counter-scales the stage zoom and tracks the content on pan), the
+ * icon inherits every property the handle has for free — constant on-screen
+ * size, atomic tracking on pan/zoom/rotate, no cross-space `absolutePosition`
+ * conversion. The earlier "icon-as-layer-sibling" design drifted during pan
+ * because the rotate handle lives in the transformer's screen-space frame
+ * while a layer-child icon lives in the zoomed/panned layer frame, and
+ * `absolutePosition` is only consistent when computed from the *same* stage
+ * transform — which got stale between the rotater's reposition and the next
+ * icon resync.
+ *
+ * Konva 10.3+ guards `Transformer.add` to forbid external children (logs
+ * "You cannot add external nodes to the Transformer" and no-ops). We
+ * intentionally need the icon parented to the Transformer for the reasons
+ * above, so call `Group.prototype.add` directly to bypass the guard.
+ *
+ * Returns `syncRotateIcon`, which positions the icon at the rotate handle's
+ * LOCAL position within the transformer. Both nodes share the same parent →
+ * same transform → the glyph renders exactly where the handle does, at the
+ * same constant screen-size, on every frame Konva repositions the handle
+ * (which already covers pan/zoom/rotate via the transformer's
+ * `absoluteTransformChange` listener on the selected node).
+ */
+function useRotateIcon(
+	transformerRef: React.RefObject<Konva.Transformer | null>,
+	stage: Konva.Stage | null,
+	theme: ChromeTheme,
+	themeRef: React.RefObject<ChromeTheme>,
+) {
+	// Decorative rotate glyph parked on the rotate handle (positioned imperatively
+	// to track the handle, including under box rotation).
+	const rotateIconRef = useRef<Konva.Group | null>(null);
+
+	useEffect(() => {
+		const tr = transformerRef.current;
+		// Tests render with a fake transformer that has no `add`; skip there.
+		if (!tr || typeof (tr as unknown as { add?: unknown }).add !== "function")
+			return;
+		let g = rotateIconRef.current;
+		if (!g) {
+			const path = new Konva.Path({
+				data: ROTATE_ICON_PATH,
+				stroke: themeRef.current.onSurface,
+				strokeWidth: 1.8,
+				lineCap: "round",
+				lineJoin: "round",
+				// lucide art fills ~18 of its 24-unit viewBox; scale against 18 so
+				// ROTATE_ICON_SIZE is the on-screen glyph px.
+				scaleX: ROTATE_ICON_SIZE / 18,
+				scaleY: ROTATE_ICON_SIZE / 18,
+				offsetX: 12,
+				offsetY: 12,
+				listening: false,
+			});
+			g = new Konva.Group({ listening: false, visible: false });
+			g.add(path);
+			Konva.Group.prototype.add.call(tr, g);
+			rotateIconRef.current = g;
+		}
+		// Re-apply stroke when the theme changes.
+		const path = g.findOne?.("Path") as Konva.Path | undefined;
+		path?.stroke(theme.onSurface);
+		tr.getLayer?.()?.batchDraw?.();
+	}, [theme, stage, transformerRef, themeRef]);
+
+	useEffect(() => {
+		return () => {
+			rotateIconRef.current?.destroy?.();
+			rotateIconRef.current = null;
+		};
+	}, []);
+
+	const syncRotateIcon = useCallback(
+		(rotater: Konva.Rect, visible: boolean) => {
+			const g = rotateIconRef.current;
+			if (!g) return;
+			g.position({ x: rotater.x?.() ?? 0, y: rotater.y?.() ?? 0 });
+			g.visible(visible);
+		},
+		[],
+	);
+
+	return syncRotateIcon;
+}
+
+/**
+ * The floating readout badge shown during a transform: live W/H while
+ * resizing, live angle while rotating. Positioned imperatively at the cursor
+ * (no re-render per frame); the returned refs bind the Konva nodes in JSX.
+ */
+function useTransformBadges(
+	stage: Konva.Stage | null,
+	selectionStore: StudioCtx["selectionStore"],
+) {
+	// Size readout shown while resizing (imperative — no re-render per frame).
+	const sizeLabelRef = useRef<Konva.Label | null>(null);
+	const sizeTextRef = useRef<Konva.Text | null>(null);
+
+	// Park the badge just down-right of the cursor, in layer/design coords, and
+	// counter-scale it by the stage zoom so it keeps a constant on-screen size
+	// regardless of canvas scaling. `setPointersPositions` runs on every window
+	// mousemove of a resize/rotate drag, so the stage pointer is current — both
+	// the size and angle readouts follow the mouse this way.
+	const positionBadgeAtCursor = useCallback(() => {
+		const label = sizeLabelRef.current;
+		if (!stage || !label) return;
+		const inv = 1 / (stage.scaleX?.() || 1);
+		label.scale({ x: inv, y: inv });
+		label.offsetX(0); // anchor top-left near the cursor (not right-aligned)
+		const p = stage.getRelativePointerPosition?.();
+		if (p) label.position({ x: p.x + 18 * inv, y: p.y + 18 * inv });
+		label.getLayer()?.batchDraw();
+	}, [stage]);
+
+	// Live W/H readout while resizing — follows the cursor.
+	const refreshSizeBadge = useCallback(() => {
+		const label = sizeLabelRef.current;
+		const text = sizeTextRef.current;
+		if (!stage || !label || !text) return;
+		const box = selectionBox(
+			stage,
+			selectionStore.getState().selectedIds,
+			label.getLayer?.() ?? null,
+		);
+		if (!box) return;
+		text.text(`w: ${Math.round(box.width)}  h: ${Math.round(box.height)}`);
+		positionBadgeAtCursor();
+	}, [stage, selectionStore, positionBadgeAtCursor]);
+
+	// Live rotation readout while rotating — angle normalized to (-180, 180],
+	// follows the cursor.
+	const refreshAngleBadge = useCallback(() => {
+		const label = sizeLabelRef.current;
+		const text = sizeTextRef.current;
+		if (!stage || !label || !text) return;
+		const [firstId] = selectionStore.getState().selectedIds;
+		const node = firstId ? stage.findOne(`.${firstId}`) : null;
+		const angle = normalizeAngle(node?.rotation?.() ?? 0);
+		text.text(`${Math.round(angle)}°`);
+		positionBadgeAtCursor();
+	}, [stage, selectionStore, positionBadgeAtCursor]);
+
+	return { sizeLabelRef, sizeTextRef, refreshSizeBadge, refreshAngleBadge };
+}
+
+/**
+ * Keep the Transformer pointed at the live Konva nodes for the current
+ * selection — across drag-layer promote/demote remounts and viewport moves.
+ */
+function useTransformerNodeSync({
+	transformerRef,
+	stage,
+	selectedIds,
+	draggedKey,
+	viewportKey,
+	croppingId,
+	selectionStore,
+	draftStore,
+}: {
+	transformerRef: React.RefObject<Konva.Transformer | null>;
+	stage: Konva.Stage | null;
+	selectedIds: readonly string[];
+	draggedKey: string;
+	viewportKey: string;
+	croppingId: string | null;
+	selectionStore: StudioCtx["selectionStore"];
+	draftStore: StudioCtx["draftStore"];
+}): void {
+	useEffect(() => {
+		const tr = transformerRef.current;
+		if (!stage || !tr) return;
+		const nodes: Konva.Node[] = [];
+		for (const id of selectedIds) {
+			const n = stage.findOne(`.${id}`);
+			if (n) nodes.push(n);
+		}
+		tr.nodes(nodes);
+		tr.getLayer?.()?.batchDraw?.();
+	}, [stage, selectedIds, draggedKey, transformerRef]);
+
+	// Re-sync the chrome to the canvas after a pan/zoom. The Transformer doesn't
+	// re-run on viewport changes, so its screen-space handles and the rotate icon
+	// (positioned/scaled imperatively via `anchorStyleFunc` → `syncRotateIcon`)
+	// otherwise go stale — jittering during a hand pan and flying off-screen on
+	// zoom until a click re-runs `update()`. Runs after commit, so the stage
+	// transform is already current; `update()` repositions every handle AND the
+	// icon together in one pass.
+	useEffect(() => {
+		transformerRef.current?.update?.();
+	}, [viewportKey, selectedIds, croppingId, transformerRef]);
+
+	// During a move drag the dragged node is promoted onto the drag layer, which
+	// remounts its Konva node as a NEW instance. The drag runs on raw Konva
+	// pointer events (outside React's event system), so the rebind effect above
+	// fires asynchronously and gets starved by the move loop — leaving the
+	// Transformer bound to the stale (destroyed) node, so the selection box stops
+	// tracking the element (it stays at the original position). Subscribe to the
+	// draft store and re-point the Transformer at the live nodes *synchronously*
+	// on every move. This runs in the same tick as the node mutation (no React
+	// re-render, so the per-move drag-layer optimization is preserved).
+	//
+	// On move END the node DEMOTES back to the objects layer — another instance
+	// swap. The passive rebind effect above is meant to catch it, but it races
+	// react-konva's reconciler and can land on the just-detached drag-layer node,
+	// so a resize/rotate immediately after a move silently no-ops. Re-point once
+	// more on the next frame, after react-konva has committed the demote.
+	useEffect(() => {
+		if (!stage) return;
+		let raf = 0;
+		const repoint = () => {
+			const tr = transformerRef.current;
+			if (!tr) return;
+			const nodes: Konva.Node[] = [];
+			for (const id of selectionStore.getState().selectedIds) {
+				const n = stage.findOne(`.${id}`);
+				if (n) nodes.push(n);
+			}
+			tr.nodes(nodes);
+			tr.getLayer?.()?.batchDraw?.();
+		};
+		const sync = () => {
+			const draft = draftStore.getState().draft;
+			if (draft && draft.type === "move") {
+				repoint();
+				return;
+			}
+			// Draft cleared (or non-move): defer one frame so the demoted node has
+			// re-mounted on the objects layer before we re-point at the live node.
+			if (typeof requestAnimationFrame === "function") {
+				cancelAnimationFrame(raf);
+				raf = requestAnimationFrame(repoint);
+			} else {
+				repoint();
+			}
+		};
+		const unsubscribe = draftStore.subscribe(sync);
+		return () => {
+			if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf);
+			unsubscribe();
+		};
+	}, [stage, draftStore, selectionStore, transformerRef]);
+}
+
+/**
+ * Hover feedback: the dragger under the cursor fills violet. Attached
+ * imperatively to the Transformer's anchor nodes (react-konva gives no JSX
+ * seam for them). Anchors persist for the Transformer's lifetime, so we
+ * (re)bind whenever the Transformer remounts (crop toggle) or selection
+ * changes. Namespaced events keep us from stripping Konva's own listeners.
+ * Returns the ref holding the hovered anchor's position token (e.g.
+ * "top-left"), read by `anchorStyleFunc`.
+ */
+function useAnchorHoverHighlight({
+	transformerRef,
+	stage,
+	croppingId,
+	selectedIds,
+	themeRef,
+	transformingRef,
+}: {
+	transformerRef: React.RefObject<Konva.Transformer | null>;
+	stage: Konva.Stage | null;
+	croppingId: string | null;
+	selectedIds: readonly string[];
+	themeRef: React.RefObject<ChromeTheme>;
+	transformingRef: React.RefObject<boolean>;
+}) {
+	// Position token (e.g. "top-left") of the hovered anchor, or null.
+	const hoveredAnchorRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		const tr = transformerRef.current;
+		if (!tr) return;
+		const anchors = (tr.find?.("._anchor") ?? []) as Konva.Rect[];
+		const enter = (e: Konva.KonvaEventObject<MouseEvent>) => {
+			const anchor = e.target as Konva.Rect;
+			const token = anchor.name().split(" ")[0] ?? null;
+			hoveredAnchorRef.current = token;
+			// The rotate handle is an icon button, never tinted.
+			if (!transformingRef.current && token !== "rotater") {
+				const t = themeRef.current;
+				setAnchorHovered(anchor, true, t.accent, t.surface);
+			}
+		};
+		const leave = (e: Konva.KonvaEventObject<MouseEvent>) => {
+			const anchor = e.target as Konva.Rect;
+			hoveredAnchorRef.current = null;
+			if (!transformingRef.current && !anchor.hasName("rotater")) {
+				const t = themeRef.current;
+				setAnchorHovered(anchor, false, t.accent, t.surface);
+			}
+		};
+		for (const a of anchors) {
+			a.on("mouseenter.akhover", enter);
+			a.on("mouseleave.akhover", leave);
+		}
+		return () => {
+			for (const a of anchors) a.off(".akhover");
+		};
+	}, [
+		stage,
+		croppingId,
+		selectedIds,
+		transformerRef,
+		themeRef,
+		transformingRef,
+	]);
+
+	return hoveredAnchorRef;
+}
+
 export function CanvasTransformer(): React.JSX.Element | null {
 	const {
 		stage,
@@ -166,100 +483,32 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		},
 	);
 	const transformerRef = useRef<Konva.Transformer | null>(null);
-	// Decorative rotate glyph parked on the rotate handle (positioned imperatively
-	// to track the handle, including under box rotation).
-	const rotateIconRef = useRef<Konva.Group | null>(null);
-	// Size readout shown while resizing (imperative — no re-render per frame).
-	const sizeLabelRef = useRef<Konva.Label | null>(null);
-	const sizeTextRef = useRef<Konva.Text | null>(null);
-	// Position token (e.g. "top-left") of the hovered anchor, or null.
-	const hoveredAnchorRef = useRef<string | null>(null);
 	// True between transformstart/transformend so `anchorStyleFunc` hides every
 	// dragger except the one under the cursor.
 	const transformingRef = useRef(false);
 
-	// Chrome colors from the host's shadcn/Tailwind theme. `theme` drives the
-	// declarative props (re-renders on change); `themeRef` mirrors it for the
-	// imperative anchorStyleFunc, which runs outside React on every Konva frame.
-	const [theme, setTheme] = useState<ChromeTheme>(FALLBACK_CHROME_THEME);
-	const themeRef = useRef<ChromeTheme>(FALLBACK_CHROME_THEME);
-	useEffect(() => {
-		const next = resolveChromeTheme(stage?.container?.() ?? null);
-		themeRef.current = next;
-		setTheme(next);
-	}, [stage, selectedIds]);
-
-	// Create the rotate-icon glyph imperatively and add it as a CHILD of the
-	// Transformer node. Because both the icon and the rotate handle now share
-	// the SAME parent transform (the Transformer's screen-space frame, which
-	// already counter-scales the stage zoom and tracks the content on pan), the
-	// icon inherits every property the handle has for free — constant on-screen
-	// size, atomic tracking on pan/zoom/rotate, no cross-space `absolutePosition`
-	// conversion. The earlier "icon-as-layer-sibling" design drifted during pan
-	// because the rotate handle lives in the transformer's screen-space frame
-	// while a layer-child icon lives in the zoomed/panned layer frame, and
-	// `absolutePosition` is only consistent when computed from the *same* stage
-	// transform — which got stale between the rotater's reposition and the next
-	// icon resync.
-	//
-	// Konva 10.3+ guards `Transformer.add` to forbid external children (logs
-	// "You cannot add external nodes to the Transformer" and no-ops). We
-	// intentionally need the icon parented to the Transformer for the reasons
-	// above, so call `Group.prototype.add` directly to bypass the guard.
-	useEffect(() => {
-		const tr = transformerRef.current;
-		// Tests render with a fake transformer that has no `add`; skip there.
-		if (!tr || typeof (tr as unknown as { add?: unknown }).add !== "function")
-			return;
-		let g = rotateIconRef.current;
-		if (!g) {
-			const path = new Konva.Path({
-				data: ROTATE_ICON_PATH,
-				stroke: themeRef.current.onSurface,
-				strokeWidth: 1.8,
-				lineCap: "round",
-				lineJoin: "round",
-				// lucide art fills ~18 of its 24-unit viewBox; scale against 18 so
-				// ROTATE_ICON_SIZE is the on-screen glyph px.
-				scaleX: ROTATE_ICON_SIZE / 18,
-				scaleY: ROTATE_ICON_SIZE / 18,
-				offsetX: 12,
-				offsetY: 12,
-				listening: false,
-			});
-			g = new Konva.Group({ listening: false, visible: false });
-			g.add(path);
-			Konva.Group.prototype.add.call(tr, g);
-			rotateIconRef.current = g;
-		}
-		// Re-apply stroke when the theme changes.
-		const path = g.findOne?.("Path") as Konva.Path | undefined;
-		path?.stroke(theme.onSurface);
-		tr.getLayer?.()?.batchDraw?.();
-	}, [theme, stage]);
-
-	useEffect(() => {
-		return () => {
-			rotateIconRef.current?.destroy?.();
-			rotateIconRef.current = null;
-		};
-	}, []);
-
-	// Position the icon at the rotate handle's LOCAL position within the
-	// transformer. Both nodes share the same parent → same transform → the
-	// glyph renders exactly where the handle does, at the same constant
-	// screen-size, on every frame Konva repositions the handle (which already
-	// covers pan/zoom/rotate via the transformer's `absoluteTransformChange`
-	// listener on the selected node).
-	const syncRotateIcon = useCallback(
-		(rotater: Konva.Rect, visible: boolean) => {
-			const g = rotateIconRef.current;
-			if (!g) return;
-			g.position({ x: rotater.x?.() ?? 0, y: rotater.y?.() ?? 0 });
-			g.visible(visible);
-		},
-		[],
-	);
+	const { theme, themeRef } = useChromeTheme(stage, selectedIds);
+	const syncRotateIcon = useRotateIcon(transformerRef, stage, theme, themeRef);
+	const { sizeLabelRef, sizeTextRef, refreshSizeBadge, refreshAngleBadge } =
+		useTransformBadges(stage, selectionStore);
+	useTransformerNodeSync({
+		transformerRef,
+		stage,
+		selectedIds,
+		draggedKey,
+		viewportKey,
+		croppingId,
+		selectionStore,
+		draftStore,
+	});
+	const hoveredAnchorRef = useAnchorHoverHighlight({
+		transformerRef,
+		stage,
+		croppingId,
+		selectedIds,
+		themeRef,
+		transformingRef,
+	});
 
 	// Per-anchor styling: circular corners, pill edges, a circular rotate-icon
 	// handle, and theme-aware tinting. While transforming, show ONLY the active
@@ -328,162 +577,8 @@ export function CanvasTransformer(): React.JSX.Element | null {
 				hovered !== null && anchor.hasName(hovered) ? t.accent : t.surface,
 			);
 		},
-		[syncRotateIcon],
+		[syncRotateIcon, themeRef, hoveredAnchorRef],
 	);
-
-	// Park the badge just down-right of the cursor, in layer/design coords, and
-	// counter-scale it by the stage zoom so it keeps a constant on-screen size
-	// regardless of canvas scaling. `setPointersPositions` runs on every window
-	// mousemove of a resize/rotate drag, so the stage pointer is current — both
-	// the size and angle readouts follow the mouse this way.
-	const positionBadgeAtCursor = useCallback(() => {
-		const label = sizeLabelRef.current;
-		if (!stage || !label) return;
-		const inv = 1 / (stage.scaleX?.() || 1);
-		label.scale({ x: inv, y: inv });
-		label.offsetX(0); // anchor top-left near the cursor (not right-aligned)
-		const p = stage.getRelativePointerPosition?.();
-		if (p) label.position({ x: p.x + 18 * inv, y: p.y + 18 * inv });
-		label.getLayer()?.batchDraw();
-	}, [stage]);
-
-	// Live W/H readout while resizing — follows the cursor.
-	const refreshSizeBadge = useCallback(() => {
-		const label = sizeLabelRef.current;
-		const text = sizeTextRef.current;
-		if (!stage || !label || !text) return;
-		const box = selectionBox(
-			stage,
-			selectionStore.getState().selectedIds,
-			label.getLayer?.() ?? null,
-		);
-		if (!box) return;
-		text.text(`w: ${Math.round(box.width)}  h: ${Math.round(box.height)}`);
-		positionBadgeAtCursor();
-	}, [stage, selectionStore, positionBadgeAtCursor]);
-
-	// Live rotation readout while rotating — angle normalized to (-180, 180],
-	// follows the cursor.
-	const refreshAngleBadge = useCallback(() => {
-		const label = sizeLabelRef.current;
-		const text = sizeTextRef.current;
-		if (!stage || !label || !text) return;
-		const [firstId] = selectionStore.getState().selectedIds;
-		const node = firstId ? stage.findOne(`.${firstId}`) : null;
-		const angle = normalizeAngle(node?.rotation?.() ?? 0);
-		text.text(`${Math.round(angle)}°`);
-		positionBadgeAtCursor();
-	}, [stage, selectionStore, positionBadgeAtCursor]);
-
-	useEffect(() => {
-		const tr = transformerRef.current;
-		if (!stage || !tr) return;
-		const nodes: Konva.Node[] = [];
-		for (const id of selectedIds) {
-			const n = stage.findOne(`.${id}`);
-			if (n) nodes.push(n);
-		}
-		tr.nodes(nodes);
-		tr.getLayer?.()?.batchDraw?.();
-	}, [stage, selectedIds, draggedKey]);
-
-	// Re-sync the chrome to the canvas after a pan/zoom. The Transformer doesn't
-	// re-run on viewport changes, so its screen-space handles and the rotate icon
-	// (positioned/scaled imperatively via `anchorStyleFunc` → `syncRotateIcon`)
-	// otherwise go stale — jittering during a hand pan and flying off-screen on
-	// zoom until a click re-runs `update()`. Runs after commit, so the stage
-	// transform is already current; `update()` repositions every handle AND the
-	// icon together in one pass.
-	useEffect(() => {
-		transformerRef.current?.update?.();
-	}, [viewportKey, selectedIds, croppingId]);
-
-	// Hover feedback: the dragger under the cursor fills violet. Attached
-	// imperatively to the Transformer's anchor nodes (react-konva gives no JSX
-	// seam for them). Anchors persist for the Transformer's lifetime, so we
-	// (re)bind whenever the Transformer remounts (crop toggle) or selection
-	// changes. Namespaced events keep us from stripping Konva's own listeners.
-	useEffect(() => {
-		const tr = transformerRef.current;
-		if (!tr) return;
-		const anchors = (tr.find?.("._anchor") ?? []) as Konva.Rect[];
-		const enter = (e: Konva.KonvaEventObject<MouseEvent>) => {
-			const anchor = e.target as Konva.Rect;
-			const token = anchor.name().split(" ")[0] ?? null;
-			hoveredAnchorRef.current = token;
-			// The rotate handle is an icon button, never tinted.
-			if (!transformingRef.current && token !== "rotater") {
-				const t = themeRef.current;
-				setAnchorHovered(anchor, true, t.accent, t.surface);
-			}
-		};
-		const leave = (e: Konva.KonvaEventObject<MouseEvent>) => {
-			const anchor = e.target as Konva.Rect;
-			hoveredAnchorRef.current = null;
-			if (!transformingRef.current && !anchor.hasName("rotater")) {
-				const t = themeRef.current;
-				setAnchorHovered(anchor, false, t.accent, t.surface);
-			}
-		};
-		for (const a of anchors) {
-			a.on("mouseenter.akhover", enter);
-			a.on("mouseleave.akhover", leave);
-		}
-		return () => {
-			for (const a of anchors) a.off(".akhover");
-		};
-	}, [stage, croppingId, selectedIds]);
-
-	// During a move drag the dragged node is promoted onto the drag layer, which
-	// remounts its Konva node as a NEW instance. The drag runs on raw Konva
-	// pointer events (outside React's event system), so the rebind effect above
-	// fires asynchronously and gets starved by the move loop — leaving the
-	// Transformer bound to the stale (destroyed) node, so the selection box stops
-	// tracking the element (it stays at the original position). Subscribe to the
-	// draft store and re-point the Transformer at the live nodes *synchronously*
-	// on every move. This runs in the same tick as the node mutation (no React
-	// re-render, so the per-move drag-layer optimization is preserved).
-	//
-	// On move END the node DEMOTES back to the objects layer — another instance
-	// swap. The passive rebind effect above is meant to catch it, but it races
-	// react-konva's reconciler and can land on the just-detached drag-layer node,
-	// so a resize/rotate immediately after a move silently no-ops. Re-point once
-	// more on the next frame, after react-konva has committed the demote.
-	useEffect(() => {
-		if (!stage) return;
-		let raf = 0;
-		const repoint = () => {
-			const tr = transformerRef.current;
-			if (!tr) return;
-			const nodes: Konva.Node[] = [];
-			for (const id of selectionStore.getState().selectedIds) {
-				const n = stage.findOne(`.${id}`);
-				if (n) nodes.push(n);
-			}
-			tr.nodes(nodes);
-			tr.getLayer?.()?.batchDraw?.();
-		};
-		const sync = () => {
-			const draft = draftStore.getState().draft;
-			if (draft && draft.type === "move") {
-				repoint();
-				return;
-			}
-			// Draft cleared (or non-move): defer one frame so the demoted node has
-			// re-mounted on the objects layer before we re-point at the live node.
-			if (typeof requestAnimationFrame === "function") {
-				cancelAnimationFrame(raf);
-				raf = requestAnimationFrame(repoint);
-			} else {
-				repoint();
-			}
-		};
-		const unsubscribe = draftStore.subscribe(sync);
-		return () => {
-			if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf);
-			unsubscribe();
-		};
-	}, [stage, draftStore, selectionStore]);
 
 	const onTransformStart = useCallback(() => {
 		const tr = transformerRef.current;
@@ -499,14 +594,14 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		sizeLabelRef.current?.visible(true);
 		if (active === "rotater") refreshAngleBadge();
 		else refreshSizeBadge();
-	}, [refreshAngleBadge, refreshSizeBadge]);
+	}, [refreshAngleBadge, refreshSizeBadge, sizeLabelRef]);
 
 	const onTransform = useCallback(() => {
 		if (!transformingRef.current || !sizeLabelRef.current?.visible()) return;
 		if (activeAnchorName(transformerRef.current) === "rotater")
 			refreshAngleBadge();
 		else refreshSizeBadge();
-	}, [refreshAngleBadge, refreshSizeBadge]);
+	}, [refreshAngleBadge, refreshSizeBadge, sizeLabelRef]);
 
 	const onTransformEnd = useCallback(() => {
 		// Leave transform mode first: drop the size badge and restore every
@@ -525,118 +620,21 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		const childById = new Map(page.root.children.map((c) => [c.id, c]));
 		// Collect every node's resize/rotate command so a single gesture (incl.
 		// simultaneous resize + rotate, and multi-node transforms) is ONE undo entry.
-		const cmds: CanvasCommand[] = [];
-		for (const id of selectedIds) {
-			const knode = stage.findOne(`.${id}`) as Konva.Node | undefined;
-			const irNode = childById.get(id);
-			if (!knode || !irNode) continue;
-			// Locked nodes are protected from resize/rotate. If one slipped into
-			// the selection (e.g. via the layer panel) and the user dragged a
-			// handle anyway, reset the live Konva transform on commit and skip.
-			if (irNode.locked === true) {
-				knode.scaleX(1);
-				knode.scaleY(1);
-				knode.rotation(irNode.transform.rotation);
-				knode.x(irNode.transform.x);
-				knode.y(irNode.transform.y);
-				continue;
-			}
-			const { transform, bounds } = irNode;
-
-			const scaleX = knode.scaleX();
-			const scaleY = knode.scaleY();
-			const konvaX = knode.x();
-			const konvaY = knode.y();
-			const newRotation = knode.rotation();
-
-			if (SCALE_SIZED.has(irNode.type)) {
-				// Path/line: persist the Transformer's scale into the IR transform so
-				// the new size survives the commit (the renderer scales the geometry
-				// by `transform.scaleX/Y`). Don't reset the Konva scale — the
-				// re-render reapplies it from the IR. Position offset is 0 here.
-				const offset = nodeRenderOffset(irNode);
-				const nextX = konvaX - offset.x;
-				const nextY = konvaY - offset.y;
-				const changed =
-					Math.abs(scaleX - transform.scaleX) > EPSILON ||
-					Math.abs(scaleY - transform.scaleY) > EPSILON ||
-					Math.abs(nextX - transform.x) > EPSILON ||
-					Math.abs(nextY - transform.y) > EPSILON ||
-					Math.abs(newRotation - transform.rotation) > EPSILON;
-				if (changed) {
-					const cmd: CanvasAnyNodeUpdateCommand = {
-						type: "node.update",
-						nodeId: id,
-						kind: irNode.type,
-						patch: {
-							transform: {
-								...transform,
-								x: nextX,
-								y: nextY,
-								scaleX,
-								scaleY,
-								rotation: newRotation,
-							},
-						},
-					} as CanvasAnyNodeUpdateCommand;
-					cmds.push(cmd);
-				}
-				continue;
-			}
-
-			// Bounds-sized nodes (rect/ellipse/image/text/group): bake the scale
-			// into bounds and reset the Konva scale so the next transform starts
-			// from 1×.
-			knode.scaleX(1);
-			knode.scaleY(1);
-			const newW = bounds.width * scaleX;
-			const newH = bounds.height * scaleY;
-			// Konva.Ellipse positions by its CENTER, so `knode.x()` is the center.
-			// Convert back to the IR top-left using the NEW bounds, or a resized
-			// ellipse drifts by half its new size on commit.
-			const offset = nodeRenderOffset({
-				...irNode,
-				bounds: { width: newW, height: newH },
-			} as CanvasNode);
-			const newX = konvaX - offset.x;
-			const newY = konvaY - offset.y;
-
-			const boundsChanged =
-				Math.abs(newW - bounds.width) > EPSILON ||
-				Math.abs(newH - bounds.height) > EPSILON ||
-				Math.abs(newX - transform.x) > EPSILON ||
-				Math.abs(newY - transform.y) > EPSILON;
-			if (boundsChanged) {
-				const cmd: CanvasNodeResizeCommand = {
-					type: "node.resize",
-					nodeId: id,
-					from: {
-						x: transform.x,
-						y: transform.y,
-						width: bounds.width,
-						height: bounds.height,
-					},
-					to: { x: newX, y: newY, width: newW, height: newH },
-				};
-				cmds.push(cmd);
-			}
-
-			if (Math.abs(newRotation - transform.rotation) > EPSILON) {
-				const cmd: CanvasNodeRotateCommand = {
-					type: "node.rotate",
-					nodeId: id,
-					from: transform.rotation,
-					to: newRotation,
-				};
-				cmds.push(cmd);
-			}
-		}
+		const cmds = collectTransformEndCommands(stage, selectedIds, childById);
 		if (cmds.length > 1) {
 			commitBatch(cmds, "Transform");
 		} else if (cmds.length === 1 && cmds[0]) {
 			commit(cmds[0]);
 		}
-	}, [stage, selectedIds, getIR, commit, commitBatch, activePageId]);
+	}, [
+		stage,
+		selectedIds,
+		getIR,
+		commit,
+		commitBatch,
+		activePageId,
+		sizeLabelRef,
+	]);
 
 	if (croppingId) return null;
 	return (
@@ -659,9 +657,9 @@ export function CanvasTransformer(): React.JSX.Element | null {
 				anchorStyleFunc={anchorStyleFunc}
 			/>
 			{/* The rotate-icon glyph is created imperatively and added as a CHILD of
-			    the Transformer (see the rotateIcon effect below) so it inherits the
-			    transformer's screen-space transform — tracks the rotate handle
-			    atomically through pan/zoom/rotate with no cross-space drift. */}
+			    the Transformer (see `useRotateIcon`) so it inherits the transformer's
+			    screen-space transform — tracks the rotate handle atomically through
+			    pan/zoom/rotate with no cross-space drift. */}
 			{/* Live size readout while resizing (positioned imperatively). */}
 			<Label ref={sizeLabelRef} visible={false} listening={false}>
 				<Tag
