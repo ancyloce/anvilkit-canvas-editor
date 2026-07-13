@@ -467,8 +467,8 @@ function withTokenTextIR(fill: unknown, fontFamily: unknown): CanvasIR {
 	return ir;
 }
 
-describe("PropertyInspector — brand tokens (canvas-m1-013)", () => {
-	it("resolves a color/font token against the injected brandKit, with no unresolved title", () => {
+describe("PropertyInspector — brand tokens (canvas-m1-013, picker UI canvas-m2-007)", () => {
+	it("resolves a color/font token against the injected brandKit as a selected picker option, with no unresolved badge", () => {
 		const h = makeHarness({
 			ir: withTokenTextIR(
 				{ type: "brand-token", tokenType: "color", id: "brand.primary" },
@@ -478,19 +478,20 @@ describe("PropertyInspector — brand tokens (canvas-m1-013)", () => {
 		h.studioCtx.brandKit = TEST_BRAND_KIT;
 		h.studioCtx.selectionStore.getState().setSelection(["text-a"]);
 		const { container } = mount(h.studioCtx);
-		const fillInput = container.querySelector(
+		const fillTrigger = container.querySelector(
 			"[data-testid='prop-text-fill']",
-		) as HTMLInputElement;
-		const fontInput = container.querySelector(
+		);
+		const fontTrigger = container.querySelector(
 			"[data-testid='prop-font-family']",
-		) as HTMLInputElement;
-		expect(fillInput.defaultValue.toLowerCase()).toBe("#2563eb");
-		expect(fontInput.defaultValue).toBe("Inter");
-		expect(fillInput.closest("label")?.title).toBe("");
-		expect(fontInput.closest("label")?.title).toBe("");
+		);
+		expect(fillTrigger?.textContent).toContain("Primary");
+		expect(fontTrigger?.textContent).toContain("Inter");
+		expect(
+			container.querySelectorAll("[data-testid='prop-token-unresolved-badge']"),
+		).toHaveLength(0);
 	});
 
-	it("degrades an unresolved token to a neutral fallback + title affordance, without crashing", () => {
+	it("degrades an unresolved token to an unresolved badge, without crashing", () => {
 		const h = makeHarness({
 			ir: withTokenTextIR(
 				{ type: "brand-token", tokenType: "color", id: "does-not-exist" },
@@ -501,27 +502,16 @@ describe("PropertyInspector — brand tokens (canvas-m1-013)", () => {
 		h.studioCtx.selectionStore.getState().setSelection(["text-a"]);
 		expect(() => mount(h.studioCtx)).not.toThrow();
 		const { container } = mount(h.studioCtx);
-		const fillInput = container.querySelector(
-			"[data-testid='prop-text-fill']",
-		) as HTMLInputElement;
-		const fontInput = container.querySelector(
-			"[data-testid='prop-font-family']",
-		) as HTMLInputElement;
-		// Neutral deterministic fallback (ColorField's own default), not a crash.
-		expect(fillInput.defaultValue.toLowerCase()).toBe("#000000");
-		expect(fontInput.defaultValue).toBe("");
-		expect(fillInput.closest("label")?.title).toBe(
-			"Unresolved brand token — showing fallback",
-		);
-		expect(fontInput.closest("label")?.title).toBe(
-			"Unresolved brand token — showing fallback",
-		);
+		// Both the fill and font fields are unresolved tokens, so two badges render.
+		expect(
+			container.querySelectorAll("[data-testid='prop-token-unresolved-badge']"),
+		).toHaveLength(2);
 	});
 
-	// Deliverable #4: the inspector has no picker UI to write a token back — any
-	// edit through these commit-on-blur fields necessarily commits a plain
-	// literal, which naturally detaches the node from the token.
-	it("detaches to a literal color when editing a token-filled field", () => {
+	// Deliverable #5 (canvas-m2-007): detaching a token to a literal is now an
+	// EXPLICIT action (a "Detach" button), not an implicit side effect of
+	// editing a plain input — there is no plain input to edit while in token mode.
+	it("detaches to a literal color via the explicit Detach action", () => {
 		const h = makeHarness({
 			ir: withTokenTextIR(
 				{ type: "brand-token", tokenType: "color", id: "brand.primary" },
@@ -531,14 +521,14 @@ describe("PropertyInspector — brand tokens (canvas-m1-013)", () => {
 		h.studioCtx.brandKit = TEST_BRAND_KIT;
 		h.studioCtx.selectionStore.getState().setSelection(["text-a"]);
 		const { container } = mount(h.studioCtx);
-		const fillInput = container.querySelector(
-			"[data-testid='prop-text-fill']",
-		) as HTMLInputElement;
-		fireEvent.input(fillInput, { target: { value: "#00ff00" } });
-		fireEvent.blur(fillInput);
+		const detachButton = container.querySelector(
+			"[data-testid='prop-text-fill-detach']",
+		);
+		expect(detachButton).not.toBeNull();
+		fireEvent.click(detachButton as Element);
 		expect(h.commits).toHaveLength(1);
 		const cmd = h.commits[0] as CanvasNodeUpdateCommand<CanvasNodeKind>;
-		expect((cmd.patch as { fill?: unknown }).fill).toBe("#00ff00");
+		expect((cmd.patch as { fill?: unknown }).fill).toBe("#2563eb");
 	});
 
 	// FillAndShadowFields (shared by rect/ellipse/polygon/star/frame) reads
@@ -557,14 +547,14 @@ describe("PropertyInspector — brand tokens (canvas-m1-013)", () => {
 		} as never;
 		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
 		const { container } = mount(h.studioCtx);
-		const fillInput = container.querySelector(
-			"[data-testid='prop-fill']",
-		) as HTMLInputElement;
-		expect(fillInput.defaultValue.toLowerCase()).toBe("#2563eb");
-		expect(fillInput.closest("label")?.title).toBe("");
+		const fillTrigger = container.querySelector("[data-testid='prop-fill']");
+		expect(fillTrigger?.textContent).toContain("Primary");
+		expect(
+			container.querySelectorAll("[data-testid='prop-token-unresolved-badge']"),
+		).toHaveLength(0);
 	});
 
-	it("flags an unresolved rect fill token with the title affordance, without crashing", () => {
+	it("flags an unresolved rect fill token with an unresolved badge, without crashing", () => {
 		const h = makeHarness({ ir: withRectIR() });
 		h.studioCtx.brandKit = TEST_BRAND_KIT;
 		const rectIR = h.ir.pages[0]?.root.children[0];
@@ -578,13 +568,9 @@ describe("PropertyInspector — brand tokens (canvas-m1-013)", () => {
 		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
 		expect(() => mount(h.studioCtx)).not.toThrow();
 		const { container } = mount(h.studioCtx);
-		const fillInput = container.querySelector(
-			"[data-testid='prop-fill']",
-		) as HTMLInputElement;
-		expect(fillInput.defaultValue.toLowerCase()).toBe("#000000");
-		expect(fillInput.closest("label")?.title).toBe(
-			"Unresolved brand token — showing fallback",
-		);
+		expect(
+			container.querySelectorAll("[data-testid='prop-token-unresolved-badge']"),
+		).toHaveLength(1);
 	});
 });
 

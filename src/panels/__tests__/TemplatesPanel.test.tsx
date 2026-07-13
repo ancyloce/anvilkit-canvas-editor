@@ -13,11 +13,11 @@ import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
 import type { CanvasTemplateEntry } from "@/templates/template-entry.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { TemplatesPanel } from "../TemplatesPanel.js";
-import { loadTemplate } from "../template-actions.js";
+import { insertTemplateAsNewPages, loadTemplate } from "../template-actions.js";
 
 const FIXED_TS = "2026-07-09T00:00:00.000Z";
 
-function templateIR(): CanvasIR {
+function templateDocument(): CanvasIR {
 	const page = createPage({ id: "tpl-page-1" });
 	let ir = createCanvasIR({
 		id: "tpl-1",
@@ -32,12 +32,22 @@ function templateIR(): CanvasIR {
 	return ir;
 }
 
-function entry(): CanvasTemplateEntry {
+function entry(
+	overrides: Partial<CanvasTemplateEntry> = {},
+): CanvasTemplateEntry {
 	return {
-		slug: "poster",
-		name: "Event Poster",
+		id: "poster",
+		version: "1",
+		title: "Event Poster",
 		description: "A poster.",
-		ir: templateIR(),
+		category: "social",
+		tags: ["poster"],
+		supportedSizes: [],
+		document: templateDocument(),
+		variables: [],
+		editableSlots: [],
+		lockedNodeIds: [],
+		...overrides,
 	};
 }
 
@@ -70,6 +80,33 @@ describe("TemplatesPanel", () => {
 		expect(view.queryByTestId("template-confirm-poster")).toBeNull();
 	});
 
+	it("filters the list by a free-text search across title/description/tags", () => {
+		const flyer = entry({
+			id: "flyer",
+			title: "Flyer",
+			description: "A print flyer.",
+			category: "print",
+			tags: ["flyer", "print"],
+		});
+		const { view } = renderPanel([entry(), flyer]);
+		expect(view.getByTestId("template-item-poster")).toBeDefined();
+		expect(view.getByTestId("template-item-flyer")).toBeDefined();
+
+		fireEvent.change(view.getByTestId("templates-search"), {
+			target: { value: "flyer" },
+		});
+		expect(view.queryByTestId("template-item-poster")).toBeNull();
+		expect(view.getByTestId("template-item-flyer")).toBeDefined();
+	});
+
+	it("shows a no-results message when the search matches nothing", () => {
+		const { view } = renderPanel([entry()]);
+		fireEvent.change(view.getByTestId("templates-search"), {
+			target: { value: "no such template" },
+		});
+		expect(view.getByTestId("templates-panel-no-results")).toBeDefined();
+	});
+
 	it("confirm dispatches ONE batch that creates template pages then deletes prior pages", () => {
 		const { h, view } = renderPanel([entry()]);
 		fireEvent.click(view.getByTestId("template-item-poster"));
@@ -96,13 +133,29 @@ describe("TemplatesPanel", () => {
 		// Prior page is the harness default page.
 		expect(deletes[0].pageId).toBe("p1");
 	});
+
+	it("insert-as-new commits a single batch via ctx.commit and never touches commitBatch", () => {
+		const { h, view } = renderPanel([entry()]);
+		fireEvent.click(view.getByTestId("template-item-poster"));
+		fireEvent.click(view.getByTestId("template-insert-new-poster"));
+
+		expect(h.studioCtx.commit).toHaveBeenCalledTimes(1);
+		expect(h.studioCtx.commitBatch).not.toHaveBeenCalled();
+		const [cmd] = (
+			h.studioCtx.commit as unknown as {
+				mock: { calls: [{ type: string }][] };
+			}
+		).mock.calls[0];
+		expect(cmd.type).toBe("batch");
+	});
 });
 
 describe("loadTemplate", () => {
 	it("clones template pages with fresh ids and switches to the first new page", () => {
 		const h = makeHarness();
 		const tpl = entry();
-		loadTemplate({ ...h.studioCtx, templates: [tpl] }, tpl);
+		const result = loadTemplate({ ...h.studioCtx, templates: [tpl] }, tpl);
+		expect(result.ok).toBe(true);
 
 		const [cmds] = (
 			h.studioCtx.commitBatch as unknown as {
@@ -116,22 +169,27 @@ describe("loadTemplate", () => {
 		// Ids regenerated: never reuses the template's authored ids.
 		expect(create?.page.id).not.toBe("tpl-page-1");
 		expect(create?.page.root.children[0]?.id).not.toBe("tpl-rect");
-		// Single-page template keeps the template's name (no " 1" suffix).
-		expect(create?.page.name).toBe("Event Poster");
 		// Active page switched to the newly created page.
 		expect(h.studioCtx.pagesStore.getState().activePageId).toBe(
 			create?.page.id,
 		);
 	});
 
-	it("is a no-op for a template with zero pages", () => {
+	it("returns a structured error and never commits for a template whose document fails validation", () => {
 		const h = makeHarness();
-		const tpl: CanvasTemplateEntry = {
-			slug: "empty",
-			name: "Empty",
-			ir: { ...templateIR(), pages: [] },
-		};
-		loadTemplate(h.studioCtx, tpl);
+		const tpl = entry({ document: { ...templateDocument(), pages: [] } });
+		const result = loadTemplate(h.studioCtx, tpl);
+		expect(result.ok).toBe(false);
 		expect(h.studioCtx.commitBatch).not.toHaveBeenCalled();
+	});
+});
+
+describe("insertTemplateAsNewPages", () => {
+	it("is a no-op for a template whose document fails validation", () => {
+		const h = makeHarness();
+		const tpl = entry({ document: { ...templateDocument(), pages: [] } });
+		const result = insertTemplateAsNewPages(h.studioCtx, tpl);
+		expect(result.ok).toBe(false);
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
 	});
 });

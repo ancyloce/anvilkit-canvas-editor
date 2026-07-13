@@ -22,6 +22,13 @@ import {
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { Switch } from "@anvilkit/ui/components/animate-ui/components/base/switch";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@anvilkit/ui/select";
 import { useSyncExternalStore } from "react";
 import type { BrandKit } from "../brand/brand-kit.js";
 import { EMPTY_BRAND_KIT } from "../brand/brand-kit.js";
@@ -57,6 +64,10 @@ import {
 	useCommitPatch,
 } from "./fields.js";
 import { FillAndShadowFields } from "./fill-shadow-fields.js";
+import {
+	TokenAwareColorField,
+	TokenAwareFontField,
+} from "./token-aware-fields.js";
 
 export interface PropertyInspectorProps {
 	id?: string;
@@ -241,7 +252,13 @@ function renderTypeSpecificFields(
 		case "group":
 			return renderGroupFields(node, t);
 		case "frame":
-			return renderFrameFields(node, commitPatch, ctx, t);
+			return renderFrameFields(
+				node,
+				commitPatch,
+				ctx,
+				ctx.brandKit ?? EMPTY_BRAND_KIT,
+				t,
+			);
 		case "ai-placeholder":
 			return null;
 		default: {
@@ -440,23 +457,14 @@ function renderTextFields(
 	t: CanvasT,
 ): React.JSX.Element {
 	// fontFamily/fill may be a brand-token ref (canvas-m1-013): resolve for
-	// display so a token never crashes a `string`-typed field; editing either
-	// field always commits a plain literal (the fields never re-wrap into a
-	// token), which is the natural "detach" behavior. `unresolved` flags a
-	// token that couldn't resolve (vs. simply absent) with a title tooltip —
-	// the minimal affordance; there is no new picker UI (FR-033 is out of
-	// scope for this task).
+	// display so a token never crashes a `string`-typed field. Token-aware
+	// picker UI (choose literal or brand token, explicit detach) lands in
+	// canvas-m2-007 (FR-033) via `TokenAwareFontField`/`TokenAwareColorField`.
 	const fontFamilyResolved = resolveFontFamilyForDisplay(
 		node.fontFamily,
 		brandKit,
 	);
 	const fillResolved = resolveFillForDisplay(node.fill, brandKit);
-	const fontFamily = fontFamilyResolved.value;
-	const fill = fillResolved.value;
-	const unresolvedTitle = t(
-		"canvas.inspector.unresolvedToken",
-		"Unresolved brand token — showing fallback",
-	);
 	return (
 		<Section title={t("canvas.inspector.text", "Text")}>
 			<TextField
@@ -465,12 +473,15 @@ function renderTextFields(
 				dataTestId="prop-text"
 				onCommit={(v) => commitPatch(node, { text: v })}
 			/>
-			<TextField
+			<TokenAwareFontField
 				label={t("canvas.inspector.font", "Font")}
-				value={fontFamily ?? ""}
+				rawValue={node.fontFamily}
+				resolvedValue={fontFamilyResolved.value}
+				unresolved={fontFamilyResolved.unresolved}
+				fonts={brandKit.fonts}
 				dataTestId="prop-font-family"
 				onCommit={(v) => commitPatch(node, { fontFamily: v })}
-				title={fontFamilyResolved.unresolved ? unresolvedTitle : undefined}
+				t={t}
 			/>
 			<NumberField
 				label={t("canvas.inspector.size", "Size")}
@@ -479,12 +490,19 @@ function renderTextFields(
 				dataTestId="prop-font-size"
 				onCommit={(v) => commitPatch(node, { fontSize: v })}
 			/>
-			<ColorField
+			<TokenAwareColorField
 				label={t("canvas.inspector.color", "Color")}
-				value={typeof fill === "string" ? fill : undefined}
+				rawValue={node.fill}
+				resolvedValue={
+					typeof fillResolved.value === "string"
+						? fillResolved.value
+						: undefined
+				}
+				unresolved={fillResolved.unresolved}
+				colors={brandKit.colors}
 				dataTestId="prop-text-fill"
 				onCommit={(v) => commitPatch(node, { fill: v })}
-				title={fillResolved.unresolved ? unresolvedTitle : undefined}
+				t={t}
 			/>
 		</Section>
 	);
@@ -517,10 +535,6 @@ function renderRichTextFields(
 	const fillResolved = resolveFillForDisplay(style.fill, brandKit);
 	const fontFamily = fontFamilyResolved.value;
 	const fill = fillResolved.value;
-	const unresolvedTitle = t(
-		"canvas.inspector.unresolvedToken",
-		"Unresolved brand token — showing fallback",
-	);
 	const align = firstParagraph?.align ?? DEFAULT_RICH_TEXT_STYLE.align;
 	const lineHeight =
 		firstParagraph?.lineHeight ?? DEFAULT_RICH_TEXT_STYLE.lineHeight;
@@ -635,12 +649,15 @@ function renderRichTextFields(
 				/>
 			</Section>
 			<Section title={t("canvas.inspector.span", "Text style")}>
-				<TextField
+				<TokenAwareFontField
 					label={t("canvas.inspector.font", "Font")}
-					value={fontFamily ?? ""}
+					rawValue={style.fontFamily}
+					resolvedValue={fontFamily}
+					unresolved={fontFamilyResolved.unresolved}
+					fonts={brandKit.fonts}
 					dataTestId="prop-rich-text-font-family"
 					onCommit={(v) => commitAllSpans({ fontFamily: v })}
-					title={fontFamilyResolved.unresolved ? unresolvedTitle : undefined}
+					t={t}
 				/>
 				<NumberField
 					label={t("canvas.inspector.size", "Size")}
@@ -662,12 +679,15 @@ function renderRichTextFields(
 					dataTestId="prop-rich-text-letter-spacing"
 					onCommit={(v) => commitAllSpans({ letterSpacing: v })}
 				/>
-				<ColorField
+				<TokenAwareColorField
 					label={t("canvas.inspector.color", "Color")}
-					value={typeof fill === "string" ? fill : undefined}
+					rawValue={style.fill}
+					resolvedValue={typeof fill === "string" ? fill : undefined}
+					unresolved={fillResolved.unresolved}
+					colors={brandKit.colors}
 					dataTestId="prop-rich-text-fill"
 					onCommit={(v) => commitAllSpans({ fill: v })}
-					title={fillResolved.unresolved ? unresolvedTitle : undefined}
+					t={t}
 				/>
 				<FieldRow label={t("canvas.inspector.italic", "Italic")}>
 					<Switch
@@ -885,11 +905,13 @@ function renderFrameFields(
 	node: CanvasFrameNode,
 	commitPatch: CommitPatch,
 	ctx: CanvasStudioContextValue,
+	brandKit: BrandKit,
 	t: CanvasT,
 ): React.JSX.Element {
 	// Only an image WELL (a frame carrying a placeholder) gets image controls; a
 	// plain frame is just a container and has no single image to replace.
 	const well = isImageWell(node) ? wellImage(node) : undefined;
+	const logos = brandKit.logos ?? [];
 	return (
 		<Section title={t("canvas.inspector.frame", "Frame")}>
 			<FieldRow label={t("canvas.inspector.imageWell", "Image well")}>
@@ -933,6 +955,54 @@ function renderFrameFields(
 						>
 							{t("canvas.inspector.resetCrop", "Reset crop")}
 						</Button>
+					) : null}
+					{logos.length > 0 ? (
+						<FieldRow label={t("canvas.inspector.brandLogo", "Brand logo")}>
+							<Select
+								items={logos.map((logo) => ({
+									value: logo.id,
+									label: logo.name,
+								}))}
+								value={
+									node.placeholder?.assetToken?.tokenType === "logo"
+										? node.placeholder.assetToken.id
+										: undefined
+								}
+								onValueChange={(next) => {
+									if (!next) return;
+									commitPatch(node, {
+										placeholder: {
+											...node.placeholder,
+											kind: "logo",
+											assetToken: {
+												type: "brand-token",
+												tokenType: "logo",
+												id: next,
+											},
+										},
+									});
+								}}
+							>
+								<SelectTrigger
+									data-testid="prop-frame-logo"
+									className="h-7.5 flex-1"
+								>
+									<SelectValue
+										placeholder={t(
+											"canvas.inspector.chooseBrandLogo",
+											"Choose a brand logo",
+										)}
+									/>
+								</SelectTrigger>
+								<SelectContent>
+									{logos.map((logo) => (
+										<SelectItem key={logo.id} value={logo.id}>
+											{logo.name}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</FieldRow>
 					) : null}
 				</>
 			) : null}

@@ -15,6 +15,7 @@ import {
 	FieldRow,
 	NumberField,
 } from "./fields.js";
+import { TokenAwareColorField } from "./token-aware-fields.js";
 
 type FillKind = "solid" | "linear" | "radial";
 
@@ -74,8 +75,8 @@ export function FillAndShadowFields({
 }): React.JSX.Element {
 	// `fill` may be a brand-token ref (canvas-m1-013): resolve it FIRST so
 	// every read below sees only a plain color or a gradient, never a
-	// `BrandTokenRef`. An unresolved token gets a title/tooltip affordance on
-	// the solid color swatch — the minimal signal; no new picker UI.
+	// `BrandTokenRef`. A solid fill gets the full token-aware picker
+	// (canvas-m2-007); an unresolved token shows a visible badge there.
 	const brandKit = useBrandKit();
 	const fillDisplay = resolveFillForDisplay(fill, brandKit);
 	const resolvedFill = fillDisplay.value;
@@ -83,12 +84,6 @@ export function FillAndShadowFields({
 	const kind: FillKind = grad?.kind ?? "solid";
 	const solidColor =
 		typeof resolvedFill === "string" ? resolvedFill : "#000000";
-	const unresolvedFillTitle = fillDisplay.unresolved
-		? t(
-				"canvas.inspector.unresolvedToken",
-				"Unresolved brand token — showing fallback",
-			)
-		: undefined;
 
 	const commitFill = (next: CanvasFill): void => {
 		commitPatch(node, { [fillKey]: next });
@@ -197,12 +192,17 @@ export function FillAndShadowFields({
 					</Button>
 				</>
 			) : (
-				<ColorField
+				<TokenAwareColorField
 					label={t("canvas.inspector.fill", "Fill")}
-					value={typeof resolvedFill === "string" ? resolvedFill : undefined}
+					rawValue={fill}
+					resolvedValue={
+						typeof resolvedFill === "string" ? resolvedFill : undefined
+					}
+					unresolved={fillDisplay.unresolved}
+					colors={brandKit.colors}
 					dataTestId="prop-fill"
-					onCommit={(v) => commitFill(v)}
-					title={unresolvedFillTitle}
+					onCommit={commitFill}
+					t={t}
 				/>
 			)}
 			{showShadow ? (
