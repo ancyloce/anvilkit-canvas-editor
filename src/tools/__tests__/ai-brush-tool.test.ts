@@ -60,6 +60,7 @@ describe("aiBrushTool", () => {
 		expect(intent.context).toEqual({
 			artboardId: "p1",
 			selectedNodeId: "imgA",
+			selectedNodeKind: "image",
 			bounds: { x: 30, y: 40, width: 120, height: 80 },
 		});
 		expect(h.commits).toHaveLength(0); // intent is not a command

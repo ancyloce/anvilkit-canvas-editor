@@ -53,6 +53,7 @@ export const aiBrushTool: Tool = {
 		const context: AiLayerContext = {
 			artboardId: ctx.activePageId,
 			selectedNodeId: node.id,
+			selectedNodeKind: node.type,
 			bounds: getNodeWorldRect(node),
 		};
 		ctx.requestAiIntent?.({
