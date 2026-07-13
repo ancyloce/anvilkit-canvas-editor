@@ -40,7 +40,7 @@ export interface ClonePageOptions {
 
 /**
  * Deep-clone a CanvasPage with a brand-new page id and fresh ids on every
- * descendant node. Uses structured JSON cloning — safe because the IR is
+ * descendant node. Uses `structuredClone` — safe because the IR is
  * pure data (per `CanvasNode` types in `@anvilkit/canvas-core`).
  *
  * The original `page` is not mutated. The returned page has:
@@ -52,7 +52,7 @@ export function clonePage(
 	page: CanvasPage,
 	opts: ClonePageOptions = {},
 ): CanvasPage {
-	const cloned = JSON.parse(JSON.stringify(page)) as CanvasPage;
+	const cloned = structuredClone(page);
 	cloned.id = freshId();
 	const baseName = page.name ?? "Page";
 	cloned.name = opts.name ?? `${baseName} copy`;

@@ -68,14 +68,13 @@ export function PageNavigator({
 
 	// Bail out of rename mode if the page being renamed disappears (e.g. it was
 	// deleted by another action). Otherwise the input would commit a name onto
-	// a stale id.
-	useEffect(() => {
-		if (renamingPageId === null) return;
-		if (!pages.some((p) => p.id === renamingPageId)) {
-			setRenamingPageId(null);
-			setRenamingValue("");
-		}
-	}, [renamingPageId, pages]);
+	// a stale id. Adjusted during render (guarded, so it can't loop) rather than
+	// in an effect, so the input unmounts in the same pass instead of one render
+	// later: https://react.dev/learn/you-might-not-need-an-effect
+	if (renamingPageId !== null && !pages.some((p) => p.id === renamingPageId)) {
+		setRenamingPageId(null);
+		setRenamingValue("");
+	}
 
 	const commitRename = useCallback(() => {
 		if (renamingPageId === null) return;

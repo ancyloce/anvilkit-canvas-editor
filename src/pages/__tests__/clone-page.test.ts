@@ -161,7 +161,7 @@ describe("clonePage", () => {
 
 	it("does not mutate the original page", () => {
 		const original = fixture();
-		const snapshot = JSON.parse(JSON.stringify(original));
+		const snapshot = structuredClone(original);
 		clonePage(original);
 		expect(original).toEqual(snapshot);
 	});
