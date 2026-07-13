@@ -416,13 +416,31 @@ export function CanvasStudio({
 	renderShell,
 	children,
 }: CanvasStudioProps): React.JSX.Element {
-	const [sceneStore] = useState(() => createSceneStore({ initialIR }));
+	const {
+		sceneStore,
+		historyStore,
+		toolStore,
+		selectionStore,
+		focusStore,
+		viewportStore,
+		pagesStore,
+		guidesStore,
+		draftStore,
+		editingStore,
+		aiJobStore,
+		cropStore,
+		penStore,
+		pathEditStore,
+	} = useEditorStores({ initialIR, initialActivePageId, initialTool });
 	const ir = useSyncExternalStore(
 		sceneStore.subscribe,
 		() => sceneStore.getState().ir,
 		() => sceneStore.getState().ir,
 	);
 	const [stage, setStage] = useState<Konva.Stage | null>(null);
+	// Inline mirror (not `useHostCallbackRef`): the unmount teardown below must
+	// read the ref in its cleanup, and only a component-local `useRef` is
+	// provably stable there.
 	const onStageReadyRef = useRef(onStageReady);
 	useEffect(() => {
 		onStageReadyRef.current = onStageReady;
@@ -437,29 +455,16 @@ export function CanvasStudio({
 		};
 	}, []);
 
-	const [historyStore] = useState(() => createHistoryStore());
-	const [toolStore] = useState(() => createToolStore({ initialTool }));
-	const [selectionStore] = useState(() => createSelectionStore());
-	const [focusStore] = useState(() => createFocusStore());
-	const [viewportStore] = useState(() => createViewportStore());
-	const [pagesStore] = useState(() =>
-		createPagesStore({
-			initialActivePageId: initialActivePageId ?? initialIR.pages[0]?.id ?? "",
-		}),
-	);
 	const activePageId = useSyncExternalStore(
 		pagesStore.subscribe,
 		() => pagesStore.getState().activePageId,
 		() => pagesStore.getState().activePageId,
 	);
 
-	const onActivePageChangeRef = useRef(onActivePageChange);
-	useEffect(() => {
-		onActivePageChangeRef.current = onActivePageChange;
-	}, [onActivePageChange]);
+	const onActivePageChangeRef = useHostCallbackRef(onActivePageChange);
 	useEffect(() => {
 		onActivePageChangeRef.current?.(activePageId);
-	}, [activePageId]);
+	}, [activePageId, onActivePageChangeRef]);
 
 	// Subscribe so viewportStore changes (hand-tool pan, zoom) re-render
 	// <CanvasStage> with the new transform.
@@ -478,74 +483,15 @@ export function CanvasStudio({
 		() => viewportStore.getState().panY,
 		() => viewportStore.getState().panY,
 	);
-	const [guidesStore] = useState(() => createGuidesStore());
-	const [draftStore] = useState(() => createDraftStore());
-	const [editingStore] = useState(() => createEditingStore());
-	const [aiJobStore] = useState(() => createAiJobStore());
-	const [cropStore] = useState(() => createCropStore());
-	const [penStore] = useState(() => createPenStore());
-	const [pathEditStore] = useState(() => createPathEditStore());
-
-	const onChangeRef = useRef(onChange);
-	const onChangesRef = useRef(onChanges);
-	const onPickAssetRef = useRef(onPickAsset);
-	const onAiIntentRef = useRef(onAiIntent);
-	useEffect(() => {
-		onChangeRef.current = onChange;
-	}, [onChange]);
-	useEffect(() => {
-		onChangesRef.current = onChanges;
-	}, [onChanges]);
-	useEffect(() => {
-		onPickAssetRef.current = onPickAsset;
-	}, [onPickAsset]);
-	useEffect(() => {
-		onAiIntentRef.current = onAiIntent;
-	}, [onAiIntent]);
-
-	const commit = useCallback(
-		(cmd: CanvasCommand): CanvasIR => {
-			const next = historyStore
-				.getState()
-				.commit(sceneStore.getState().ir, cmd);
-			sceneStore.getState().setIR(next);
-			onChangeRef.current?.(next, cmd);
-			if (onChangesRef.current) {
-				const change = commandToChange(cmd);
-				onChangesRef.current(change ? [change] : [], next);
-			}
-			return next;
-		},
-		[historyStore, sceneStore],
+	const { commit, commitBatch, getIR } = useCommitPipeline(
+		sceneStore,
+		historyStore,
+		onChange,
+		onChanges,
 	);
 
-	// Apply many commands as ONE undo entry (multi-select move, transform commit,
-	// ungroup). Fires onChange (with the composite batch command) and onChanges once.
-	const commitBatch = useCallback(
-		(commands: readonly CanvasCommand[], label?: string): CanvasIR => {
-			if (commands.length === 0) return sceneStore.getState().ir;
-			const next = historyStore
-				.getState()
-				.commitBatch(sceneStore.getState().ir, commands, label);
-			sceneStore.getState().setIR(next);
-			const batchCmd: CanvasCommand = {
-				type: "batch",
-				...(label !== undefined ? { label } : {}),
-				commands: [...commands],
-			};
-			onChangeRef.current?.(next, batchCmd);
-			if (onChangesRef.current) {
-				const changes = commands
-					.map(commandToChange)
-					.filter((c): c is CanvasChange => c !== null);
-				onChangesRef.current(changes, next);
-			}
-			return next;
-		},
-		[historyStore, sceneStore],
-	);
-
-	const getIR = useCallback(() => sceneStore.getState().ir, [sceneStore]);
+	const onPickAssetRef = useHostCallbackRef(onPickAsset);
+	const onAiIntentRef = useHostCallbackRef(onAiIntent);
 
 	const pickAsset = useCallback(async () => {
 		const fn = onPickAssetRef.current;
@@ -555,13 +501,16 @@ export function CanvasStudio({
 			);
 		}
 		return fn();
-	}, []);
+	}, [onPickAssetRef]);
 
 	// Stable seam for the AI tools (I1-7). Always defined; a no-op when no host
 	// wired `onAiIntent`. The AI tools call it on gesture completion.
-	const requestAiIntent = useCallback((intent: AiToolIntent) => {
-		onAiIntentRef.current?.(intent);
-	}, []);
+	const requestAiIntent = useCallback(
+		(intent: AiToolIntent) => {
+			onAiIntentRef.current?.(intent);
+		},
+		[onAiIntentRef],
+	);
 
 	// I2-5: cache idle static groups on the active page as bitmaps. Renders
 	// nothing; clears a group's cache the moment it is selected/edited/dragged.
@@ -692,70 +641,25 @@ export function CanvasStudio({
 			</div>
 		);
 	}
-	// The stage box scales with zoom so the page grows/shrinks as a whole and
-	// Konva pointer mapping stays correct (scaleX=zoom over a zoom-sized box).
-	// At zoom = 1 this is the page's natural pixel size (unchanged). This is
-	// what lets the multi-page workspace scale every page uniformly via zoom.
-	const stageWidth = (width ?? activePage.size.width) * zoom;
-	const stageHeight = (height ?? activePage.size.height) * zoom;
 	// The Konva stage + its overlays. Computed once so it can be slotted either
 	// into the legacy bare layout or anywhere a `renderShell` decides to place
 	// it (e.g. the centre column of the reference editor grid).
 	const stageNode = (
-		<CanvasErrorBoundary
-			label={t("canvas.error.canvas", "The canvas failed to render.")}
-			resetKey={activePageId}
-		>
-			<CanvasAssetsContext.Provider value={ir.assets}>
-				<CanvasBrandKitContext.Provider value={brandKit ?? EMPTY_BRAND_KIT}>
-					<CanvasStage
-						width={stageWidth}
-						height={stageHeight}
-						zoom={zoom}
-						panX={panX}
-						panY={panY}
-						onReady={handleStageReady}
-					>
-						<RenderLayer name="background" listening={false}>
-							<DesignBackground />
-							<Grid />
-						</RenderLayer>
-						<RenderLayer name="objects">
-							{activePage.root.children.flatMap((node) =>
-								draggedIds.has(node.id)
-									? []
-									: [<CanvasNodeRenderer key={node.id} node={node} />],
-							)}
-						</RenderLayer>
-						{/* I2-5: dragged nodes float on their own layer so only it
-				    redraws during a drag; the (cached) objects layer stays put. */}
-						<RenderLayer name="drag">
-							{activePage.root.children.flatMap((node) =>
-								draggedIds.has(node.id)
-									? [<CanvasNodeRenderer key={node.id} node={node} />]
-									: [],
-							)}
-						</RenderLayer>
-						<RenderLayer name="selection">
-							<DraftRenderer />
-							<SmartGuideOverlay />
-							<PenPreview />
-							<PathEditOverlay />
-							<CanvasTransformer />
-							<CanvasFocusRing />
-						</RenderLayer>
-						<RenderLayer name="presence" listening={false}>
-							<RemoteCursors />
-							<RemoteSelections />
-						</RenderLayer>
-					</CanvasStage>
-					<ToolInteractionLayer registry={effectiveToolRegistry} />
-					<TextEditorOverlay />
-					<CropEditorOverlay />
-					<PenToolOverlay />
-				</CanvasBrandKitContext.Provider>
-			</CanvasAssetsContext.Provider>
-		</CanvasErrorBoundary>
+		<EditorStage
+			t={t}
+			activePage={activePage}
+			activePageId={activePageId}
+			assets={ir.assets}
+			brandKit={brandKit}
+			width={width}
+			height={height}
+			zoom={zoom}
+			panX={panX}
+			panY={panY}
+			onStageReady={handleStageReady}
+			draggedIds={draggedIds}
+			toolRegistry={effectiveToolRegistry}
+		/>
 	);
 	return (
 		<CanvasStudioContext value={ctxValue}>
