@@ -22,6 +22,7 @@ import {
 	type CanvasStudioContextValue,
 } from "@/context/canvas-studio-context.js";
 import { LayerPanel } from "@/panels/LayerPanel.js";
+import { PropertyInspector } from "@/panels/PropertyInspector.js";
 import { createFocusStore } from "@/stores/focus-store.js";
 import { createSelectionStore } from "@/stores/selection-store.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
@@ -98,6 +99,36 @@ describe("a11y — axe scans (canvas-m0-012)", () => {
 		const { container } = render(
 			<CanvasStudioContext.Provider value={h.studioCtx}>
 				<LayerPanel />
+			</CanvasStudioContext.Provider>,
+		);
+		await expectNoViolations(container);
+	});
+
+	// canvas-m2-007 (FR-033): the token-aware color/font pickers are new
+	// interactive controls — scan a selected rect with a brand kit configured
+	// so both the picker (token-mode) and the missing-token badge render.
+	it("PropertyInspector's token-aware color picker has no axe violations", async () => {
+		const rect = createRect({
+			id: "a",
+			bounds: { width: 10, height: 10 },
+			fill: { type: "brand-token", tokenType: "color", id: "primary" } as never,
+		});
+		const page = createPage({ id: "p1" });
+		page.root = createGroup({
+			id: "p1-root",
+			bounds: page.root.bounds,
+			children: [rect],
+		});
+		const ir = createCanvasIR({ id: "ir-pi", pages: [page], now: () => "T" });
+		const h = makeHarness({ ir });
+		h.studioCtx.brandKit = {
+			colors: [{ id: "primary", name: "Primary", value: "#2563eb" }],
+			fonts: ["Inter"],
+		};
+		h.studioCtx.selectionStore.getState().setSelection(["a"]);
+		const { container } = render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<PropertyInspector />
 			</CanvasStudioContext.Provider>,
 		);
 		await expectNoViolations(container);

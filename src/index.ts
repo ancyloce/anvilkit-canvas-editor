@@ -16,7 +16,10 @@
 export { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
 // ── Brand kit ────────────────────────────────────────────────────────────────
 export type { BrandColor, BrandKit } from "./brand/brand-kit.js";
-export { EMPTY_BRAND_KIT } from "./brand/brand-kit.js";
+export {
+	brandKitDefinitionToBrandKit,
+	EMPTY_BRAND_KIT,
+} from "./brand/brand-kit.js";
 // Resolve a `BrandTokenRef` the SAME way the stage does — pass
 // `(ref) => resolveBrandToken(ref, brandKit)` to core's SVG serializer's
 // `resolveBrandToken` option so a host's SVG export agrees with the canvas.
@@ -25,6 +28,10 @@ export {
 	useBrandColors,
 	useBrandFonts,
 	useBrandKit,
+	useBrandKitDefinition,
+	useBrandLogos,
+	useBrandRules,
+	useBrandTypography,
 } from "./brand/use-brand-kit.js";
 export {
 	CanvasErrorBoundary,
@@ -106,7 +113,11 @@ export {
 	type PropertyInspectorProps,
 } from "./panels/PropertyInspector.js";
 export { TemplatesPanel } from "./panels/TemplatesPanel.js";
-export { loadTemplate } from "./panels/template-actions.js";
+export type { TemplateActionResult } from "./panels/template-actions.js";
+export {
+	insertTemplateAsNewPages,
+	loadTemplate,
+} from "./panels/template-actions.js";
 // ── Render utilities (host export bridges) ───────────────────────────────────
 export type { ExportStageContentOptions } from "./render/export-stage.js";
 export { exportStageContentDataURL } from "./render/export-stage.js";
