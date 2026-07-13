@@ -70,6 +70,8 @@ export function SceneAccessibilityTree(): React.JSX.Element {
 
 	const page = ctx.ir.pages.find((p) => p.id === ctx.activePageId);
 	const items = page ? flatten(page.root.children) : [];
+	// O(1) membership per row instead of scanning `selectedIds` for every item.
+	const selectedSet = new Set(selectedIds);
 
 	const labelFor = (node: CanvasNode): string => {
 		if (node.name && node.name.length > 0) return node.name;
@@ -111,7 +113,7 @@ export function SceneAccessibilityTree(): React.JSX.Element {
 						type="button"
 						role="treeitem"
 						aria-level={level}
-						aria-selected={selectedIds.includes(node.id)}
+						aria-selected={selectedSet.has(node.id)}
 						tabIndex={isFocused ? 0 : -1}
 						onFocus={() => ctx.focusStore.getState().setFocus(node.id)}
 						onClick={() =>

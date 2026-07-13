@@ -81,7 +81,7 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 						selectionStore
 							.getState()
 							.setSelection(
-								children.filter((c) => c.type === kind).map((c) => c.id),
+								children.flatMap((c) => (c.type === kind ? [c.id] : [])),
 							);
 					}
 				} else {
