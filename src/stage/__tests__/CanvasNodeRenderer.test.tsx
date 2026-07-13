@@ -10,6 +10,7 @@ import {
 	createRect,
 	createRichText,
 	createStar,
+	createSvg,
 	createText,
 } from "@anvilkit/canvas-core";
 import { cleanup, render } from "@testing-library/react";
@@ -290,6 +291,54 @@ describe("CanvasNodeRenderer", () => {
 			</CanvasAssetsContext.Provider>,
 		);
 		expect(callsOfType("Image")[0]?.props.crop).toBeUndefined();
+	});
+
+	it("renders nothing for an svg node whose assetId is missing", () => {
+		const svg = createSvg({
+			id: "s1",
+			bounds: { width: 100, height: 100 },
+			assetId: "missing",
+		});
+		render(<CanvasNodeRenderer node={svg} />);
+		expect(callsOfType("Image")).toHaveLength(0);
+	});
+
+	it("renders nothing while the svg asset is loading", () => {
+		useImageMock.mockReturnValueOnce([null, "loading"]);
+		const svg = createSvg({
+			id: "s1",
+			bounds: { width: 100, height: 100 },
+			assetId: "a1",
+		});
+		render(
+			<CanvasAssetsContext.Provider
+				value={{ a1: { id: "a1", uri: "data:image/svg+xml;base64,XXX" } }}
+			>
+				<CanvasNodeRenderer node={svg} />
+			</CanvasAssetsContext.Provider>,
+		);
+		expect(callsOfType("Image")).toHaveLength(0);
+	});
+
+	it("renders Image (asset-reference path) when use-image returns a loaded svg", () => {
+		const fakeImg = {
+			src: "data:image/svg+xml;base64,XXX",
+		} as HTMLImageElement;
+		useImageMock.mockReturnValueOnce([fakeImg, "loaded"]);
+		const svg = createSvg({
+			id: "s1",
+			bounds: { width: 100, height: 100 },
+			assetId: "a1",
+		});
+		render(
+			<CanvasAssetsContext.Provider
+				value={{ a1: { id: "a1", uri: "data:image/svg+xml;base64,XXX" } }}
+			>
+				<CanvasNodeRenderer node={svg} />
+			</CanvasAssetsContext.Provider>,
+		);
+		expect(callsOfType("Image")).toHaveLength(1);
+		expect(callsOfType("Image")[0]?.props.image).toBe(fakeImg);
 	});
 
 	const placeholderFixture = (

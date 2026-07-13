@@ -17,6 +17,7 @@ import {
 	type CanvasRichTextNode,
 	type CanvasShadow,
 	type CanvasStarNode,
+	type CanvasSvgNode,
 	type CanvasTextNode,
 	type FramePlaceholderKind,
 	resolveSpanStyle,
@@ -525,6 +526,21 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 	);
 }
 
+function CanvasSvgNodeRenderer({ node }: { node: CanvasSvgNode }) {
+	const asset = useCanvasAsset(node.assetId);
+	const [image, status] = useImage(asset?.uri ?? "");
+	if (!asset) return null;
+	if (status !== "loaded" || !image) return null;
+	return (
+		<KonvaImage
+			{...commonProps(node)}
+			image={image}
+			width={node.bounds.width}
+			height={node.bounds.height}
+		/>
+	);
+}
+
 interface PlaceholderStatusStyle {
 	stroke: string;
 	fill: string;
@@ -698,6 +714,8 @@ export function CanvasNodeRenderer({
 			return <CanvasRichTextNodeRenderer node={node} />;
 		case "image":
 			return <CanvasImageNodeRenderer node={node} />;
+		case "svg":
+			return <CanvasSvgNodeRenderer node={node} />;
 		case "ai-placeholder":
 			return <CanvasAiPlaceholderNodeRenderer node={node} />;
 		default:
