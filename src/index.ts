@@ -91,6 +91,9 @@ export {
 } from "./pages/page-actions.js";
 // ── Panels + inspector field primitives ──────────────────────────────────────
 export { BrandPanel, type BrandPanelProps } from "./panels/BrandPanel.js";
+export { CampaignResizePanel } from "./panels/CampaignResizePanel.js";
+export type { CampaignResizeResult } from "./panels/campaign-resize-actions.js";
+export { resizeActivePageToVariants } from "./panels/campaign-resize-actions.js";
 export {
 	ElementsPanel,
 	type ElementsPanelProps,
@@ -112,6 +115,10 @@ export {
 	PropertyInspector,
 	type PropertyInspectorProps,
 } from "./panels/PropertyInspector.js";
+export {
+	SizePresetPicker,
+	type SizePresetPickerProps,
+} from "./panels/SizePresetPicker.js";
 export { TemplatesPanel } from "./panels/TemplatesPanel.js";
 export type { TemplateActionResult } from "./panels/template-actions.js";
 export {
