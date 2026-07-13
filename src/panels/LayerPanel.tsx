@@ -70,7 +70,10 @@ const KIND_LABEL_KEYS: Record<CanvasNodeKind, string> = {
 	text: "canvas.layer.kind.text",
 	"rich-text": "canvas.layer.kind.richText",
 	image: "canvas.layer.kind.image",
+	svg: "canvas.layer.kind.svg",
 	"ai-placeholder": "canvas.layer.kind.aiPlaceholder",
+	video: "canvas.layer.kind.video",
+	audio: "canvas.layer.kind.audio",
 };
 
 const KIND_LABEL_FALLBACKS: Record<CanvasNodeKind, string> = {
@@ -85,7 +88,10 @@ const KIND_LABEL_FALLBACKS: Record<CanvasNodeKind, string> = {
 	text: "Text",
 	"rich-text": "Rich text",
 	image: "Image",
+	svg: "SVG",
 	"ai-placeholder": "AI placeholder",
+	video: "Video",
+	audio: "Audio",
 };
 
 function nodeLabel(

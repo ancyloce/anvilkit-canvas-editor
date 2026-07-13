@@ -247,6 +247,8 @@ function renderTypeSpecificFields(
 			);
 		case "image":
 			return renderImageFields(node, commitPatch, ctx, t);
+		case "svg":
+			return null;
 		case "path":
 			return renderPathFields(node, commitPatch, ctx, t);
 		case "group":
