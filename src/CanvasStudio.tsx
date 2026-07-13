@@ -175,6 +175,226 @@ export interface CanvasStudioProps {
 	children?: React.ReactNode;
 }
 
+/**
+ * Mirror an optional host callback into a ref so long-lived closures (commit
+ * pipeline, tool seams) always call the latest render's prop without
+ * re-triggering on identity churn.
+ */
+function useHostCallbackRef<T>(callback: T): React.RefObject<T> {
+	const ref = useRef(callback);
+	useEffect(() => {
+		ref.current = callback;
+	}, [callback]);
+	return ref;
+}
+
+/**
+ * Per-instance editor stores, created once on mount. The `initial*` props are
+ * captured at creation — `<CanvasStudio>` is uncontrolled (see the prop docs).
+ */
+function useEditorStores({
+	initialIR,
+	initialActivePageId,
+	initialTool,
+}: Pick<
+	CanvasStudioProps,
+	"initialIR" | "initialActivePageId" | "initialTool"
+>) {
+	const [sceneStore] = useState(() => createSceneStore({ initialIR }));
+	const [historyStore] = useState(() => createHistoryStore());
+	const [toolStore] = useState(() => createToolStore({ initialTool }));
+	const [selectionStore] = useState(() => createSelectionStore());
+	const [focusStore] = useState(() => createFocusStore());
+	const [viewportStore] = useState(() => createViewportStore());
+	const [pagesStore] = useState(() =>
+		createPagesStore({
+			initialActivePageId: initialActivePageId ?? initialIR.pages[0]?.id ?? "",
+		}),
+	);
+	const [guidesStore] = useState(() => createGuidesStore());
+	const [draftStore] = useState(() => createDraftStore());
+	const [editingStore] = useState(() => createEditingStore());
+	const [aiJobStore] = useState(() => createAiJobStore());
+	const [cropStore] = useState(() => createCropStore());
+	const [penStore] = useState(() => createPenStore());
+	const [pathEditStore] = useState(() => createPathEditStore());
+	return {
+		sceneStore,
+		historyStore,
+		toolStore,
+		selectionStore,
+		focusStore,
+		viewportStore,
+		pagesStore,
+		guidesStore,
+		draftStore,
+		editingStore,
+		aiJobStore,
+		cropStore,
+		penStore,
+		pathEditStore,
+	};
+}
+
+/**
+ * The commit pipeline: history-tracked command application plus the host
+ * `onChange`/`onChanges` notification seams.
+ */
+function useCommitPipeline(
+	sceneStore: ReturnType<typeof createSceneStore>,
+	historyStore: ReturnType<typeof createHistoryStore>,
+	onChange: CanvasStudioProps["onChange"],
+	onChanges: CanvasStudioProps["onChanges"],
+) {
+	const onChangeRef = useHostCallbackRef(onChange);
+	const onChangesRef = useHostCallbackRef(onChanges);
+
+	const commit = useCallback(
+		(cmd: CanvasCommand): CanvasIR => {
+			const next = historyStore
+				.getState()
+				.commit(sceneStore.getState().ir, cmd);
+			sceneStore.getState().setIR(next);
+			onChangeRef.current?.(next, cmd);
+			if (onChangesRef.current) {
+				const change = commandToChange(cmd);
+				onChangesRef.current(change ? [change] : [], next);
+			}
+			return next;
+		},
+		[historyStore, sceneStore, onChangeRef, onChangesRef],
+	);
+
+	// Apply many commands as ONE undo entry (multi-select move, transform commit,
+	// ungroup). Fires onChange (with the composite batch command) and onChanges once.
+	const commitBatch = useCallback(
+		(commands: readonly CanvasCommand[], label?: string): CanvasIR => {
+			if (commands.length === 0) return sceneStore.getState().ir;
+			const next = historyStore
+				.getState()
+				.commitBatch(sceneStore.getState().ir, commands, label);
+			sceneStore.getState().setIR(next);
+			const batchCmd: CanvasCommand = {
+				type: "batch",
+				...(label !== undefined ? { label } : {}),
+				commands: [...commands],
+			};
+			onChangeRef.current?.(next, batchCmd);
+			if (onChangesRef.current) {
+				const changes = commands
+					.map(commandToChange)
+					.filter((c): c is CanvasChange => c !== null);
+				onChangesRef.current(changes, next);
+			}
+			return next;
+		},
+		[historyStore, sceneStore, onChangeRef, onChangesRef],
+	);
+
+	const getIR = useCallback(() => sceneStore.getState().ir, [sceneStore]);
+
+	return { commit, commitBatch, getIR };
+}
+
+/**
+ * The Konva stage plus its render layers and interaction overlays — the
+ * "canvas" section of the editor. Rendered inside the context providers (via
+ * the bare layout or wherever `renderShell` slots it), so every overlay can
+ * call `useCanvasStudio()`.
+ */
+function EditorStage({
+	t,
+	activePage,
+	activePageId,
+	assets,
+	brandKit,
+	width,
+	height,
+	zoom,
+	panX,
+	panY,
+	onStageReady,
+	draggedIds,
+	toolRegistry,
+}: {
+	t: CanvasT;
+	activePage: CanvasIR["pages"][number];
+	activePageId: string;
+	assets: CanvasIR["assets"];
+	brandKit: BrandKit | undefined;
+	width: number | undefined;
+	height: number | undefined;
+	zoom: number;
+	panX: number;
+	panY: number;
+	onStageReady: (stage: Konva.Stage | null) => void;
+	draggedIds: ReadonlySet<string>;
+	toolRegistry: ToolRegistry | undefined;
+}): React.JSX.Element {
+	// The stage box scales with zoom so the page grows/shrinks as a whole and
+	// Konva pointer mapping stays correct (scaleX=zoom over a zoom-sized box).
+	// At zoom = 1 this is the page's natural pixel size (unchanged). This is
+	// what lets the multi-page workspace scale every page uniformly via zoom.
+	const stageWidth = (width ?? activePage.size.width) * zoom;
+	const stageHeight = (height ?? activePage.size.height) * zoom;
+	return (
+		<CanvasErrorBoundary
+			label={t("canvas.error.canvas", "The canvas failed to render.")}
+			resetKey={activePageId}
+		>
+			<CanvasAssetsContext.Provider value={assets}>
+				<CanvasBrandKitContext.Provider value={brandKit ?? EMPTY_BRAND_KIT}>
+					<CanvasStage
+						width={stageWidth}
+						height={stageHeight}
+						zoom={zoom}
+						panX={panX}
+						panY={panY}
+						onReady={onStageReady}
+					>
+						<RenderLayer name="background" listening={false}>
+							<DesignBackground />
+							<Grid />
+						</RenderLayer>
+						<RenderLayer name="objects">
+							{activePage.root.children.flatMap((node) =>
+								draggedIds.has(node.id)
+									? []
+									: [<CanvasNodeRenderer key={node.id} node={node} />],
+							)}
+						</RenderLayer>
+						{/* I2-5: dragged nodes float on their own layer so only it
+					    redraws during a drag; the (cached) objects layer stays put. */}
+						<RenderLayer name="drag">
+							{activePage.root.children.flatMap((node) =>
+								draggedIds.has(node.id)
+									? [<CanvasNodeRenderer key={node.id} node={node} />]
+									: [],
+							)}
+						</RenderLayer>
+						<RenderLayer name="selection">
+							<DraftRenderer />
+							<SmartGuideOverlay />
+							<PenPreview />
+							<PathEditOverlay />
+							<CanvasTransformer />
+							<CanvasFocusRing />
+						</RenderLayer>
+						<RenderLayer name="presence" listening={false}>
+							<RemoteCursors />
+							<RemoteSelections />
+						</RenderLayer>
+					</CanvasStage>
+					<ToolInteractionLayer registry={toolRegistry} />
+					<TextEditorOverlay />
+					<CropEditorOverlay />
+					<PenToolOverlay />
+				</CanvasBrandKitContext.Provider>
+			</CanvasAssetsContext.Provider>
+		</CanvasErrorBoundary>
+	);
+}
+
 export function CanvasStudio({
 	initialIR,
 	initialActivePageId,
