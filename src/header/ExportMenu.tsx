@@ -320,8 +320,10 @@ export function ExportMenu({
 							data-testid="canvas-export-warnings"
 							className="space-y-1 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-[0.7rem] text-amber-700 dark:text-amber-400"
 						>
-							{warnings.map((warning, index) => (
-								<li key={`${warning.code}-${index}`}>
+							{warnings.map((warning) => (
+								<li
+									key={`${warning.code}-${warning.nodeId ?? warning.pageId ?? ""}`}
+								>
 									{warning.message}
 									{warning.fallback ? ` — ${warning.fallback}` : ""}
 								</li>
