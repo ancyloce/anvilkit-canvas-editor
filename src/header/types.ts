@@ -1,4 +1,4 @@
-import type { CanvasIR } from "@anvilkit/canvas-core";
+import type { CanvasExportWarning, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { ReactNode } from "react";
 
@@ -26,7 +26,16 @@ export interface CanvasExportContext {
 	readonly stage: Konva.Stage | null;
 }
 
-/** The user-tunable knobs from the export popover (mirrors the reference panel). */
+/**
+ * The user-tunable knobs from the export popover (mirrors the reference panel).
+ *
+ * Naming: `@anvilkit/canvas-core`'s headless export job contract (FR-040,
+ * canvas-m3-001) deliberately named its own request/response/artifact types
+ * `CanvasExportJobRequest`/`CanvasExportJobResponse`/`CanvasExportJobArtifact`
+ * rather than reusing these bare names — this type and
+ * {@link CanvasExportArtifact} are unrelated, editor-UI-local concepts (popover
+ * knobs / a downloadable-blob shape) and stay as they are.
+ */
 export interface CanvasExportRequest {
 	/** 0–100. Honored by lossy raster encoders; ignored by PNG/vector/data. */
 	readonly quality: number;
@@ -41,6 +50,16 @@ export interface CanvasExportArtifact {
 	readonly filename: string;
 	readonly data: string | Uint8Array | Blob;
 	readonly mimeType: string;
+	/**
+	 * Structured fidelity warnings from serialization (FR-041, canvas-m3-002) —
+	 * e.g. an unresolved brand token or an unsupported mask. Reuses
+	 * `@anvilkit/canvas-core`'s `CanvasExportWarning` shape verbatim so a host
+	 * wiring `canvasToSvg`/`canvasToPdf` (`@anvilkit/plugin-export-canvas`) can
+	 * pass its `warnings` straight through without remapping (UX-007: "user
+	 * can see export warnings before download"). Omitted or empty means no
+	 * fidelity loss was detected.
+	 */
+	readonly warnings?: readonly CanvasExportWarning[];
 }
 
 /**

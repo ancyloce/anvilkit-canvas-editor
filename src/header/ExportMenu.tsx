@@ -1,5 +1,6 @@
 "use client";
 
+import type { CanvasExportWarning } from "@anvilkit/canvas-core";
 import { Button, buttonVariants } from "@anvilkit/ui/button";
 import {
 	Popover,
@@ -111,6 +112,12 @@ export function ExportMenu({
 	// the reporting; otherwise we show an inline message so a failed export is
 	// never silent (previously it only logged to the console).
 	const [error, setError] = useState<string | null>(null);
+	// FR-041/UX-007 (canvas-m3-002/008): fidelity warnings from the artifact,
+	// if the exporter attached any. The download still fires immediately (the
+	// artifact is already fully rendered by the time warnings are known), but
+	// the popover stays open so the warnings are visible right alongside it
+	// rather than silently discarded.
+	const [warnings, setWarnings] = useState<readonly CanvasExportWarning[]>([]);
 
 	if (available.length === 0) return null;
 
@@ -128,13 +135,18 @@ export function ExportMenu({
 		if (!exporter || busy) return;
 		setBusy(true);
 		setError(null);
+		setWarnings([]);
 		try {
 			const artifact = await exporter(
 				{ ir: ctx.getIR(), activePageId: ctx.activePageId, stage: ctx.stage },
 				{ quality, resolution: resolutionScale(resolution), stripMetadata },
 			);
 			downloadCanvasArtifact(artifact);
-			setOpen(false);
+			if (artifact.warnings && artifact.warnings.length > 0) {
+				setWarnings(artifact.warnings);
+			} else {
+				setOpen(false);
+			}
 		} catch (err) {
 			// Host owns reporting when it wired `onError`; otherwise surface the
 			// failure inline (W6) so the user isn't left with a silently dead button.
@@ -157,7 +169,10 @@ export function ExportMenu({
 				open={open}
 				onOpenChange={(next) => {
 					setOpen(next);
-					if (next) setError(null);
+					if (next) {
+						setError(null);
+						setWarnings([]);
+					}
 				}}
 			>
 				<PopoverTrigger
@@ -296,6 +311,23 @@ export function ExportMenu({
 							aria-label={t("canvas.export.removeMetadata", "Remove metadata")}
 						/>
 					</section>
+
+					{/* Fidelity warnings (FR-041/UX-007, canvas-m3-002/008) — shown
+					    after a successful export whose artifact carried any; cleared
+					    on a new attempt or on reopen. The download already fired. */}
+					{warnings.length > 0 ? (
+						<ul
+							data-testid="canvas-export-warnings"
+							className="space-y-1 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-[0.7rem] text-amber-700 dark:text-amber-400"
+						>
+							{warnings.map((warning, index) => (
+								<li key={`${warning.code}-${index}`}>
+									{warning.message}
+									{warning.fallback ? ` — ${warning.fallback}` : ""}
+								</li>
+							))}
+						</ul>
+					) : null}
 
 					{/* Inline failure surface (W6) — shown only when the host did not
 					    wire `onError`; cleared on a new attempt or on reopen. */}
