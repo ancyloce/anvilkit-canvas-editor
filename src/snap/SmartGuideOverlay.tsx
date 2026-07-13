@@ -18,9 +18,9 @@ export function SmartGuideOverlay(): React.JSX.Element | null {
 	if (guides.length === 0) return null;
 	return (
 		<>
-			{guides.map((g, i) => (
+			{guides.map((g) => (
 				<Line
-					key={`guide-${g.axis}-${g.position}-${i}`}
+					key={`guide-${g.axis}-${g.position}-${g.from.x}-${g.from.y}-${g.to.x}-${g.to.y}`}
 					points={[g.from.x, g.from.y, g.to.x, g.to.y]}
 					stroke={SMART_GUIDE_COLOR}
 					strokeWidth={1}
