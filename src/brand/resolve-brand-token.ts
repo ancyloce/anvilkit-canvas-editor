@@ -9,9 +9,12 @@ import type { BrandKit } from "./brand-kit.js";
 /**
  * Lowercase, non-alphanumeric-collapsing slug — the forward-compat identity
  * a `BrandColor`/font with no explicit id resolves against. See
- * {@link BrandColor.id}.
+ * {@link BrandColor.id}. Exported so any picker UI that lists brand
+ * colors/fonts as selectable options (canvas-m2-007's `TokenAwareColorField`/
+ * `TokenAwareFontField`) can key its options with the SAME identity this
+ * resolver expects — never inventing its own id scheme.
  */
-function slug(value: string): string {
+export function slug(value: string): string {
 	return value
 		.trim()
 		.toLowerCase()

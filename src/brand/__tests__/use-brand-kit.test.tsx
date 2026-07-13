@@ -1,3 +1,8 @@
+import type {
+	BrandAsset,
+	BrandRule,
+	BrandTypographyPreset,
+} from "@anvilkit/canvas-core";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -14,6 +19,9 @@ import {
 	useBrandColors,
 	useBrandFonts,
 	useBrandKit,
+	useBrandLogos,
+	useBrandRules,
+	useBrandTypography,
 } from "../use-brand-kit.js";
 
 afterEach(cleanup);
@@ -22,6 +30,9 @@ interface Captured {
 	kit: BrandKit;
 	colors: readonly BrandColor[];
 	fonts: readonly string[];
+	logos: readonly BrandAsset[];
+	typography: readonly BrandTypographyPreset[];
+	rules: readonly BrandRule[];
 }
 
 function mount(brandKit?: BrandKit): Captured {
@@ -34,6 +45,9 @@ function mount(brandKit?: BrandKit): Captured {
 		captured.kit = useBrandKit();
 		captured.colors = useBrandColors();
 		captured.fonts = useBrandFonts();
+		captured.logos = useBrandLogos();
+		captured.typography = useBrandTypography();
+		captured.rules = useBrandRules();
 		return null;
 	}
 	render(
@@ -50,6 +64,31 @@ describe("useBrandKit", () => {
 		expect(out.kit).toBe(EMPTY_BRAND_KIT);
 		expect(out.colors).toEqual([]);
 		expect(out.fonts).toEqual([]);
+		expect(out.logos).toEqual([]);
+		expect(out.typography).toEqual([]);
+		expect(out.rules).toEqual([]);
+	});
+
+	it("useBrandLogos/Typography/Rules default to empty when a kit omits them", () => {
+		const brandKit: BrandKit = { colors: [], fonts: [] };
+		const out = mount(brandKit);
+		expect(out.logos).toEqual([]);
+		expect(out.typography).toEqual([]);
+		expect(out.rules).toEqual([]);
+	});
+
+	it("useBrandLogos/Typography/Rules project the kit's slices when present", () => {
+		const brandKit: BrandKit = {
+			colors: [],
+			fonts: [],
+			logos: [{ id: "logo1", name: "Wordmark", uri: "asset://logo1" }],
+			typography: [{ id: "heading", name: "Heading", fontSize: 32 }],
+			rules: [{ id: "r1", kind: "forbidden-color", value: "#ff0000" }],
+		};
+		const out = mount(brandKit);
+		expect(out.logos).toEqual(brandKit.logos);
+		expect(out.typography).toEqual(brandKit.typography);
+		expect(out.rules).toEqual(brandKit.rules);
 	});
 
 	it("returns the host-provided brand kit", () => {
