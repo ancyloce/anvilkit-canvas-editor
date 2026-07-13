@@ -224,7 +224,7 @@ export function ElementControls({
 	const deleteSelection = () => {
 		// Locked nodes are protected from deletion.
 		const lockedIds = new Set(
-			irNodes.filter((n) => n.locked === true).map((n) => n.id),
+			irNodes.flatMap((n) => (n.locked === true ? [n.id] : [])),
 		);
 		for (const id of selectedIds) {
 			if (lockedIds.has(id)) continue;
