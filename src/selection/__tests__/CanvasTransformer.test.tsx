@@ -30,6 +30,7 @@ import { createViewportStore } from "@/stores/viewport-store.js";
 import { CanvasTransformer } from "../CanvasTransformer.js";
 import {
 	FALLBACK_CHROME_THEME,
+	MIN_DIMENSION,
 	normalizeAngle,
 	selectionBox,
 	setAnchorHovered,
@@ -166,6 +167,36 @@ describe("CanvasTransformer", () => {
 		const [args] = fakeTr.nodes.mock.calls[0];
 		expect(args).toHaveLength(1);
 		expect(args[0]).toBe(node);
+	});
+
+	it("boundBoxFunc rejects a drag that collapses the box below MIN_DIMENSION", () => {
+		transformerCalls.length = 0;
+		const ir = fixtureIR();
+		const node = makeNode({ x: 10, y: 20 });
+		const stage = makeFakeStage({ rectA: node });
+		const { ctx } = makeCtx(stage, ir);
+		ctx.selectionStore.getState().setSelection(["rectA"]);
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<CanvasTransformer />
+			</CanvasStudioContext.Provider>,
+		);
+		const transformerProps = transformerCalls[0]?.props as {
+			boundBoxFunc: (
+				oldBox: { x: number; y: number; width: number; height: number },
+				newBox: { x: number; y: number; width: number; height: number },
+			) => unknown;
+		};
+		const { boundBoxFunc } = transformerProps;
+		const oldBox = { x: 0, y: 0, width: 100, height: 50 };
+		// A drag that would collapse the box to 0 width — the singular-matrix
+		// case that makes Konva's own transform inversion produce NaN — is
+		// rejected outright, keeping the last valid box.
+		const collapsed = { x: 0, y: 0, width: 0, height: 50 };
+		expect(boundBoxFunc(oldBox, collapsed)).toBe(oldBox);
+		// A box that stays at/above MIN_DIMENSION on both axes is let through.
+		const shrunk = { x: 0, y: 0, width: MIN_DIMENSION, height: MIN_DIMENSION };
+		expect(boundBoxFunc(oldBox, shrunk)).toBe(shrunk);
 	});
 
 	// Fake anchor that records setter calls and matches by name. `activeName`
@@ -445,6 +476,34 @@ describe("CanvasTransformer", () => {
 		expect(cmd.to).toEqual({ x: 10, y: 20, width: 200, height: 100 });
 		// Scale must be reset on the Konva node after commit.
 		expect((node as unknown as { scaleX: () => number }).scaleX()).toBe(1);
+	});
+
+	it("transformend with a near-zero scale floors the committed size at MIN_DIMENSION", () => {
+		transformerCalls.length = 0;
+		const ir = fixtureIR();
+		// A scale this small would commit a near-0×0 size — the singular-box
+		// case that makes Konva's transform inversion produce NaN corners on
+		// the next selection. `collectTransformEndCommands` floors it instead.
+		const node = makeNode({ x: 10, y: 20, scaleX: 0.0001, scaleY: 0.0001 });
+		const stage = makeFakeStage({ rectA: node });
+		const { ctx, commits } = makeCtx(stage, ir);
+		ctx.selectionStore.getState().setSelection(["rectA"]);
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<CanvasTransformer />
+			</CanvasStudioContext.Provider>,
+		);
+		const transformerProps = transformerCalls[0]?.props as {
+			onTransformEnd: () => void;
+		};
+		act(() => {
+			transformerProps.onTransformEnd();
+		});
+		const resizeCmds = commits.filter((c) => c.type === "node.resize");
+		expect(resizeCmds).toHaveLength(1);
+		const cmd = resizeCmds[0] as CanvasNodeResizeCommand;
+		expect(cmd.to.width).toBe(MIN_DIMENSION);
+		expect(cmd.to.height).toBe(MIN_DIMENSION);
 	});
 
 	it("transformend with rotation change commits a node.rotate", () => {

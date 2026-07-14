@@ -144,6 +144,20 @@ export function selectionBox(
 const EPSILON = 0.5;
 
 /**
+ * Floor for a committed resize, in design units. Konva's `Transformer`
+ * computes its bounding box (and every anchor position) by inverting the
+ * selected nodes' transform matrices; a box collapsed to 0×0 makes that
+ * matrix singular, and Konva's own inversion divides by the (zero)
+ * determinant — producing `NaN` corners that propagate to every later
+ * `width`/`height`/`x` Konva sets from this box (see the `boundBoxFunc` on
+ * `<Transformer>` in `CanvasTransformer.tsx`, which stops a live drag from
+ * ever reaching this collapse; this floor is the belt-and-braces guard on
+ * the commit path itself). Mirrors the draw tools' `MIN_DIMENSION` (e.g.
+ * `rect-tool.ts`).
+ */
+export const MIN_DIMENSION = 1;
+
+/**
  * Nodes sized by their geometry × transform scale, NOT by `bounds`:
  * `Konva.Path` renders from its `d`, `Konva.Line` from its `points`, each
  * scaled by `transform.scaleX/Y`. A resize must PERSIST that scale — baking it
@@ -230,8 +244,8 @@ export function collectTransformEndCommands(
 		// from 1×.
 		knode.scaleX(1);
 		knode.scaleY(1);
-		const newW = bounds.width * scaleX;
-		const newH = bounds.height * scaleY;
+		const newW = Math.max(MIN_DIMENSION, bounds.width * scaleX);
+		const newH = Math.max(MIN_DIMENSION, bounds.height * scaleY);
 		// Konva.Ellipse positions by its CENTER, so `knode.x()` is the center.
 		// Convert back to the IR top-left using the NEW bounds, or a resized
 		// ellipse drifts by half its new size on commit.

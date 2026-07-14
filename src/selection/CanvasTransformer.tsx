@@ -16,6 +16,7 @@ import {
 	type ChromeTheme,
 	collectTransformEndCommands,
 	FALLBACK_CHROME_THEME,
+	MIN_DIMENSION,
 	normalizeAngle,
 	resolveChromeTheme,
 	selectionBox,
@@ -200,7 +201,18 @@ function useRotateIcon(
 		(rotater: Konva.Rect, visible: boolean) => {
 			const g = rotateIconRef.current;
 			if (!g) return;
-			g.position({ x: rotater.x?.() ?? 0, y: rotater.y?.() ?? 0 });
+			// `?? 0` only guards `null`/`undefined` — a collapsed (0×0) selection
+			// box makes the Transformer's own bounding-box math singular, so
+			// `rotater.x()`/`.y()` can come back `NaN` rather than missing. Guard
+			// with `Number.isFinite` so a transient collapse parks the icon at
+			// the origin instead of setting a Konva attr to `NaN` (Konva warns
+			// and refuses the value either way, but leaves it visually adrift).
+			const x = rotater.x?.();
+			const y = rotater.y?.();
+			g.position({
+				x: Number.isFinite(x) ? (x as number) : 0,
+				y: Number.isFinite(y) ? (y as number) : 0,
+			});
 			g.visible(visible);
 		},
 		[],
@@ -655,6 +667,22 @@ export function CanvasTransformer(): React.JSX.Element | null {
 				rotateAnchorOffset={34}
 				rotateLineVisible={false}
 				anchorStyleFunc={anchorStyleFunc}
+				// Refuse a live drag that would collapse the box to 0×0: Konva
+				// computes the Transformer's bounding box (and every anchor's
+				// position) by inverting the selected nodes' transform matrices,
+				// and a collapsed box makes that matrix singular — the inversion
+				// divides by a zero determinant, producing `NaN` corners that
+				// then propagate to every `width`/`height`/`x` Konva sets from
+				// this box (the anchors, the rotate handle, this component's
+				// rotate-icon sync). Rejecting the offending edge here (falling
+				// back to `oldBox`) stops the collapse before Konva's math ever
+				// gets there.
+				boundBoxFunc={(oldBox, newBox) =>
+					Math.abs(newBox.width) < MIN_DIMENSION ||
+					Math.abs(newBox.height) < MIN_DIMENSION
+						? oldBox
+						: newBox
+				}
 			/>
 			{/* The rotate-icon glyph is created imperatively and added as a CHILD of
 			    the Transformer (see `useRotateIcon`) so it inherits the transformer's
