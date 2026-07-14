@@ -58,18 +58,36 @@ export interface CreateCanvasYjsBindingOptions {
 	readonly stores?: DocumentStores;
 }
 
-export interface CanvasYjsBinding {
+/**
+ * Minimal, transport- and consistency-model-agnostic surface a canvas
+ * collaboration adapter exposes to a host (P0-10). `createCanvasYjsBinding`
+ * below is the only implementation today, and it is whole-document
+ * last-writer-wins — see its doc comment for the full, explicit caveat. This
+ * interface exists so a FUTURE adapter with a different consistency model (a
+ * per-node CRDT, or a replicated command log built on
+ * `CanvasChangeRecord`-style records) can be swapped in behind the same
+ * shape without every call site changing. It is deliberately NOT a promise of
+ * conflict-free merging — that property is implementation-specific, and
+ * whichever adapter claims it must document it explicitly, the same way this
+ * one documents that it does NOT.
+ */
+export interface CanvasCollabAdapter {
 	/** Fires on REMOTE writes only (origin != localPeer) with the decoded IR
-	 *  and the authoring peer. Local pushes never fire this. */
+	 *  and the authoring peer, when the peer is known. Local pushes never fire
+	 *  this. */
 	subscribe(
 		onRemote: (ir: CanvasIR, peer?: CanvasPeerInfo) => void,
 	): CanvasBindingUnsubscribe;
-	/** Decode the current IR from the doc, or `undefined` if empty/unparseable. */
+	/** The current document snapshot, or `undefined` if not yet available/parseable. */
 	current(): CanvasIR | undefined;
-	/** Presence / awareness bridge. */
-	readonly presence: CanvasPresence;
-	/** Detach all observers + awareness listeners. Idempotent. */
+	/** Detach all observers/listeners this adapter registered. Idempotent. */
 	destroy(): void;
+}
+
+export interface CanvasYjsBinding extends CanvasCollabAdapter {
+	/** Presence / awareness bridge. Yjs-specific — not part of the
+	 *  transport-agnostic {@link CanvasCollabAdapter} surface. */
+	readonly presence: CanvasPresence;
 }
 
 /**
@@ -77,9 +95,33 @@ export interface CanvasYjsBinding {
  * `plugin-collab-yjs`'s `createYjsAdapter`, adapted for `CanvasIR` and a
  * zustand store rather than the PageIR snapshot contract.
  *
- * Encoding is whole-document JSON-blob last-writer-wins under
- * {@link CANVAS_IR_KEY} (the documented alpha posture; native per-node merge is
- * the GA follow-up). Echo loops are prevented two ways:
+ * ## Consistency model (P0-10 — read before integrating)
+ *
+ * This is **whole-document, last-writer-wins**, not a CRDT over the document
+ * tree. The entire `CanvasIR` is serialized to one JSON string and stored
+ * under one `Y.Map` key ({@link CANVAS_IR_KEY}); Yjs's own LWW register
+ * semantics resolve a concurrent write on THAT KEY, not per-node or
+ * per-field. Concretely:
+ *
+ * - Two peers editing DIFFERENT nodes at the same time do **not** merge —
+ *   whichever peer's write reaches the shared doc last wins outright, and the
+ *   other peer's concurrent edit is silently discarded (not queued, not
+ *   conflict-flagged).
+ * - There is no operational transform, no per-node CRDT, and no field-level
+ *   merge of any kind. "Real-time collaboration" here means "every peer
+ *   converges to the same final document," not "no edits are lost."
+ * - Presence/awareness (cursors, remote selections) IS fine-grained and
+ *   low-latency — only DOCUMENT content is whole-blob LWW.
+ *
+ * This is an intentional alpha/prototype posture (I3-1), not a production
+ * collaboration guarantee. A GA implementation needs per-node or per-field
+ * merge (a real CRDT over the tree, or a replicated, causally-ordered command
+ * log built on `CanvasChangeRecord`) — out of scope here; this function
+ * is typed against the transport-agnostic {@link CanvasCollabAdapter} shape
+ * specifically so that future implementation can replace it without changing
+ * call sites.
+ *
+ * Echo loops are prevented two ways:
  *
  * - the Yjs observer ignores transactions whose origin is the local peer
  *   ({@link isLocalOrigin}), so our own writes never re-apply;

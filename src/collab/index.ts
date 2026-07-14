@@ -8,10 +8,26 @@
  *
  * Architectural only (M6 / I3-1): binds the canvas `sceneStore` to a `Y.Doc`
  * and scaffolds presence/awareness. No collaborative UI ships from here.
+ *
+ * CONSISTENCY MODEL (P0-10): `createCanvasYjsBinding` is whole-document
+ * last-writer-wins, not a CRDT over the document tree — two peers editing
+ * different nodes concurrently do not merge; one write wins outright. See
+ * `createCanvasYjsBinding`'s own doc comment for the full explanation before
+ * integrating this in a multi-writer setting. `CanvasCollabAdapter` is the
+ * transport-/consistency-model-agnostic shape a future fine-grained adapter
+ * (per-node CRDT, or a replicated command log) can implement as a drop-in
+ * replacement without changing call sites.
  */
 export const CANVAS_COLLAB_VERSION = "0.1.0";
 
 export {
+	type DocumentSnapshotSource,
+	type DocumentStores,
+	type ReplaceDocumentSnapshotOptions,
+	replaceDocumentSnapshot,
+} from "../stores/replace-document.js";
+export {
+	type CanvasCollabAdapter,
 	type CanvasYjsBinding,
 	type CreateCanvasYjsBindingOptions,
 	createCanvasYjsBinding,
