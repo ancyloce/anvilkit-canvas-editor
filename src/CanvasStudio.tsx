@@ -4,6 +4,7 @@ import {
 	type CanvasChange,
 	type CanvasCommand,
 	type CanvasIR,
+	type CanvasRuntime,
 	commandToChange,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
@@ -56,10 +57,18 @@ import { createDraftStore } from "./stores/draft-store.js";
 import { createEditingStore } from "./stores/editing-store.js";
 import { createFocusStore } from "./stores/focus-store.js";
 import { createGuidesStore } from "./stores/guides-store.js";
-import { createHistoryStore } from "./stores/history-store.js";
+import {
+	type AnyCanvasCommand,
+	createHistoryStore,
+} from "./stores/history-store.js";
 import { createPagesStore } from "./stores/pages-store.js";
 import { createPathEditStore } from "./stores/path-edit-store.js";
 import { createPenStore } from "./stores/pen-store.js";
+import {
+	type DocumentSnapshotSource,
+	type DocumentStores,
+	replaceDocumentSnapshot,
+} from "./stores/replace-document.js";
 import { createSceneStore } from "./stores/scene-store.js";
 import { createSelectionStore } from "./stores/selection-store.js";
 import { createToolStore, type ToolId } from "./stores/tool-store.js";
@@ -90,7 +99,7 @@ export interface CanvasStudioProps {
 	height?: number;
 	initialTool?: ToolId;
 	/** Fires after every committed command with the new IR + the command. */
-	onChange?: (ir: CanvasIR, command: CanvasCommand) => void;
+	onChange?: (ir: CanvasIR, command: AnyCanvasCommand) => void;
 	/**
 	 * Fires after every commit with the granular change records + the new IR.
 	 * Complements {@link onChange} for autosave / dirty-tracking / collab that
@@ -164,6 +173,19 @@ export interface CanvasStudioProps {
 	 */
 	extensions?: readonly CanvasEditorExtension[];
 	/**
+	 * Injected Core runtime (P0-7). When supplied, the commit/history pipeline
+	 * (`commit`/`commitBatch`/`undo`/`redo`) dispatches through
+	 * `runtime.apply` instead of core's built-in-only `applyCommand`, so custom
+	 * commands registered on this runtime participate in undo/redo exactly like
+	 * built-ins. Pair it with a matching `createCanvasRuntime(...)` on the
+	 * `extensions` prop's renderer/inspector side and with the SAME runtime at
+	 * decode/serialize time (`@anvilkit/canvas-editor/collab`'s
+	 * `decodeCanvasIR`, core's `serializePageToSvg`) — a runtime is a single
+	 * per-document config, not one-per-concern. Omit to use the default
+	 * built-in-only runtime (unchanged from before this prop existed).
+	 */
+	runtime?: CanvasRuntime;
+	/**
 	 * Optional host UI rendered *inside* the editor's context provider, so it
 	 * can call {@link useCanvasStudio} to drive tool selection, read the live
 	 * selection/IR, or mount the exported `<LayerPanel>` / `<PropertyInspector>`
@@ -196,12 +218,19 @@ function useEditorStores({
 	initialIR,
 	initialActivePageId,
 	initialTool,
+	runtime,
 }: Pick<
 	CanvasStudioProps,
-	"initialIR" | "initialActivePageId" | "initialTool"
+	"initialIR" | "initialActivePageId" | "initialTool" | "runtime"
 >) {
 	const [sceneStore] = useState(() => createSceneStore({ initialIR }));
-	const [historyStore] = useState(() => createHistoryStore());
+	// `runtime` is captured at creation like every other `initial*` prop here
+	// (uncontrolled — see the prop docs): swapping it after mount would silently
+	// change what undo/redo dispatches through mid-session, which is exactly the
+	// "multiple unrelated runtime instances" P0-7 asks to avoid.
+	const [historyStore] = useState(() =>
+		createHistoryStore({ apply: runtime?.apply }),
+	);
 	const [toolStore] = useState(() => createToolStore({ initialTool }));
 	const [selectionStore] = useState(() => createSelectionStore());
 	const [focusStore] = useState(() => createFocusStore());
@@ -250,14 +279,18 @@ function useCommitPipeline(
 	const onChangesRef = useHostCallbackRef(onChanges);
 
 	const commit = useCallback(
-		(cmd: CanvasCommand): CanvasIR => {
+		(cmd: AnyCanvasCommand): CanvasIR => {
 			const next = historyStore
 				.getState()
 				.commit(sceneStore.getState().ir, cmd);
 			sceneStore.getState().setIR(next);
 			onChangeRef.current?.(next, cmd);
 			if (onChangesRef.current) {
-				const change = commandToChange(cmd);
+				// `commandToChange` is exhaustive over the built-in `CanvasCommand`
+				// union; a custom command (P0-7) has no built-in change-record shape
+				// and falls through with no granular record — same as `batch` already
+				// does today. `change ?` treats that fallthrough the same as `null`.
+				const change = commandToChange(cmd as CanvasCommand);
 				onChangesRef.current(change ? [change] : [], next);
 			}
 			return next;
@@ -268,21 +301,26 @@ function useCommitPipeline(
 	// Apply many commands as ONE undo entry (multi-select move, transform commit,
 	// ungroup). Fires onChange (with the composite batch command) and onChanges once.
 	const commitBatch = useCallback(
-		(commands: readonly CanvasCommand[], label?: string): CanvasIR => {
+		(commands: readonly AnyCanvasCommand[], label?: string): CanvasIR => {
 			if (commands.length === 0) return sceneStore.getState().ir;
 			const next = historyStore
 				.getState()
 				.commitBatch(sceneStore.getState().ir, commands, label);
 			sceneStore.getState().setIR(next);
-			const batchCmd: CanvasCommand = {
-				type: "batch",
+			// Not annotated `AnyCanvasCommand` — that would force TS to match this
+			// literal against `CanvasBatchCommand`'s `commands: CanvasCommand[]`,
+			// which a custom command in `commands` can't satisfy. Left inferred, it
+			// structurally satisfies `AnyCanvasCommand` at the `onChangeRef` call
+			// below without narrowing the (possibly custom-command-carrying) array.
+			const batchCmd = {
+				type: "batch" as const,
 				...(label !== undefined ? { label } : {}),
 				commands: [...commands],
 			};
 			onChangeRef.current?.(next, batchCmd);
 			if (onChangesRef.current) {
 				const changes = commands
-					.map(commandToChange)
+					.map((cmd) => commandToChange(cmd as CanvasCommand))
 					.filter((c): c is CanvasChange => c !== null);
 				onChangesRef.current(changes, next);
 			}
@@ -294,6 +332,23 @@ function useCommitPipeline(
 	const getIR = useCallback(() => sceneStore.getState().ir, [sceneStore]);
 
 	return { commit, commitBatch, getIR };
+}
+
+/**
+ * Exposes `replaceDocumentSnapshot` (P0-9) bound to this instance's stores, as
+ * a stable callback for the context value. Used internally by nothing yet —
+ * it exists so a host (a "switch document" action, template-as-new-document
+ * loading, crash recovery, or a `./collab` binding constructed with `stores`)
+ * has ONE safe way to swap the whole document instead of reaching for
+ * `sceneStore.getState().setIR(ir)` directly and hitting the same staleness
+ * bugs P0-9 fixed for the collab path.
+ */
+function useReplaceDocument(stores: DocumentStores) {
+	const storesRef = useRef(stores);
+	storesRef.current = stores;
+	return useCallback((ir: CanvasIR, source: DocumentSnapshotSource) => {
+		replaceDocumentSnapshot(storesRef.current, ir, { source });
+	}, []);
 }
 
 /**
@@ -413,6 +468,7 @@ export function CanvasStudio({
 	templates,
 	messages,
 	extensions,
+	runtime,
 	renderShell,
 	children,
 }: CanvasStudioProps): React.JSX.Element {
@@ -431,7 +487,7 @@ export function CanvasStudio({
 		cropStore,
 		penStore,
 		pathEditStore,
-	} = useEditorStores({ initialIR, initialActivePageId, initialTool });
+	} = useEditorStores({ initialIR, initialActivePageId, initialTool, runtime });
 	const ir = useSyncExternalStore(
 		sceneStore.subscribe,
 		() => sceneStore.getState().ir,
@@ -489,6 +545,20 @@ export function CanvasStudio({
 		onChange,
 		onChanges,
 	);
+	const replaceDocument = useReplaceDocument({
+		sceneStore,
+		historyStore,
+		pagesStore,
+		selectionStore,
+		focusStore,
+		draftStore,
+		editingStore,
+		cropStore,
+		penStore,
+		pathEditStore,
+		guidesStore,
+		aiJobStore,
+	});
 
 	const onPickAssetRef = useHostCallbackRef(onPickAsset);
 	const onAiIntentRef = useHostCallbackRef(onAiIntent);
@@ -590,6 +660,7 @@ export function CanvasStudio({
 			getIR,
 			commit,
 			commitBatch,
+			replaceDocument,
 			pickAsset,
 			requestAiIntent,
 			brandKit,
@@ -597,6 +668,7 @@ export function CanvasStudio({
 			t,
 			kindRenderers,
 			kindInspectors,
+			runtime,
 		}),
 		[
 			historyStore,
@@ -616,6 +688,7 @@ export function CanvasStudio({
 			getIR,
 			commit,
 			commitBatch,
+			replaceDocument,
 			pickAsset,
 			requestAiIntent,
 			brandKit,
@@ -623,6 +696,7 @@ export function CanvasStudio({
 			t,
 			kindRenderers,
 			kindInspectors,
+			runtime,
 		],
 	);
 
