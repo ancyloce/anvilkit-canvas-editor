@@ -1,6 +1,6 @@
 "use client";
 
-import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
+import type { CanvasIR, CanvasRuntime } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { createContext, use } from "react";
 import type { BrandKit } from "../brand/brand-kit.js";
@@ -14,7 +14,10 @@ import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
 import type { CanvasFocusStoreApi } from "../stores/focus-store.js";
 import type { GuidesStoreApi } from "../stores/guides-store.js";
-import type { HistoryStoreApi } from "../stores/history-store.js";
+import type {
+	AnyCanvasCommand,
+	HistoryStoreApi,
+} from "../stores/history-store.js";
 import type { PagesStoreApi } from "../stores/pages-store.js";
 import type { PathEditStoreApi } from "../stores/path-edit-store.js";
 import type { PenStoreApi } from "../stores/pen-store.js";
@@ -79,13 +82,16 @@ export interface CanvasStudioContextValue {
 	 */
 	pathEditStore: PathEditStoreApi;
 	getIR: CanvasIRGetter;
-	commit: (cmd: CanvasCommand) => CanvasIR;
+	commit: (cmd: AnyCanvasCommand) => CanvasIR;
 	/**
 	 * Apply many commands as one undoable transaction — a single undo step.
 	 * Mirrors {@link commit} for multi-command gestures (multi-select move,
 	 * transform commit, ungroup). Fires `onChange`/`onChanges` once for the batch.
 	 */
-	commitBatch: (commands: readonly CanvasCommand[], label?: string) => CanvasIR;
+	commitBatch: (
+		commands: readonly AnyCanvasCommand[],
+		label?: string,
+	) => CanvasIR;
 	pickAsset: () => Promise<string>;
 	/**
 	 * Hand an AI gesture to the host (I1-7). Optional — present only when the
@@ -111,6 +117,15 @@ export interface CanvasStudioContextValue {
 	kindRenderers?: Readonly<Record<string, CanvasKindRenderer>>;
 	/** Inspector field renderers for custom node kinds, keyed by kind. */
 	kindInspectors?: Readonly<Record<string, CanvasKindInspector>>;
+	/**
+	 * The Core runtime this instance was created with (P0-7), when one was
+	 * supplied via `<CanvasStudio runtime>`. `commit`/`commitBatch`/undo/redo
+	 * already dispatch through it internally; exposed here so host code (a
+	 * custom tool, an inspector) can consult `runtime.nodeKinds`/`.commands`
+	 * without threading it through separately. Absent when the default
+	 * built-in-only runtime is in use.
+	 */
+	runtime?: CanvasRuntime;
 	/** Konva.Stage instance — null until <CanvasStage>'s onReady fires. */
 	stage: Konva.Stage | null;
 	/**
