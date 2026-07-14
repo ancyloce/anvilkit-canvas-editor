@@ -36,6 +36,14 @@ export interface AiJobState {
 	/** Drop a settled job from the registry (host calls on completion/error). */
 	complete: (jobId: string) => void;
 	get: (jobId: string) => AiJobEntry | undefined;
+	/**
+	 * Abort every still-pending job and clear the registry (P0-9). Used by
+	 * `replaceDocumentSnapshot` when a document snapshot replacement may drop
+	 * the `ai-placeholder` nodes these jobs back — an orphaned job left
+	 * registered would have a live abort handle for a node the canvas no
+	 * longer has.
+	 */
+	reset: () => void;
 }
 
 export type AiJobStoreApi = StoreApi<AiJobState>;
@@ -82,6 +90,12 @@ export function createAiJobStore(): AiJobStoreApi {
 		},
 		get(jobId) {
 			return getState().jobs[jobId];
+		},
+		reset() {
+			for (const entry of Object.values(getState().jobs)) {
+				if (entry.status === "pending") entry.abort();
+			}
+			set({ jobs: {} });
 		},
 	}));
 }

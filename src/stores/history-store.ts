@@ -1,14 +1,45 @@
 import {
 	applyCommand,
-	type CanvasBatchCommand,
 	type CanvasCommand,
 	type CanvasIR,
 	type CommandApplyOptions,
+	type CommandApplyResult,
 } from "@anvilkit/canvas-core";
 import { createStore, type StoreApi } from "zustand/vanilla";
 
 export const DEFAULT_HISTORY_LIMIT = 100;
 const DEFAULT_MERGE_WINDOW_MS = 400;
+
+/**
+ * A command dispatched through the commit pipeline (P0-7): a built-in
+ * `CanvasCommand`, or a custom command type a host-injected `CanvasRuntime`
+ * knows how to apply. Widened from the closed `CanvasCommand` union so a host
+ * with a runtime can call `commit`/`commitBatch`/`commitCoalesced` with a
+ * custom command and no cast; dispatch itself is delegated to
+ * `CreateHistoryStoreOptions.apply` (defaults to core's `applyCommand`, which
+ * only recognizes the built-in union — an unrecognized custom command falls
+ * through its switch exactly as before this option existed).
+ */
+export type AnyCanvasCommand = CanvasCommand | { readonly type: string };
+
+/** The shape both core's `applyCommand` and a `CanvasRuntime.apply` satisfy. */
+export type CommandApplyFn = (
+	ir: CanvasIR,
+	cmd: AnyCanvasCommand,
+	options: CommandApplyOptions,
+) => CommandApplyResult<AnyCanvasCommand>;
+
+function defaultApply(
+	ir: CanvasIR,
+	cmd: AnyCanvasCommand,
+	options: CommandApplyOptions,
+): CommandApplyResult<AnyCanvasCommand> {
+	// One contained cast at the dispatch boundary — mirrors the same pattern
+	// `createCanvasRuntime`'s own `apply` uses internally. Built-in-only callers
+	// (no `runtime` prop) never notice: a custom `cmd.type` reaching here falls
+	// through `applyCommand`'s switch with no matching case, same as always.
+	return applyCommand(ir, cmd as CanvasCommand, options);
+}
 
 export interface CreateHistoryStoreOptions {
 	/**
@@ -17,7 +48,7 @@ export interface CreateHistoryStoreOptions {
 	 * longer than the most recent run of undos), so a single `limit` suffices.
 	 */
 	limit?: number;
-	/** Optional deterministic clock plumbed into every applyCommand call. */
+	/** Optional deterministic clock plumbed into every apply call. */
 	now?: () => string;
 	/**
 	 * Time window (ms) within which a `commitCoalesced` call sharing the previous
@@ -26,20 +57,27 @@ export interface CreateHistoryStoreOptions {
 	mergeWindowMs?: number;
 	/** Injectable millisecond clock for coalescing (default `Date.now`). */
 	nowMs?: () => number;
+	/**
+	 * Command dispatcher (P0-7). Defaults to core's built-in-only `applyCommand`.
+	 * Pass a `CanvasRuntime`'s `apply` (from `createCanvasRuntime`) so commands
+	 * registered on that runtime — custom node kinds, custom command types —
+	 * participate in commit/batch/undo/redo the same way built-ins do.
+	 */
+	apply?: CommandApplyFn;
 }
 
 export interface HistoryState {
-	past: CanvasCommand[];
-	future: CanvasCommand[];
+	past: AnyCanvasCommand[];
+	future: AnyCanvasCommand[];
 	limit: number;
-	commit: (ir: CanvasIR, cmd: CanvasCommand) => CanvasIR;
+	commit: (ir: CanvasIR, cmd: AnyCanvasCommand) => CanvasIR;
 	/**
 	 * Apply many commands as ONE undo entry (a composite `batch` inverse). An
 	 * empty `commands` array is a no-op and records nothing.
 	 */
 	commitBatch: (
 		ir: CanvasIR,
-		commands: readonly CanvasCommand[],
+		commands: readonly AnyCanvasCommand[],
 		label?: string,
 	) => CanvasIR;
 	/**
@@ -50,7 +88,7 @@ export interface HistoryState {
 	 */
 	commitCoalesced: (
 		ir: CanvasIR,
-		cmd: CanvasCommand,
+		cmd: AnyCanvasCommand,
 		mergeKey: string,
 	) => CanvasIR;
 	undo: (ir: CanvasIR) => CanvasIR;
@@ -68,6 +106,7 @@ export function createHistoryStore(
 	const limit = options.limit ?? DEFAULT_HISTORY_LIMIT;
 	const mergeWindowMs = options.mergeWindowMs ?? DEFAULT_MERGE_WINDOW_MS;
 	const nowMs = options.nowMs ?? (() => Date.now());
+	const apply = options.apply ?? defaultApply;
 	const applyOptions: CommandApplyOptions = options.now
 		? { now: options.now }
 		: {};
@@ -83,7 +122,7 @@ export function createHistoryStore(
 		limit,
 		commit(ir, cmd) {
 			lastMergeKey = null;
-			const result = applyCommand(ir, cmd, applyOptions);
+			const result = apply(ir, cmd, applyOptions);
 			set((state) => {
 				const past = [...state.past, result.inverse];
 				while (past.length > state.limit) {
@@ -96,12 +135,12 @@ export function createHistoryStore(
 		commitBatch(ir, commands, label) {
 			if (commands.length === 0) return ir;
 			lastMergeKey = null;
-			const batch: CanvasBatchCommand = {
-				type: "batch",
+			const batch = {
+				type: "batch" as const,
 				...(label !== undefined ? { label } : {}),
 				commands: [...commands],
 			};
-			const result = applyCommand(ir, batch, applyOptions);
+			const result = apply(ir, batch, applyOptions);
 			set((state) => {
 				const past = [...state.past, result.inverse];
 				while (past.length > state.limit) {
@@ -112,7 +151,7 @@ export function createHistoryStore(
 			return result.ir;
 		},
 		commitCoalesced(ir, cmd, mergeKey) {
-			const result = applyCommand(ir, cmd, applyOptions);
+			const result = apply(ir, cmd, applyOptions);
 			const t = nowMs();
 			const merge =
 				lastMergeKey === mergeKey &&
@@ -143,7 +182,7 @@ export function createHistoryStore(
 			if (state.past.length === 0) return ir;
 			const inverseCmd = state.past[state.past.length - 1];
 			if (!inverseCmd) return ir;
-			const result = applyCommand(ir, inverseCmd, applyOptions);
+			const result = apply(ir, inverseCmd, applyOptions);
 			set((s) => ({
 				past: s.past.slice(0, -1),
 				future: [...s.future, result.inverse],
@@ -156,7 +195,7 @@ export function createHistoryStore(
 			if (state.future.length === 0) return ir;
 			const forwardCmd = state.future[state.future.length - 1];
 			if (!forwardCmd) return ir;
-			const result = applyCommand(ir, forwardCmd, applyOptions);
+			const result = apply(ir, forwardCmd, applyOptions);
 			set((s) => {
 				const past = [...s.past, result.inverse];
 				while (past.length > s.limit) {
