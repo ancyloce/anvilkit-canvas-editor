@@ -1,4 +1,5 @@
 import {
+	createAudio,
 	createCanvasIR,
 	createEllipse,
 	createFrame,
@@ -12,6 +13,7 @@ import {
 	createStar,
 	createSvg,
 	createText,
+	createVideo,
 } from "@anvilkit/canvas-core";
 import { cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -747,6 +749,127 @@ describe("CanvasNodeRenderer — frame image well (placeholder)", () => {
 		expect(frameGroup()).toBeDefined();
 		expect(callsOfType("Rect")).toHaveLength(0);
 		expect(callsOfType("Text")).toHaveLength(0);
+	});
+});
+
+/**
+ * P1-1: video/audio are built-in kinds that used to fall through to the
+ * EXTENSION fallback (`CanvasCustomNodeRenderer`), which renders nothing for
+ * a built-in type — the node was present in the IR but invisible on the
+ * stage. Mirrors the frame-image-well tests above: an editor-chrome-only
+ * placeholder is interactive-context-gated, and a video's poster (when
+ * resolved) renders as real content in every context.
+ */
+describe("CanvasNodeRenderer — video / audio", () => {
+	beforeEachReset();
+
+	const renderInteractive = (
+		node: Parameters<typeof CanvasNodeRenderer>[0]["node"],
+		assets: Record<string, { id: string; uri: string }> = {},
+	) =>
+		render(
+			<CanvasStudioContext.Provider
+				value={{} as unknown as CanvasStudioContextValue}
+			>
+				<CanvasAssetsContext.Provider value={assets}>
+					<CanvasNodeRenderer node={node} />
+				</CanvasAssetsContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+
+	it("video with no poster: renders nothing outside a studio context (export path)", () => {
+		render(
+			<CanvasNodeRenderer
+				node={createVideo({
+					id: "v1",
+					bounds: { width: 100, height: 60 },
+					assetId: "asset-1",
+				})}
+			/>,
+		);
+		expect(callsOfType("Group")).toHaveLength(0);
+		expect(callsOfType("Rect")).toHaveLength(0);
+	});
+
+	it("video with no poster: shows a chrome-only placeholder inside a studio context", () => {
+		renderInteractive(
+			createVideo({
+				id: "v1",
+				bounds: { width: 100, height: 60 },
+				assetId: "asset-1",
+			}),
+		);
+		expect(callsOfType("Group").some((c) => c.props.id === "v1")).toBe(true);
+		expect(callsOfType("Rect").some((c) => Array.isArray(c.props.dash))).toBe(
+			true,
+		);
+		expect(callsOfType("Text")[0]?.props.text).toBe("Video");
+		expect(callsOfType("Image")).toHaveLength(0);
+	});
+
+	it("video with a resolved poster: renders the poster as content in EVERY context", () => {
+		const fakeImg = { src: "data:image/png;base64,XXX" } as HTMLImageElement;
+		useImageMock.mockReturnValueOnce([fakeImg, "loaded"]);
+		render(
+			<CanvasAssetsContext.Provider
+				value={{ poster1: { id: "poster1", uri: "data:image/png;base64,AA=" } }}
+			>
+				<CanvasNodeRenderer
+					node={createVideo({
+						id: "v1",
+						bounds: { width: 100, height: 60 },
+						assetId: "asset-1",
+						poster: "poster1",
+					})}
+				/>
+			</CanvasAssetsContext.Provider>,
+		);
+		expect(callsOfType("Image")[0]?.props.image).toBe(fakeImg);
+		// No editor chrome outside a studio context.
+		expect(callsOfType("Rect")).toHaveLength(0);
+		expect(callsOfType("Text")).toHaveLength(0);
+	});
+
+	it("video with a dangling poster assetId falls back to the placeholder like no poster at all", () => {
+		renderInteractive(
+			createVideo({
+				id: "v1",
+				bounds: { width: 100, height: 60 },
+				assetId: "asset-1",
+				poster: "gone",
+			}),
+		);
+		expect(callsOfType("Image")).toHaveLength(0);
+		expect(callsOfType("Text")[0]?.props.text).toBe("Video");
+	});
+
+	it("audio: renders nothing outside a studio context (matches core's emitAudio)", () => {
+		render(
+			<CanvasNodeRenderer
+				node={createAudio({
+					id: "a1",
+					bounds: { width: 80, height: 24 },
+					assetId: "asset-1",
+				})}
+			/>,
+		);
+		expect(callsOfType("Group")).toHaveLength(0);
+		expect(callsOfType("Rect")).toHaveLength(0);
+	});
+
+	it("audio: shows a chrome-only placeholder inside a studio context", () => {
+		renderInteractive(
+			createAudio({
+				id: "a1",
+				bounds: { width: 80, height: 24 },
+				assetId: "asset-1",
+			}),
+		);
+		expect(callsOfType("Group").some((c) => c.props.id === "a1")).toBe(true);
+		expect(callsOfType("Rect").some((c) => Array.isArray(c.props.dash))).toBe(
+			true,
+		);
+		expect(callsOfType("Text")[0]?.props.text).toBe("Audio");
 	});
 });
 

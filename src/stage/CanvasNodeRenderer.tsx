@@ -3,6 +3,7 @@
 import {
 	type CanvasAiPlaceholderNode,
 	type CanvasAiPlaceholderStatus,
+	type CanvasAudioNode,
 	type CanvasEllipseNode,
 	type CanvasFill,
 	type CanvasFrameNode,
@@ -19,6 +20,7 @@ import {
 	type CanvasStarNode,
 	type CanvasSvgNode,
 	type CanvasTextNode,
+	type CanvasVideoNode,
 	type FramePlaceholderKind,
 	resolveSpanStyle,
 } from "@anvilkit/canvas-core";
@@ -541,6 +543,115 @@ function CanvasSvgNodeRenderer({ node }: { node: CanvasSvgNode }) {
 	);
 }
 
+/**
+ * P1-1: `video`/`audio` are built-in kinds, not extensions — before this,
+ * both fell through `CanvasNodeRenderer`'s switch to `CanvasCustomNodeRenderer`
+ * (the EXTENSION fallback), which looks up `kindRenderers[type]`. Nothing
+ * registers a built-in kind there, so both rendered nothing at all: a video/
+ * audio node was present in the IR, selectable in the LayerPanel, but
+ * invisible and unclickable on the canvas. Mirrors core's SVG serializer
+ * (`serialize/svg.ts` `emitVideo`/`emitAudio`): a video's `poster` asset (a
+ * still frame) renders as real content when present, exactly like an `image`
+ * node; failing that — and for audio, which has no visual representation at
+ * all — an EDITOR-CHROME-ONLY placeholder box makes the node visible and
+ * selectable while editing, without ever appearing in an export/rasterize
+ * pass (gated on `isInteractive`, the same seam `CanvasFrameNodeRenderer`'s
+ * empty-well affordance uses).
+ */
+const MEDIA_PLACEHOLDER_LABEL_COLOR = "#0f766e";
+const MEDIA_PLACEHOLDER_FILL = "rgba(20, 184, 166, 0.08)";
+const MEDIA_PLACEHOLDER_STROKE = "#14b8a6";
+
+function MediaPlaceholderChrome({
+	width,
+	height,
+	label,
+}: {
+	width: number;
+	height: number;
+	label: string;
+}) {
+	return (
+		<Group listening={false}>
+			<Rect
+				x={0}
+				y={0}
+				width={width}
+				height={height}
+				fill={MEDIA_PLACEHOLDER_FILL}
+				stroke={MEDIA_PLACEHOLDER_STROKE}
+				strokeWidth={1}
+				dash={[6, 4]}
+			/>
+			<Text
+				x={0}
+				y={0}
+				width={width}
+				height={height}
+				align="center"
+				verticalAlign="middle"
+				fontSize={12}
+				fontFamily="Inter"
+				fill={MEDIA_PLACEHOLDER_LABEL_COLOR}
+				text={label}
+			/>
+		</Group>
+	);
+}
+
+function CanvasVideoNodeRenderer({ node }: { node: CanvasVideoNode }) {
+	const isInteractive = use(CanvasStudioContext) !== null;
+	const t = useCanvasT();
+	// Hooks cannot be conditional, so probe unconditionally like the frame
+	// placeholder does — an empty assetId resolves to `undefined`.
+	const posterAsset = useCanvasAsset(node.poster ?? "");
+	const [image, status] = useImage(posterAsset?.uri ?? "");
+	const hasPoster = node.poster !== undefined && status === "loaded" && !!image;
+
+	if (!hasPoster && !isInteractive) {
+		// No poster to show and this isn't the live editor (e.g. `rasterizePage`)
+		// — matches core's `emitVideo`, which also emits nothing in this case.
+		return null;
+	}
+	return (
+		<Group {...commonProps(node)}>
+			{hasPoster && image ? (
+				<KonvaImage
+					width={node.bounds.width}
+					height={node.bounds.height}
+					image={image}
+				/>
+			) : null}
+			{isInteractive && !hasPoster ? (
+				<MediaPlaceholderChrome
+					width={node.bounds.width}
+					height={node.bounds.height}
+					label={t("canvas.video.placeholder", "Video")}
+				/>
+			) : null}
+		</Group>
+	);
+}
+
+function CanvasAudioNodeRenderer({ node }: { node: CanvasAudioNode }) {
+	const isInteractive = use(CanvasStudioContext) !== null;
+	const t = useCanvasT();
+	if (!isInteractive) {
+		// Audio has no visual representation at all, even in the editor's own
+		// exports — matches core's `emitAudio`, which always emits nothing.
+		return null;
+	}
+	return (
+		<Group {...commonProps(node)}>
+			<MediaPlaceholderChrome
+				width={node.bounds.width}
+				height={node.bounds.height}
+				label={t("canvas.audio.placeholder", "Audio")}
+			/>
+		</Group>
+	);
+}
+
 interface PlaceholderStatusStyle {
 	stroke: string;
 	fill: string;
@@ -718,6 +829,10 @@ export function CanvasNodeRenderer({
 			return <CanvasSvgNodeRenderer node={node} />;
 		case "ai-placeholder":
 			return <CanvasAiPlaceholderNodeRenderer node={node} />;
+		case "video":
+			return <CanvasVideoNodeRenderer node={node} />;
+		case "audio":
+			return <CanvasAudioNodeRenderer node={node} />;
 		default:
 			return <CanvasCustomNodeRenderer node={node} />;
 	}
