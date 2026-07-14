@@ -1,4 +1,4 @@
-import type { CanvasIR } from "@anvilkit/canvas-core";
+import type { CanvasIR, CanvasRuntime } from "@anvilkit/canvas-core";
 import { Awareness } from "y-protocols/awareness";
 import type * as Y from "yjs";
 import type { SceneStoreApi } from "../stores/scene-store.js";
@@ -33,6 +33,14 @@ export interface CreateCanvasYjsBindingOptions {
 	readonly mapName?: string;
 	/** Presence outbound rate limit (default 30/sec). */
 	readonly presenceRateLimit?: { readonly maxPerSecond: number };
+	/**
+	 * Core runtime (P0-8) used to migrate + validate every remote/joined
+	 * payload via `decodeCanvasIR`. Pass the SAME runtime the host built with
+	 * `createCanvasRuntime(...)` for custom node kinds — otherwise a peer's
+	 * custom nodes are rejected by the closed built-in schema. Omit to decode
+	 * with core's default (built-in-only, but still migration-aware) path.
+	 */
+	readonly runtime?: CanvasRuntime;
 }
 
 export interface CanvasYjsBinding {
@@ -70,7 +78,7 @@ export interface CanvasYjsBinding {
 export function createCanvasYjsBinding(
 	options: CreateCanvasYjsBindingOptions,
 ): CanvasYjsBinding {
-	const { doc, sceneStore, peer } = options;
+	const { doc, sceneStore, peer, runtime } = options;
 	const map = doc.getMap<string>(options.mapName ?? DEFAULT_CANVAS_MAP_NAME);
 	const awareness = options.awareness ?? new Awareness(doc);
 	const presence = createCanvasPresence(awareness, options.presenceRateLimit);
@@ -92,7 +100,7 @@ export function createCanvasYjsBinding(
 		const raw = map.get(CANVAS_IR_KEY);
 		if (typeof raw !== "string") return undefined;
 		try {
-			return decodeCanvasIR(raw);
+			return decodeCanvasIR(raw, runtime);
 		} catch {
 			return undefined;
 		}
