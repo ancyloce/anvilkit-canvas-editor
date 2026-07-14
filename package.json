@@ -109,10 +109,11 @@
 		"publint": "publint",
 		"check:publint": "node ./scripts/check-publint.mjs",
 		"check:circular": "madge --circular --extensions ts,tsx src/",
+		"check:layering": "node ./scripts/check-layering.mjs",
 		"check:peer-deps": "node ./scripts/check-peer-deps.mjs",
 		"check:bundle-budget": "node ./scripts/check-bundle-budget.mjs",
 		"check:api-snapshot": "node ./scripts/check-api-snapshot.mjs",
-		"check:all": "pnpm check:publint && pnpm check:circular && pnpm check:peer-deps && pnpm check:bundle-budget && pnpm check:api-snapshot",
+		"check:all": "pnpm check:publint && pnpm check:circular && pnpm check:layering && pnpm check:peer-deps && pnpm check:bundle-budget && pnpm check:api-snapshot",
 		"update:api-snapshot": "node ./scripts/check-api-snapshot.mjs --update",
 		"size": "size-limit"
 	},

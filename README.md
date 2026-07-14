@@ -19,6 +19,22 @@ Peer dependencies: `react` / `react-dom` (>= 19), `konva`, and `react-konva`.
 `yjs` + `y-protocols` are **optional** peers — install them only if you use the
 collaboration entry (`@anvilkit/canvas-editor/collab`).
 
+**Status.** Pre-1.0 (`0.x`, currently shipping release-candidate versions —
+see `package.json`'s `version`). Collaboration specifically is an alpha
+prototype (see above) — everything else here is more mature but the public
+API can still change between minor versions; breaking changes are called out
+in `CHANGELOG.md`.
+
+**Development model.** This package is developed inside the `anvilkit-studio`
+monorepo as a git submodule with its own independent version line and publish
+lifecycle (see `docs/architecture/repository-structure.md`'s Submodule
+Policy). `@anvilkit/canvas-core`, `@anvilkit/ui`, and the
+`@anvilkit/biome-config`/`typescript-config`/`vitest-config` tooling
+devDependencies all resolve via `workspace:*` — a bare `git clone` of just
+this submodule plus `pnpm install` does **not** build or test standalone;
+check it out inside the parent workspace for local development. Consuming it
+as a published npm dependency (`pnpm add`, above) is unaffected.
+
 ## Core features
 
 - **Uncontrolled IR + undo/redo** — seed the document with `initialIR`; every
@@ -39,8 +55,16 @@ collaboration entry (`@anvilkit/canvas-editor/collab`).
   `useBrandKit`.
 - **i18n seam** — host-injected `canvas.*` message catalog (`messages` prop);
   bundled English + Chinese catalogs ship under `./i18n`.
-- **Collaboration** — optional Yjs binding and remote cursor / selection
-  presence via the `./collab` entry.
+- **Collaboration (alpha prototype)** — optional Yjs binding and remote
+  cursor / selection presence via the `./collab` entry. **Consistency model:
+  whole-document, last-writer-wins** — the entire `CanvasIR` is one JSON blob
+  under one Yjs key, so two peers editing different nodes concurrently do
+  **not** merge; one write wins outright and the other is silently discarded.
+  Presence (cursors/selections) is fine-grained; document CONTENT is not. See
+  `createCanvasYjsBinding`'s doc comment before using this in a multi-writer
+  setting. `CanvasCollabAdapter` is a transport-agnostic interface a future
+  fine-grained (per-node CRDT / command-log) adapter can implement as a
+  drop-in replacement.
 - **Export** — built-in PNG + JSON exporters, a pluggable export menu
   (`createCanvasExportPlugin`), and stage-raster bridges (`exportStageContentDataURL`,
   `rasterizePage`).
@@ -48,6 +72,42 @@ collaboration entry (`@anvilkit/canvas-editor/collab`).
   a live tool announcer.
 - **Extensible** — register custom node kinds (renderers + inspectors) and
   custom tools through the `extensions` prop.
+- **Runtime injection** — pass a `createCanvasRuntime(...)` instance via the
+  `runtime` prop and the commit/history pipeline (`commit`, `commitBatch`,
+  `undo`, `redo`) dispatches through it, so custom commands registered on
+  that runtime participate in undo/redo exactly like built-ins. Pair it with
+  the same runtime at decode time (`decodeCanvasIR(raw, runtime)`) and export
+  time. Omit it for the default, built-in-only runtime (unchanged behavior).
+
+## Built-in node kind capability matrix (P1-1)
+
+Every one of core's 15 built-in node kinds has an explicit rendering policy
+here — none is silently invisible. `group`/`frame` are containers (recurse
+into `children`); every other kind is a leaf. Walker/mutation/command support
+is uniform across all leaf kinds (the same generic `insertNode`/`removeNode`/
+`updateNode`/command machinery) and across the two containers, so it is
+omitted as a column below.
+
+| Kind | Editor Konva render | SVG / PDF export¹ | Unsupported-state behavior |
+|---|---|---|---|
+| `group` | ✅ | ✅ | — |
+| `frame` | ✅ (clip, background) | ✅ | empty image/logo well: dashed outline + label (editor chrome only) |
+| `rect` / `ellipse` / `polygon` / `star` / `line` / `path` | ✅ | ✅ | — |
+| `text` | ✅ | ✅ | — |
+| `rich-text` | ✅ (one Konva.Text per styled run) | ✅ (one `<tspan>` per run) | — |
+| `image` | ✅ | ✅ (inlines remote images) | missing asset: renders nothing (no crash) |
+| `svg` | ✅ (rendered as `<image>`, no inline vector) | ✅ (same, `SVG_INLINE_UNSUPPORTED` warning) | missing asset: renders nothing |
+| `ai-placeholder` | ✅ (status chrome: pending/complete/error + Cancel) | skipped, `AI_PLACEHOLDER_SKIPPED` warning (no static representation) | n/a — always has a representation |
+| `video` | poster image if resolved, else an editor-chrome-only placeholder box (P1-1 fix — previously invisible) | poster image if resolved else nothing, `VIDEO_UNSUPPORTED` warning | no poster: chrome-only placeholder in the live editor; nothing in an export/rasterize pass, matching core's SVG policy |
+| `audio` | editor-chrome-only placeholder box (P1-1 fix — previously invisible) | nothing, `AUDIO_UNSUPPORTED` warning (no visual representation at all) | same placeholder-in-editor / nothing-in-export split as `video` |
+
+¹ PDF is raster-embed over the SAME rendering path as `rasterizePage` (no
+studio context), so PDF fidelity mirrors the SVG/no-context Konva column, not
+the interactive-editor column.
+
+Inspector field coverage and the accessibility scene tree (`SceneAccessibilityTree`)
+were not re-audited kind-by-kind in this pass — treat that as a follow-up if a
+gap is suspected there.
 
 ## Core Architecture
 
@@ -215,8 +275,15 @@ schema / command / serializer extensions for the same kinds.
 ## Notes
 
 - **IR is uncontrolled.** `initialIR` seeds the editor once; later prop updates
-  do **not** replace the internal document. Mirror state out with `onChange`, and
-  remount via a React `key` to load a different document.
+  do **not** replace the internal document. Mirror state out with `onChange`.
+  To load a genuinely different, unrelated document IN PLACE (a document
+  switch, a template loaded as a new document, crash recovery, or a `./collab`
+  remote/joined snapshot), call `useCanvasStudio().replaceDocument(ir, source)`
+  — it resets undo/redo history and clears selection/focus/draft/editing/
+  crop/pen/path-edit/guides/AI-jobs and reconciles the active page, instead of
+  leaving them stale against the old document. Remounting via a React `key` is
+  still the right call when you want a fully fresh instance (new stores, not
+  just a new document).
 - **Client-only.** The editor depends on Konva and the DOM — always load it with
   `ssr: false`. There is no server render path.
 - **Styles must be imported.** Tailwind utilities and parent-document CSS do not
