@@ -103,6 +103,8 @@ export { createEditingStore } from "./stores/editing-store.js";
 export type { GuidesState, GuidesStoreApi } from "./stores/guides-store.js";
 export { createGuidesStore } from "./stores/guides-store.js";
 export type {
+	AnyCanvasCommand,
+	CommandApplyFn,
 	CreateHistoryStoreOptions,
 	HistoryState,
 	HistoryStoreApi,
@@ -128,6 +130,12 @@ export type {
 	PenStoreApi,
 } from "./stores/pen-store.js";
 export { createPenStore } from "./stores/pen-store.js";
+export type {
+	DocumentSnapshotSource,
+	DocumentStores,
+	ReplaceDocumentSnapshotOptions,
+} from "./stores/replace-document.js";
+export { replaceDocumentSnapshot } from "./stores/replace-document.js";
 export type {
 	SelectionState,
 	SelectionStoreApi,
