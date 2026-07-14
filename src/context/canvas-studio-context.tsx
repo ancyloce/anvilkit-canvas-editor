@@ -21,6 +21,7 @@ import type {
 import type { PagesStoreApi } from "../stores/pages-store.js";
 import type { PathEditStoreApi } from "../stores/path-edit-store.js";
 import type { PenStoreApi } from "../stores/pen-store.js";
+import type { DocumentSnapshotSource } from "../stores/replace-document.js";
 import type { SceneStoreApi } from "../stores/scene-store.js";
 import type { SelectionStoreApi } from "../stores/selection-store.js";
 import type { ToolStoreApi } from "../stores/tool-store.js";
@@ -92,6 +93,16 @@ export interface CanvasStudioContextValue {
 		commands: readonly AnyCanvasCommand[],
 		label?: string,
 	) => CanvasIR;
+	/**
+	 * Replace the WHOLE document with an unrelated `CanvasIR` snapshot (P0-9) —
+	 * not a normal edit, so it does not go through {@link commit}. Resets undo/
+	 * redo history, clears selection/focus/draft/editing/crop/pen/path-edit/
+	 * guides, aborts stale AI jobs, swaps the IR, and reconciles the active
+	 * page. Use this — never `sceneStore.getState().setIR(ir)` directly — for a
+	 * host-driven document switch, loading a template as a new document,
+	 * recovery, or wiring a `./collab` binding's `stores` option.
+	 */
+	replaceDocument: (ir: CanvasIR, source: DocumentSnapshotSource) => void;
 	pickAsset: () => Promise<string>;
 	/**
 	 * Hand an AI gesture to the host (I1-7). Optional — present only when the
