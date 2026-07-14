@@ -1,6 +1,11 @@
 import type { CanvasIR, CanvasRuntime } from "@anvilkit/canvas-core";
 import { Awareness } from "y-protocols/awareness";
 import type * as Y from "yjs";
+import {
+	type DocumentSnapshotSource,
+	type DocumentStores,
+	replaceDocumentSnapshot,
+} from "../stores/replace-document.js";
 import type { SceneStoreApi } from "../stores/scene-store.js";
 import { decodeCanvasIR, encodeCanvasIR } from "./encode.js";
 import {
@@ -41,6 +46,16 @@ export interface CreateCanvasYjsBindingOptions {
 	 * with core's default (built-in-only, but still migration-aware) path.
 	 */
 	readonly runtime?: CanvasRuntime;
+	/**
+	 * The full editor store bundle (P0-9). When supplied, a joined or remote
+	 * snapshot replacement routes through `replaceDocumentSnapshot` — resetting
+	 * history, clearing selection/focus/draft/editing/crop/pen/path-edit/
+	 * guides, aborting stale AI jobs, and reconciling the active page — instead
+	 * of touching only `sceneStore.ir`. Every field is available off
+	 * `useCanvasStudio()`'s context value. Optional for backward compatibility:
+	 * omit it to keep the pre-P0-9 `sceneStore`-only replacement behavior.
+	 */
+	readonly stores?: DocumentStores;
 }
 
 export interface CanvasYjsBinding {
@@ -116,10 +131,21 @@ export function createCanvasYjsBinding(
 		}
 	}
 
-	function applyRemote(ir: CanvasIR): void {
+	// P0-9: a joined or remote IR is an UNRELATED snapshot, not a delta of the
+	// current document — `sceneStore.setIR` alone would leave history,
+	// selection, and every other transient store holding state computed
+	// against the document that's about to disappear. Route through the
+	// coordinator when the host supplied the full store bundle; fall back to
+	// the pre-P0-9 `setIR`-only behavior when it didn't (back-compat for a
+	// binding constructed before `stores` existed).
+	function applySnapshot(ir: CanvasIR, source: DocumentSnapshotSource): void {
 		applyingRemote = true;
 		try {
-			sceneStore.getState().setIR(ir);
+			if (options.stores) {
+				replaceDocumentSnapshot(options.stores, ir, { source });
+			} else {
+				sceneStore.getState().setIR(ir);
+			}
 		} finally {
 			applyingRemote = false;
 		}
@@ -129,7 +155,7 @@ export function createCanvasYjsBinding(
 	// the local scene. Runs before observers are attached, so no echo.
 	const joined = readCurrent();
 	if (joined !== undefined) {
-		applyRemote(joined);
+		applySnapshot(joined, "initial-load");
 	} else {
 		pushLocal(sceneStore.getState().ir);
 	}
@@ -147,7 +173,7 @@ export function createCanvasYjsBinding(
 		const ir = readCurrent();
 		if (ir === undefined) return;
 		const author = readAuthorPeer();
-		applyRemote(ir);
+		applySnapshot(ir, "remote-update");
 		// This observer runs synchronously inside the Yjs transaction commit
 		// (`applyUpdate`). A throwing subscriber would escape the observer and
 		// could abort the transaction, leaving the doc/observer set inconsistent
