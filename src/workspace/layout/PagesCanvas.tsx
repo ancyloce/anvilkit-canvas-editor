@@ -2,27 +2,51 @@
 
 import type { CanvasPage } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuSeparator,
+	ContextMenuTrigger,
+} from "@anvilkit/ui/context-menu";
+import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { ChevronDown, ChevronUp, Copy, Plus, Trash2 } from "lucide-react";
 import {
+	lazy,
 	type ReactNode,
+	Suspense,
+	useEffect,
 	useLayoutEffect,
 	useRef,
+	useState,
 	useSyncExternalStore,
 } from "react";
+import { computeWheelZoom } from "@/actions/viewport-actions.js";
 import {
 	useCanvasStudio,
 	useCanvasT,
 } from "@/context/canvas-studio-context.js";
+import { useCanvasDialogs } from "@/context/dialog-context.js";
 import {
 	addPage,
 	deletePage,
 	duplicateCurrentPage,
+	renamePage,
 	reorderPage,
 	switchToPage,
 } from "@/pages/page-actions.js";
 import { usePageThumbnails } from "@/perf/page-thumbnails.js";
 import { type ElementActions, ElementControls } from "./ElementControls.js";
+
+/** Dialog-class UI is code-split (PRD 0012 constraint 20.15). */
+const PageSettingsDialog = lazy(
+	() => import("../dialogs/PageSettingsDialog.js"),
+);
+
+/** Drag payload type for page-row reordering (kept off `Files` so the
+ * upload `CanvasDropZone` never reacts to page drags). */
+const PAGE_DRAG_MIME = "application/x-anvilkit-canvas-page";
 
 /** Padding (px) reserved inside the scroll viewport for the fit calculation. */
 const FIT_PAD_X = 56; // px-7 both sides
@@ -109,6 +133,50 @@ export function PagesCanvas({
 		return () => ro.disconnect();
 	}, [ctx]);
 
+	// Mirror the canvas viewport size into the viewport store so DOM-free
+	// zoom-to-fit / zoom-to-selection actions can compute (A-07).
+	useLayoutEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const update = (): void => {
+			ctx.viewportStore
+				.getState()
+				.setViewportSize({ width: el.clientWidth, height: el.clientHeight });
+		};
+		update();
+		if (typeof ResizeObserver !== "function") return;
+		const ro = new ResizeObserver(update);
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, [ctx]);
+
+	// Ctrl/Cmd + wheel (and trackpad pinch, which browsers deliver as
+	// ctrl+wheel) zooms AT THE CURSOR: the scroll offsets are re-derived so the
+	// point under the pointer stays fixed. Plain wheel keeps native scrolling
+	// (pan). Store-only — zoom never enters history (FR-043/§13.1).
+	useEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const onWheel = (e: WheelEvent): void => {
+			if (!(e.ctrlKey || e.metaKey)) return;
+			e.preventDefault();
+			const viewport = ctx.viewportStore.getState();
+			const next = computeWheelZoom(viewport.zoom, e.deltaY);
+			if (next === viewport.zoom) return;
+			const rect = el.getBoundingClientRect();
+			const cx = e.clientX - rect.left;
+			const cy = e.clientY - rect.top;
+			const scale = next / viewport.zoom;
+			const scrollLeft = (el.scrollLeft + cx) * scale - cx;
+			const scrollTop = (el.scrollTop + cy) * scale - cy;
+			viewport.setZoom(next);
+			el.scrollLeft = scrollLeft;
+			el.scrollTop = scrollTop;
+		};
+		el.addEventListener("wheel", onWheel, { passive: false });
+		return () => el.removeEventListener("wheel", onWheel);
+	}, [ctx]);
+
 	return (
 		<div
 			ref={scrollRef}
@@ -161,6 +229,25 @@ function PageRow({
 }: PageRowProps): React.JSX.Element {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
+	const dialogs = useCanvasDialogs();
+	const [settingsOpen, setSettingsOpen] = useState(false);
+	const [renaming, setRenaming] = useState(false);
+	const [dropTarget, setDropTarget] = useState(false);
+	const confirmDelete = (): void => {
+		void dialogs
+			.confirm({
+				title: t("canvas.pages.deleteConfirmTitle", "Delete this page?"),
+				description: t(
+					"canvas.pages.deleteConfirmBody",
+					"The page and everything on it will be removed. This can be undone.",
+				),
+				confirmLabel: t("canvas.pages.deleteTitle", "Delete"),
+				destructive: true,
+			})
+			.then((ok) => {
+				if (ok) deletePage(ctx, page.id);
+			});
+	};
 	const width = page.size.width * zoom;
 	const height = page.size.height * zoom;
 	const label = page.name
@@ -173,106 +260,218 @@ function PageRow({
 		<div
 			data-testid={`page-row-${page.id}`}
 			data-active={isActive ? "true" : "false"}
-			className="flex flex-col gap-1.5"
+			data-drop-target={dropTarget ? "true" : undefined}
 			style={{ width }}
+			className={cn(dropTarget && "rounded-sm ring-2 ring-violet-500/60")}
+			onDragOver={(e) => {
+				if (!e.dataTransfer.types.includes(PAGE_DRAG_MIME)) return;
+				e.preventDefault();
+				e.stopPropagation();
+				e.dataTransfer.dropEffect = "move";
+				setDropTarget(true);
+			}}
+			onDragLeave={() => setDropTarget(false)}
+			onDrop={(e) => {
+				if (!e.dataTransfer.types.includes(PAGE_DRAG_MIME)) return;
+				e.preventDefault();
+				e.stopPropagation();
+				setDropTarget(false);
+				const draggedId = e.dataTransfer.getData(PAGE_DRAG_MIME);
+				if (draggedId && draggedId !== page.id) {
+					reorderPage(ctx, draggedId, index);
+				}
+			}}
 		>
-			<div className="flex h-7 items-center gap-0.5">
-				<span className="mr-auto truncate text-xs font-medium text-muted-foreground">
-					{label}
-				</span>
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon-xs"
-					className={SURFACE_GHOST}
-					data-testid={`page-reorder-up-${page.id}`}
-					aria-label={t("canvas.pages.moveUp", "Move page up")}
-					title={t("canvas.pages.moveUpTitle", "Move up")}
-					disabled={index === 0}
-					onClick={() => reorderPage(ctx, page.id, index - 1)}
-				>
-					<ChevronUp aria-hidden />
-				</Button>
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon-xs"
-					className={SURFACE_GHOST}
-					data-testid={`page-reorder-down-${page.id}`}
-					aria-label={t("canvas.pages.moveDown", "Move page down")}
-					title={t("canvas.pages.moveDownTitle", "Move down")}
-					disabled={index === total - 1}
-					onClick={() => reorderPage(ctx, page.id, index + 1)}
-				>
-					<ChevronDown aria-hidden />
-				</Button>
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon-xs"
-					className={SURFACE_GHOST}
-					data-testid={`page-duplicate-${page.id}`}
-					aria-label={t("canvas.pages.duplicate", "Duplicate page")}
-					title={t("canvas.pages.duplicateTitle", "Duplicate")}
-					onClick={() => {
-						switchToPage(ctx, page.id);
-						duplicateCurrentPage(ctx);
-					}}
-				>
-					<Copy aria-hidden />
-				</Button>
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon-xs"
-					className={SURFACE_GHOST}
-					data-testid={`page-delete-${page.id}`}
-					aria-label={t("canvas.pages.delete", "Delete page")}
-					title={t("canvas.pages.deleteTitle", "Delete")}
-					disabled={total <= 1}
-					onClick={() => deletePage(ctx, page.id)}
-				>
-					<Trash2 aria-hidden />
-				</Button>
-			</div>
-
-			{isActive ? (
-				// Outer wrapper stays unclipped so the floating controls can overhang
-				// the page; the inner frame is the active-page card.
-				<div className="relative mx-auto w-fit">
-					<ElementControls actions={elementActions} />
-					<div className="overflow-hidden rounded-[3px] bg-background ring-2 ring-violet-500/80 shadow-[0_6px_24px_-6px_rgba(0,0,0,0.3)]">
-						{stage}
+			<ContextMenu>
+				<ContextMenuContent data-testid={`page-menu-${page.id}`}>
+					<ContextMenuItem
+						data-testid={`page-menu-duplicate-${page.id}`}
+						onClick={() => {
+							switchToPage(ctx, page.id);
+							duplicateCurrentPage(ctx);
+						}}
+					>
+						{t("canvas.pages.duplicate", "Duplicate page")}
+					</ContextMenuItem>
+					<ContextMenuItem
+						data-testid={`page-menu-rename-${page.id}`}
+						onClick={() => {
+							// Defer past the menu's focus-return: closing the menu focuses
+							// the trigger, which would instantly blur the autofocused rename
+							// input and end the rename before it starts.
+							setTimeout(() => setRenaming(true), 0);
+						}}
+					>
+						{t("canvas.pages.rename", "Rename page")}
+					</ContextMenuItem>
+					<ContextMenuItem
+						data-testid={`page-menu-settings-${page.id}`}
+						onClick={() => setSettingsOpen(true)}
+					>
+						{t("canvas.pageSettings.title", "Page settings")}
+					</ContextMenuItem>
+					<ContextMenuItem
+						data-testid={`page-menu-move-up-${page.id}`}
+						disabled={index === 0}
+						onClick={() => reorderPage(ctx, page.id, index - 1)}
+					>
+						{t("canvas.pages.moveUp", "Move page up")}
+					</ContextMenuItem>
+					<ContextMenuItem
+						data-testid={`page-menu-move-down-${page.id}`}
+						disabled={index === total - 1}
+						onClick={() => reorderPage(ctx, page.id, index + 1)}
+					>
+						{t("canvas.pages.moveDown", "Move page down")}
+					</ContextMenuItem>
+					<ContextMenuSeparator />
+					<ContextMenuItem
+						data-testid={`page-menu-delete-${page.id}`}
+						variant="destructive"
+						disabled={total <= 1}
+						onClick={confirmDelete}
+					>
+						{t("canvas.pages.delete", "Delete page")}
+					</ContextMenuItem>
+				</ContextMenuContent>
+				<ContextMenuTrigger className="flex flex-col gap-1.5">
+					<div
+						className="flex h-7 items-center gap-0.5"
+						draggable={!renaming}
+						onDragStart={(e) => {
+							e.dataTransfer.setData(PAGE_DRAG_MIME, page.id);
+							e.dataTransfer.effectAllowed = "move";
+						}}
+					>
+						{renaming ? (
+							<Input
+								autoFocus
+								defaultValue={page.name ?? ""}
+								data-testid={`page-rename-input-${page.id}`}
+								aria-label={t("canvas.pages.rename", "Rename page")}
+								className="mr-auto h-6 w-36 px-1 text-xs"
+								onBlur={(e) => {
+									const next = e.currentTarget.value.trim() || undefined;
+									if (next !== page.name) renamePage(ctx, page.id, next);
+									setRenaming(false);
+								}}
+								onKeyDown={(e) => {
+									e.stopPropagation();
+									if (e.key === "Enter") e.currentTarget.blur();
+									else if (e.key === "Escape") setRenaming(false);
+								}}
+							/>
+						) : (
+							<span
+								className="mr-auto truncate text-xs font-medium text-muted-foreground"
+								data-testid={`page-label-${page.id}`}
+								onDoubleClick={() => setRenaming(true)}
+							>
+								{label}
+							</span>
+						)}
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-xs"
+							className={SURFACE_GHOST}
+							data-testid={`page-reorder-up-${page.id}`}
+							aria-label={t("canvas.pages.moveUp", "Move page up")}
+							title={t("canvas.pages.moveUpTitle", "Move up")}
+							disabled={index === 0}
+							onClick={() => reorderPage(ctx, page.id, index - 1)}
+						>
+							<ChevronUp aria-hidden />
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-xs"
+							className={SURFACE_GHOST}
+							data-testid={`page-reorder-down-${page.id}`}
+							aria-label={t("canvas.pages.moveDown", "Move page down")}
+							title={t("canvas.pages.moveDownTitle", "Move down")}
+							disabled={index === total - 1}
+							onClick={() => reorderPage(ctx, page.id, index + 1)}
+						>
+							<ChevronDown aria-hidden />
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-xs"
+							className={SURFACE_GHOST}
+							data-testid={`page-duplicate-${page.id}`}
+							aria-label={t("canvas.pages.duplicate", "Duplicate page")}
+							title={t("canvas.pages.duplicateTitle", "Duplicate")}
+							onClick={() => {
+								switchToPage(ctx, page.id);
+								duplicateCurrentPage(ctx);
+							}}
+						>
+							<Copy aria-hidden />
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-xs"
+							className={SURFACE_GHOST}
+							data-testid={`page-delete-${page.id}`}
+							aria-label={t("canvas.pages.delete", "Delete page")}
+							title={t("canvas.pages.deleteTitle", "Delete")}
+							disabled={total <= 1}
+							onClick={confirmDelete}
+						>
+							<Trash2 aria-hidden />
+						</Button>
 					</div>
-				</div>
-			) : (
-				<button
-					type="button"
-					data-testid={`page-activate-${page.id}`}
-					aria-label={t("canvas.pages.activate", "Activate {label}").replace(
-						"{label}",
-						label,
+
+					{isActive ? (
+						// Outer wrapper stays unclipped so the floating controls can overhang
+						// the page; the inner frame is the active-page card.
+						<div className="relative mx-auto w-fit">
+							<ElementControls actions={elementActions} />
+							<div className="overflow-hidden rounded-[3px] bg-background ring-2 ring-violet-500/80 shadow-[0_6px_24px_-6px_rgba(0,0,0,0.3)]">
+								{stage}
+							</div>
+						</div>
+					) : (
+						<button
+							type="button"
+							data-testid={`page-activate-${page.id}`}
+							aria-label={t(
+								"canvas.pages.activate",
+								"Activate {label}",
+							).replace("{label}", label)}
+							onClick={() => switchToPage(ctx, page.id)}
+							className={cn(
+								"block overflow-hidden rounded-[3px] bg-background shadow-[0_4px_20px_-6px_rgba(0,0,0,0.3)] ring-1 ring-foreground/15 transition hover:ring-2 hover:ring-violet-500/60",
+							)}
+							style={{ width, height }}
+						>
+							{thumbnail ? (
+								<img
+									src={thumbnail}
+									alt=""
+									draggable={false}
+									className="block size-full object-contain"
+								/>
+							) : null}
+						</button>
 					)}
-					onClick={() => switchToPage(ctx, page.id)}
-					className={cn(
-						"block overflow-hidden rounded-[3px] bg-background shadow-[0_4px_20px_-6px_rgba(0,0,0,0.3)] ring-1 ring-foreground/15 transition hover:ring-2 hover:ring-violet-500/60",
-					)}
-					style={{ width, height }}
-				>
-					{thumbnail ? (
-						<img
-							src={thumbnail}
-							alt=""
-							draggable={false}
-							className="block size-full object-contain"
-						/>
-					) : null}
-				</button>
-			)}
+				</ContextMenuTrigger>
+			</ContextMenu>
+			{settingsOpen ? (
+				<Suspense fallback={null}>
+					<PageSettingsDialog
+						page={page}
+						onClose={() => setSettingsOpen(false)}
+					/>
+				</Suspense>
+			) : null}
 		</div>
 	);
 }
-
 function AddPageButton({ width }: { width: number }): React.JSX.Element {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();

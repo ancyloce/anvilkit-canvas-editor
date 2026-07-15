@@ -1,16 +1,24 @@
 "use client";
 
 import { Button } from "@anvilkit/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@anvilkit/ui/dropdown-menu";
 import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { Separator } from "@anvilkit/ui/separator";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import {
 	Fragment,
 	type ReactNode,
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { useCanvasActions } from "@/actions/editor-actions.js";
 import { ChromeIcons } from "@/chrome/icons.js";
 import {
 	useCanvasStudio,
@@ -83,6 +91,27 @@ export function WorkspaceHeader({
 	const redo = () => {
 		const next = ctx.historyStore.getState().redo(ctx.getIR());
 		ctx.sceneStore?.getState().setIR(next);
+	};
+
+	const actions = useCanvasActions();
+	const saveStatusStore = ctx.saveStatusStore;
+	const saveStatus = useSyncExternalStore(
+		saveStatusStore?.subscribe ?? (() => () => undefined),
+		() => saveStatusStore?.getState().status ?? "clean",
+		() => saveStatusStore?.getState().status ?? "clean",
+	);
+	const zoom = useSyncExternalStore(
+		ctx.viewportStore.subscribe,
+		() => ctx.viewportStore.getState().zoom,
+		() => ctx.viewportStore.getState().zoom,
+	);
+	const SAVE_LABELS: Record<string, [string, string]> = {
+		clean: ["canvas.save.clean", "All changes saved"],
+		dirty: ["canvas.save.dirty", "Unsaved changes"],
+		saving: ["canvas.save.saving", "Saving…"],
+		saved: ["canvas.save.saved", "Saved"],
+		error: ["canvas.save.error", "Save failed — click to retry"],
+		offline: ["canvas.save.offline", "Offline"],
 	};
 
 	const displayTitle =
@@ -184,7 +213,105 @@ export function WorkspaceHeader({
 				</button>
 			)}
 
+			{saveStatusStore ? (
+				<button
+					type="button"
+					data-testid="workspace-save-status"
+					data-status={saveStatus}
+					aria-live="polite"
+					className={cn(
+						"ml-1 rounded-full px-2 py-0.5 text-[11px]",
+						saveStatus === "error"
+							? "bg-destructive/10 text-destructive"
+							: "text-muted-foreground hover:bg-muted",
+					)}
+					title={t(...(SAVE_LABELS[saveStatus] as [string, string]))}
+					onClick={() => {
+						if (saveStatus === "error" || saveStatus === "dirty") {
+							void ctx.save?.();
+						}
+					}}
+				>
+					{t(...(SAVE_LABELS[saveStatus] as [string, string]))}
+				</button>
+			) : null}
+
 			<div className="flex-1" />
+
+			<div
+				data-testid="workspace-header-zoom"
+				className="mr-1 flex items-center gap-0.5 text-xs text-muted-foreground"
+			>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-sm"
+					data-testid="workspace-header-zoom-out"
+					aria-label={t("canvas.footer.zoomOut", "Zoom out")}
+					title={t("canvas.footer.zoomOut", "Zoom out")}
+					onClick={() => actions.zoomOut()}
+				>
+					<ChromeIcons.zoomOut aria-hidden />
+				</Button>
+				<span className="w-10 text-center tabular-nums">
+					{Math.round(zoom * 100)}%
+				</span>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-sm"
+					data-testid="workspace-header-zoom-in"
+					aria-label={t("canvas.footer.zoomIn", "Zoom in")}
+					title={t("canvas.footer.zoomIn", "Zoom in")}
+					onClick={() => actions.zoomIn()}
+				>
+					<ChromeIcons.zoomIn aria-hidden />
+				</Button>
+			</div>
+
+			<DropdownMenu>
+				<DropdownMenuTrigger
+					data-testid="workspace-more-menu"
+					aria-label={t("canvas.header.moreMenu", "More")}
+					title={t("canvas.header.moreMenu", "More")}
+					className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"
+				>
+					<MoreHorizontal aria-hidden className="size-4" />
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end">
+					<DropdownMenuItem
+						data-testid="header-menu-copy"
+						onClick={() => void actions.copySelection()}
+					>
+						{t("canvas.menu.copy", "Copy")}
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						data-testid="header-menu-paste"
+						onClick={() => void actions.paste()}
+					>
+						{t("canvas.menu.paste", "Paste")}
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						data-testid="header-menu-duplicate"
+						onClick={() => actions.duplicateSelection()}
+					>
+						{t("canvas.menu.duplicate", "Duplicate")}
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem
+						data-testid="header-menu-zoom-fit"
+						onClick={() => actions.zoomToFit()}
+					>
+						{t("canvas.shortcut.zoomToFit", "Zoom to fit")}
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						data-testid="header-menu-actual-size"
+						onClick={() => actions.resetZoom()}
+					>
+						{t("canvas.shortcut.actualSize", "Actual size")}
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
 
 			{avatarsSlot}
 			{plugins?.map((plugin) => (

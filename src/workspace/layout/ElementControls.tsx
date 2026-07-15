@@ -309,8 +309,12 @@ export function ElementControls({
 				data-testid="element-controls-duplicate"
 				aria-label={t("canvas.element.duplicate", "Duplicate")}
 				title={t("canvas.element.duplicate", "Duplicate")}
-				disabled={!actions?.onDuplicate}
-				onClick={() => actions?.onDuplicate?.(selectedIds)}
+				onClick={() => {
+					// Host override for backward compatibility; built-in duplicate
+					// (fresh ids, next to the original, one batch) otherwise (A-05).
+					if (actions?.onDuplicate) actions.onDuplicate(selectedIds);
+					else editorActions.duplicateSelection();
+				}}
 			>
 				<Copy aria-hidden />
 			</Button>

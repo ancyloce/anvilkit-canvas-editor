@@ -3,7 +3,7 @@
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useRef } from "react";
 import { ToolAnnouncer } from "@/a11y/ToolAnnouncer.js";
 import { useCanvasT } from "@/context/canvas-studio-context.js";
 import { PropertyInspector } from "@/panels/PropertyInspector.js";
@@ -12,12 +12,20 @@ import { PropertyInspector } from "@/panels/PropertyInspector.js";
 import { CanvasStudio, type CanvasStudioProps } from "../../CanvasStudio.js";
 // Relative (not @/): this type also surfaces in the emitted .d.ts.
 import type { CanvasHeaderPlugin } from "../../header/types.js";
+import { CanvasDialogHost } from "../dialogs/CanvasDialogHost.js";
+import { CanvasAreaContextMenu } from "../menus/CanvasAreaContextMenu.js";
 import {
 	type CanvasPanelRegistry,
 	createCanvasPanelRegistry,
 } from "../panel-registry.js";
+// Relative (not @/): CanvasShortcutOptions surfaces in the emitted .d.ts.
+import type { CanvasShortcutOptions } from "../shortcuts/shortcut-registry.js";
+import { WorkspaceShortcutLayer } from "../shortcuts/WorkspaceShortcutLayer.js";
 import { useInspectorCollapsed } from "../state/hooks.js";
 import { WorkspaceUiStoreProvider } from "../state/WorkspaceUiStoreProvider.js";
+import { CanvasToastHost } from "../toasts/CanvasToastHost.js";
+import { ToolStrip } from "../toolstrip/ToolStrip.js";
+import { CanvasDropZone } from "../uploads/CanvasDropZone.js";
 import type { DockItem } from "../workspace-config.js";
 import { CanvasToolbar } from "./CanvasToolbar.js";
 import type { ElementActions } from "./ElementControls.js";
@@ -54,6 +62,19 @@ export interface CanvasWorkspaceProps
 	inspector?: boolean;
 	/** Optional host handlers for the Element Controls "more" menu (§2). */
 	elementActions?: ElementActions;
+	/**
+	 * Workspace shortcut registry (A-04, FR-040). Default `true` — the shell
+	 * installs the built-in bindings on its root element. `false` disables
+	 * every workspace shortcut; an options object extends/overrides bindings.
+	 * Headless `<CanvasStudio>` embeds are unaffected either way (they never
+	 * mount this registry).
+	 */
+	shortcuts?: boolean | CanvasShortcutOptions;
+	/**
+	 * The floating tool strip (B-06, FR-010). Default `true`; `false` hides it
+	 * (hosts with their own tool chrome keep the pre-M2 canvas untouched).
+	 */
+	toolStrip?: boolean;
 }
 
 /**
@@ -75,46 +96,68 @@ export function CanvasWorkspace({
 	panels,
 	inspector = true,
 	elementActions,
+	shortcuts = true,
+	toolStrip = true,
 	...studioProps
 }: CanvasWorkspaceProps): React.JSX.Element {
 	const registry = useMemo(() => createCanvasPanelRegistry(panels), [panels]);
+	const rootRef = useRef<HTMLDivElement | null>(null);
 
 	return (
 		<CanvasStudio
 			{...studioProps}
 			renderShell={(stage) => (
 				<WorkspaceUiStoreProvider storeId={storeId}>
-					<div
-						data-ak-canvas-editor=""
-						data-testid="canvas-workspace-root"
-						className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background text-foreground"
-					>
-						<ToolAnnouncer />
-						<WorkspaceHeader
-							onBack={onBack}
-							title={title}
-							onTitleChange={onTitleChange}
-							avatarsSlot={avatarsSlot}
-							plugins={headerPlugins}
-							shareSlot={shareSlot}
-						/>
-						<div className="grid min-h-0 grid-cols-[auto_280px_minmax(0,1fr)_auto]">
-							<PanelDock items={dockItems} />
-							<TabPanel registry={registry} />
-							{/* Main canvas: a neutral gray surface (theme-adaptive — light
+					<CanvasToastHost>
+						<CanvasDialogHost>
+							<div
+								ref={rootRef}
+								data-ak-canvas-editor=""
+								data-testid="canvas-workspace-root"
+								className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background text-foreground"
+							>
+								{shortcuts !== false ? (
+									<WorkspaceShortcutLayer
+										rootRef={rootRef}
+										options={shortcuts === true ? undefined : shortcuts}
+									/>
+								) : null}
+								<ToolAnnouncer />
+								<WorkspaceHeader
+									onBack={onBack}
+									title={title}
+									onTitleChange={onTitleChange}
+									avatarsSlot={avatarsSlot}
+									plugins={headerPlugins}
+									shareSlot={shareSlot}
+								/>
+								<div className="grid min-h-0 grid-cols-[auto_280px_minmax(0,1fr)_auto]">
+									<PanelDock items={dockItems} />
+									<TabPanel registry={registry} />
+									{/* Main canvas: a neutral gray surface (theme-adaptive — light
 							    gray in light mode, charcoal in dark) so the white pages pop.
 							    Holds the floating toolbar, the scrollable multi-page stack
 							    (PagesCanvas owns the viewport + fit-on-entry zoom), and the
 							    footer pinned inside it. */}
-							<section className="relative flex min-h-0 min-w-0 flex-col bg-neutral-200 dark:bg-neutral-800">
-								{/* Fixed overlay — floats over the canvas, never shifts it. */}
-								<CanvasToolbar />
-								<PagesCanvas stage={stage} elementActions={elementActions} />
-								<WorkspaceFooter className="absolute inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur" />
-							</section>
-							{inspector ? <WorkspaceInspector /> : null}
-						</div>
-					</div>
+									<section className="relative flex min-h-0 min-w-0 flex-col bg-neutral-200 dark:bg-neutral-800">
+										<CanvasAreaContextMenu>
+											<CanvasDropZone>
+												{/* Fixed overlays — float over the canvas, never shift it. */}
+												{toolStrip ? <ToolStrip /> : null}
+												<CanvasToolbar />
+												<PagesCanvas
+													stage={stage}
+													elementActions={elementActions}
+												/>
+												<WorkspaceFooter className="absolute inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur" />
+											</CanvasDropZone>
+										</CanvasAreaContextMenu>
+									</section>
+									{inspector ? <WorkspaceInspector /> : null}
+								</div>
+							</div>
+						</CanvasDialogHost>
+					</CanvasToastHost>
 				</WorkspaceUiStoreProvider>
 			)}
 		/>

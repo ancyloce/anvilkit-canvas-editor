@@ -9,7 +9,7 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "@/context/canvas-studio-context.js";
-import { useCommitPatch } from "@/panels/fields.js";
+import { type FieldContractTarget, useFieldContract } from "@/panels/fields.js";
 
 /** Node kinds that carry a `fill`. */
 const FILL_TYPES = new Set<CanvasNode["type"]>([
@@ -41,7 +41,6 @@ export function CanvasToolbar({
 }: CanvasToolbarProps): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
-	const commitPatch = useCommitPatch();
 	const selectedIds = useSyncExternalStore(
 		ctx.selectionStore.subscribe,
 		() => ctx.selectionStore.getState().selectedIds,
@@ -75,7 +74,7 @@ export function CanvasToolbar({
 						label={t("canvas.toolbar.fill", "Fill")}
 						value={(node as { fill?: string }).fill}
 						testId="toolbar-fill"
-						onCommit={(v) => commitPatch(node, { fill: v })}
+						contract={{ nodes: [node], buildPatch: (_n, v) => ({ fill: v }) }}
 					/>
 				) : null}
 				{hasFill && hasStroke ? <PillDivider /> : null}
@@ -84,7 +83,7 @@ export function CanvasToolbar({
 						label={t("canvas.toolbar.border", "Border")}
 						value={(node as { stroke?: string }).stroke}
 						testId="toolbar-stroke"
-						onCommit={(v) => commitPatch(node, { stroke: v })}
+						contract={{ nodes: [node], buildPatch: (_n, v) => ({ stroke: v }) }}
 					/>
 				) : null}
 				{hasStroke ? (
@@ -93,7 +92,10 @@ export function CanvasToolbar({
 						value={(node as { strokeWidth?: number }).strokeWidth ?? 0}
 						min={0}
 						testId="toolbar-stroke-width"
-						onCommit={(v) => commitPatch(node, { strokeWidth: v })}
+						contract={{
+							nodes: [node],
+							buildPatch: (_n, v) => ({ strokeWidth: v }),
+						}}
 					/>
 				) : null}
 				<PillDivider />
@@ -104,7 +106,7 @@ export function CanvasToolbar({
 					min={0}
 					max={1}
 					testId="toolbar-opacity"
-					onCommit={(v) => commitPatch(node, { opacity: v })}
+					contract={{ nodes: [node], buildPatch: (_n, v) => ({ opacity: v }) }}
 				/>
 			</div>
 		</div>
@@ -125,13 +127,15 @@ function SwatchControl({
 	label,
 	value,
 	testId,
-	onCommit,
+	contract,
 }: {
 	label: string;
 	value: string | undefined;
 	testId: string;
-	onCommit: (next: string) => void;
+	/** §10 field-input contract (B-12): preview + coalesced commit + revert. */
+	contract: FieldContractTarget<string>;
 }): React.JSX.Element {
+	const field = useFieldContract(contract, testId);
 	return (
 		<label
 			className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 hover:bg-muted"
@@ -151,8 +155,18 @@ function SwatchControl({
 				defaultValue={value ?? "#000000"}
 				data-testid={testId}
 				className="sr-only"
+				onChange={(e) => field.preview(e.currentTarget.value)}
+				onKeyDown={(e) => {
+					if (e.key === "Escape") {
+						e.stopPropagation();
+						e.currentTarget.value = value ?? "#000000";
+						field.cancel();
+					}
+				}}
 				onBlur={(e) => {
-					if (e.currentTarget.value !== value) onCommit(e.currentTarget.value);
+					if (e.currentTarget.value !== value)
+						field.commit(e.currentTarget.value);
+					else field.cancel();
 				}}
 			/>
 		</label>
@@ -167,7 +181,7 @@ function NumberControl({
 	min,
 	max,
 	testId,
-	onCommit,
+	contract,
 }: {
 	label: string;
 	value: number;
@@ -175,8 +189,10 @@ function NumberControl({
 	min?: number;
 	max?: number;
 	testId: string;
-	onCommit: (next: number) => void;
+	/** §10 field-input contract (B-12): preview + coalesced commit + revert. */
+	contract: FieldContractTarget<number>;
 }): React.JSX.Element {
+	const field = useFieldContract(contract, testId);
 	return (
 		<label className="inline-flex items-center gap-1.5 px-1.5" title={label}>
 			<span className="text-xs text-muted-foreground">{label}</span>
@@ -191,9 +207,22 @@ function NumberControl({
 				max={max}
 				data-testid={testId}
 				className="h-7 w-14 rounded-md px-1.5 text-xs"
+				onChange={(e) => {
+					const parsed = Number.parseFloat(e.currentTarget.value);
+					if (!Number.isNaN(parsed)) field.preview(parsed);
+				}}
+				onKeyDown={(e) => {
+					if (e.key === "Enter") e.currentTarget.blur();
+					else if (e.key === "Escape") {
+						e.stopPropagation();
+						e.currentTarget.value = String(value);
+						field.cancel();
+					}
+				}}
 				onBlur={(e) => {
 					const parsed = Number.parseFloat(e.currentTarget.value);
-					if (!Number.isNaN(parsed) && parsed !== value) onCommit(parsed);
+					if (!Number.isNaN(parsed) && parsed !== value) field.commit(parsed);
+					else field.cancel();
 				}}
 			/>
 		</label>

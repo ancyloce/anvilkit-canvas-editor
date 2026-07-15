@@ -56,6 +56,14 @@ export function WorkspaceFooter({
 				className,
 			)}
 		>
+			{ctx.continuousCreation === true ? (
+				<span
+					data-testid="workspace-continuous-indicator"
+					className="mr-auto rounded-full bg-accent px-2 py-0.5 text-[11px] text-accent-foreground"
+				>
+					{t("canvas.footer.continuousCreation", "Continuous creation")}
+				</span>
+			) : null}
 			<div data-testid="workspace-zoom" className="flex items-center gap-2">
 				<Button
 					type="button"
