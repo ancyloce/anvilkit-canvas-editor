@@ -1,8 +1,7 @@
 import {
-	type CanvasGroupNode,
 	type CanvasNode,
 	type CanvasPage,
-	isContainerNode,
+	regenerateNodeIds,
 } from "@anvilkit/canvas-core";
 
 function freshId(): string {
@@ -18,19 +17,13 @@ function freshId(): string {
 }
 
 /**
- * Walk a structurally-cloned (JSON-roundtripped) node tree and rewrite every
- * `id` field with a fresh uuid. Recurses into every container's children
- * (group and frame). Exported separately so tests can verify id regeneration
- * in isolation.
+ * Rewrite every `id` in a node tree with a fresh uuid. Thin wrapper over
+ * core's shared `regenerateNodeIds` primitive (M0-05) — kept for the existing
+ * `internal.ts` export surface. NOTE: unlike the pre-M0-05 version this does
+ * not mutate its input; callers must use the returned copy.
  */
-export function regenerateIds(node: CanvasNode): CanvasNode {
-	node.id = freshId();
-	if (isContainerNode(node)) {
-		for (const child of node.children) {
-			regenerateIds(child);
-		}
-	}
-	return node;
+export function regenerateIds<T extends CanvasNode>(node: T): T {
+	return regenerateNodeIds(node, { idFactory: freshId }).node;
 }
 
 export interface ClonePageOptions {
@@ -56,6 +49,6 @@ export function clonePage(
 	cloned.id = freshId();
 	const baseName = page.name ?? "Page";
 	cloned.name = opts.name ?? `${baseName} copy`;
-	cloned.root = regenerateIds(cloned.root) as CanvasGroupNode;
+	cloned.root = regenerateIds(cloned.root);
 	return cloned;
 }

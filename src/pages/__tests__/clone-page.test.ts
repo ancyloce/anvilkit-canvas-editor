@@ -38,10 +38,21 @@ describe("regenerateIds", () => {
 		});
 		const oldGroupId = group.id;
 		const oldChildIds = [child1.id, child2.id];
+		const result = regenerateIds(group);
+		expect(result.id).not.toBe(oldGroupId);
+		expect(result.children[0]?.id).not.toBe(oldChildIds[0]);
+		expect(result.children[1]?.id).not.toBe(oldChildIds[1]);
+	});
+
+	it("does not mutate its input (M0-05: delegates to core regenerateNodeIds)", () => {
+		const group = createGroup({
+			id: "g",
+			bounds: { width: 50, height: 50 },
+			children: [createRect({ id: "c1", bounds: { width: 5, height: 5 } })],
+		});
+		const snapshot = structuredClone(group);
 		regenerateIds(group);
-		expect(group.id).not.toBe(oldGroupId);
-		expect(group.children[0]?.id).not.toBe(oldChildIds[0]);
-		expect(group.children[1]?.id).not.toBe(oldChildIds[1]);
+		expect(group).toEqual(snapshot);
 	});
 
 	// A frame is a container too. Recursing only into groups left every node
@@ -55,9 +66,9 @@ describe("regenerateIds", () => {
 			clip: true,
 			children: [child],
 		});
-		regenerateIds(frame);
-		expect(frame.id).not.toBe("f");
-		expect(frame.children[0]?.id).not.toBe("fc1");
+		const result = regenerateIds(frame);
+		expect(result.id).not.toBe("f");
+		expect(result.children[0]?.id).not.toBe("fc1");
 	});
 
 	it("recurses through a frame nested inside a group", () => {
@@ -73,8 +84,8 @@ describe("regenerateIds", () => {
 				}),
 			],
 		});
-		regenerateIds(group);
-		const frame = group.children[0] as CanvasFrameNode;
+		const result = regenerateIds(group);
+		const frame = result.children[0] as CanvasFrameNode;
 		expect(frame.id).not.toBe("f");
 		expect(frame.children[0]?.id).not.toBe("deep");
 	});
