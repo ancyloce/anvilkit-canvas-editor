@@ -59,11 +59,14 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 			) {
 				return;
 			}
-			// Undo / redo (⌘Z / ⌘⇧Z, plus Ctrl+Y on Windows/Linux) — interim
-			// stage-scoped binding (M0-03); migrates into the workspace shortcut
-			// registry in Phase 1a. Mirrors the header buttons' historyStore →
-			// sceneStore wiring, and runs before the selection guard: history
-			// operations need no selection.
+			// Undo / redo (⌘Z / ⌘⇧Z, plus Ctrl+Y on Windows/Linux). Kept STAGE-
+			// scoped on purpose (M0-03 → A-04 decision): headless <CanvasStudio>
+			// embeds get undo keys over the stage, while the workspace registry
+			// (WorkspaceShortcutLayer) covers the rest of the shell and SKIPS
+			// events this handler claims via preventDefault — no double-fire.
+			// Mirrors the header buttons' historyStore → sceneStore wiring, and
+			// runs before the selection guard: history operations need no
+			// selection.
 			if (
 				(e.metaKey || e.ctrlKey) &&
 				(e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y")
