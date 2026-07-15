@@ -21,15 +21,17 @@ const SOURCE_DIR = resolve(PACKAGE_ROOT, "src");
  * is a conscious decision.
  *
  * UNLIKE core's layering (a genuine strict acyclic hierarchy — verified by
- * `pnpm check:circular`), the Editor's `brand/context/extensions/perf/
- * render/selection/snap/stage/stores/tools` directories are a real,
+ * `pnpm check:circular`), the Editor's `actions/brand/context/extensions/
+ * perf/render/selection/snap/stage/stores/tools` directories are a real,
  * FILE-CYCLE-FREE (madge passes) but DIRECTORY-LEVEL mutually-referencing
  * cluster: tools dispatch through context, context's types reference store/
  * tool APIs, stores reference snap geometry, stage rendering reads brand/
- * context/text, and selection/perf/render close the loop back through stage.
+ * context/text, selection/perf/render close the loop back through stage, and
+ * the unified action layer (`actions/`, M0-01) composes context + selection
+ * so every UI surface above the cluster dispatches through one place.
  * This is inherent to how an interactive editor's advanced/internal layer
  * works, not an accident to "fix" by re-splitting it here — so this checker
- * folds all ten into ONE domain (`interaction-core`) where intra-domain
+ * folds all eleven into ONE domain (`interaction-core`) where intra-domain
  * imports in any direction are allowed, exactly like core's checker already
  * allows same-domain imports. Cross-domain edges (e.g. a store importing a
  * panel) are still caught precisely — merging only relaxes ordering WITHIN
@@ -52,6 +54,7 @@ const LAYERS = [
 		domain: "interaction-core",
 		rank: 1,
 		match: (p) =>
+			p.startsWith("actions/") ||
 			p.startsWith("brand/") ||
 			p.startsWith("context/") ||
 			p.startsWith("extensions/") ||
