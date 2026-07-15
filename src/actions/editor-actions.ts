@@ -2,6 +2,7 @@
 
 import type {
 	AlignEdge,
+	CanvasAnyNodeUpdateCommand,
 	CanvasIR,
 	CanvasNodeDeleteCommand,
 } from "@anvilkit/canvas-core";
@@ -12,6 +13,11 @@ import {
 	useCanvasStores,
 } from "../context/canvas-studio-context.js";
 import {
+	type CanvasToaster,
+	NOOP_CANVAS_TOASTER,
+	useCanvasToaster,
+} from "../context/toast-context.js";
+import {
 	alignSelection as alignSelectionFn,
 	distributeSelection as distributeSelectionFn,
 } from "../selection/align-actions.js";
@@ -19,6 +25,24 @@ import {
 	groupSelection as groupSelectionFn,
 	ungroupSelection as ungroupSelectionFn,
 } from "../selection/group-actions.js";
+import {
+	copySelectionImpl,
+	cutSelectionImpl,
+	duplicateSelectionImpl,
+	pasteImpl,
+} from "./clipboard-actions.js";
+import {
+	type CanvasReorderDirection,
+	reorderSelectionImpl,
+} from "./reorder-actions.js";
+import { type CanvasCancelStep, cancelImpl } from "./cancel-action.js";
+import {
+	resetZoomImpl,
+	zoomInImpl,
+	zoomOutImpl,
+	zoomToFitImpl,
+	zoomToSelectionImpl,
+} from "./viewport-actions.js";
 
 /** Axis accepted by {@link CanvasEditorActions.distributeSelection}. */
 export type CanvasDistributeAxis = "x" | "y";
@@ -58,6 +82,32 @@ export interface CanvasEditorActions {
 	alignSelection(edge: AlignEdge): void;
 	/** Distribute the multi-selection along an axis, as one undo entry. */
 	distributeSelection(axis: CanvasDistributeAxis): void;
+	/**
+	 * Toggle the lock state of the whole selection as ONE undo entry
+	 * (FR-040 Lock / FR-054): locks when any selected node is unlocked,
+	 * unlocks when all are locked. Locking clears the selection (locked nodes
+	 * are un-hittable — see ElementControls); unlocking keeps it. Returns the
+	 * new lock state, or null for an empty selection.
+	 */
+	toggleLockSelection(): boolean | null;
+	/** FR-020 copy — internal clipboard + system clipboard when available. */
+	copySelection(): Promise<number>;
+	/** FR-022 cut — copy, then a single-undo-entry delete. */
+	cutSelection(): Promise<string[]>;
+	/** FR-021 paste — system payload preferred, internal fallback; one batch. */
+	paste(): Promise<string[]>;
+	/** FR-023 duplicate — fresh ids, next to the original, one batch. */
+	duplicateSelection(): string[];
+	/** FR-031 layer order — move the selection within its parent, one batch. */
+	reorderSelection(direction: CanvasReorderDirection): void;
+	/** FR-043 zoom — viewport-store only, never a history entry. */
+	zoomIn(): void;
+	zoomOut(): void;
+	zoomToFit(): void;
+	zoomToSelection(): void;
+	resetZoom(): void;
+	/** FR-040 Escape stack — one press, one step; returns the step that ran. */
+	cancel(): CanvasCancelStep;
 }
 
 function hasSelectedAncestor(
@@ -73,19 +123,36 @@ function hasSelectedAncestor(
 	return false;
 }
 
-function deleteSelectionImpl(ctx: CanvasStudioContextValue): string[] {
+function deleteSelectionImpl(
+	ctx: CanvasStudioContextValue,
+	toaster: CanvasToaster = NOOP_CANVAS_TOASTER,
+): string[] {
 	const ir = ctx.getIR();
 	const selectedIds = ctx.selectionStore.getState().selectedIds;
 	const selected = new Set(selectedIds);
 	const cmds: CanvasNodeDeleteCommand[] = [];
+	let lockedSkipped = 0;
 	for (const id of selectedIds) {
 		const found = findNode(ir, id);
+		if (!found) continue;
 		// Locked nodes are protected from deletion (FR-024); page roots and
 		// unknown ids cannot be deleted at all.
-		if (!found || found.node.locked === true) continue;
+		if (found.node.locked === true) {
+			lockedSkipped += 1;
+			continue;
+		}
 		if (parentOf(ir, id) === null) continue;
 		if (hasSelectedAncestor(ir, id, selected)) continue;
 		cmds.push({ type: "node.delete", nodeId: id });
+	}
+	if (lockedSkipped > 0) {
+		toaster.add({
+			type: "warning",
+			title: (ctx.t ?? ((_k, f) => f ?? ""))(
+				"canvas.toast.lockedNotDeleted",
+				"Locked layers weren't deleted",
+			),
+		});
 	}
 	if (cmds.length === 0) return [];
 	const first = cmds[0];
@@ -98,6 +165,32 @@ function deleteSelectionImpl(ctx: CanvasStudioContextValue): string[] {
 	return cmds.map((c) => c.nodeId);
 }
 
+function toggleLockSelectionImpl(
+	ctx: CanvasStudioContextValue,
+): boolean | null {
+	const ir = ctx.getIR();
+	const selectedIds = ctx.selectionStore.getState().selectedIds;
+	const nodes = selectedIds
+		.map((id) => findNode(ir, id)?.node)
+		.filter((n): n is NonNullable<typeof n> => Boolean(n));
+	if (nodes.length === 0) return null;
+	const nextLocked = !nodes.every((n) => n.locked === true);
+	const cmds = nodes.map(
+		(n) =>
+			({
+				type: "node.update",
+				nodeId: n.id,
+				kind: n.type,
+				patch: { locked: nextLocked },
+			}) as CanvasAnyNodeUpdateCommand,
+	);
+	const first = cmds[0];
+	if (cmds.length === 1 && first) ctx.commit(first);
+	else ctx.commitBatch(cmds, nextLocked ? "Lock" : "Unlock");
+	if (nextLocked) ctx.selectionStore.getState().clearSelection();
+	return nextLocked;
+}
+
 /**
  * Build a {@link CanvasEditorActions} facade over a studio context. For
  * non-React callers and tests; components should prefer
@@ -105,15 +198,35 @@ function deleteSelectionImpl(ctx: CanvasStudioContextValue): string[] {
  * time, so the facade stays correct across edits as long as `ctx` itself is
  * the live context object.
  */
+export interface CanvasEditorActionsDeps {
+	/** Feedback sink (A-09); defaults to the silent no-op toaster. */
+	toaster?: CanvasToaster;
+}
+
 export function createCanvasEditorActions(
 	ctx: CanvasStudioContextValue,
+	deps: CanvasEditorActionsDeps = {},
 ): CanvasEditorActions {
+	const toaster = deps.toaster ?? NOOP_CANVAS_TOASTER;
 	return {
-		deleteSelection: () => deleteSelectionImpl(ctx),
+		deleteSelection: () => deleteSelectionImpl(ctx, toaster),
 		groupSelection: () => groupSelectionFn(ctx),
 		ungroupSelection: () => ungroupSelectionFn(ctx),
 		alignSelection: (edge) => alignSelectionFn(ctx, edge),
 		distributeSelection: (axis) => distributeSelectionFn(ctx, axis),
+		toggleLockSelection: () => toggleLockSelectionImpl(ctx),
+		copySelection: () => copySelectionImpl(ctx),
+		cutSelection: () =>
+			cutSelectionImpl(ctx, () => deleteSelectionImpl(ctx, toaster)),
+		paste: () => pasteImpl(ctx, toaster),
+		duplicateSelection: () => duplicateSelectionImpl(ctx),
+		reorderSelection: (direction) => reorderSelectionImpl(ctx, direction),
+		zoomIn: () => zoomInImpl(ctx),
+		zoomOut: () => zoomOutImpl(ctx),
+		zoomToFit: () => zoomToFitImpl(ctx),
+		zoomToSelection: () => zoomToSelectionImpl(ctx),
+		resetZoom: () => resetZoomImpl(ctx),
+		cancel: () => cancelImpl(ctx),
 	};
 }
 
@@ -126,6 +239,7 @@ export function createCanvasEditorActions(
  */
 export function useCanvasActions(): CanvasEditorActions {
 	const stores = useCanvasStores();
+	const toaster = useCanvasToaster();
 	return useMemo(() => {
 		const liveCtx = (): CanvasStudioContextValue => ({
 			...stores,
@@ -134,11 +248,27 @@ export function useCanvasActions(): CanvasEditorActions {
 			stage: null,
 		});
 		return {
-			deleteSelection: () => deleteSelectionImpl(liveCtx()),
+			deleteSelection: () => deleteSelectionImpl(liveCtx(), toaster),
 			groupSelection: () => groupSelectionFn(liveCtx()),
 			ungroupSelection: () => ungroupSelectionFn(liveCtx()),
 			alignSelection: (edge) => alignSelectionFn(liveCtx(), edge),
 			distributeSelection: (axis) => distributeSelectionFn(liveCtx(), axis),
+			toggleLockSelection: () => toggleLockSelectionImpl(liveCtx()),
+			copySelection: () => copySelectionImpl(liveCtx()),
+			cutSelection: () => {
+				const ctx = liveCtx();
+				return cutSelectionImpl(ctx, () => deleteSelectionImpl(ctx, toaster));
+			},
+			paste: () => pasteImpl(liveCtx(), toaster),
+			duplicateSelection: () => duplicateSelectionImpl(liveCtx()),
+			reorderSelection: (direction) =>
+				reorderSelectionImpl(liveCtx(), direction),
+			zoomIn: () => zoomInImpl(liveCtx()),
+			zoomOut: () => zoomOutImpl(liveCtx()),
+			zoomToFit: () => zoomToFitImpl(liveCtx()),
+			zoomToSelection: () => zoomToSelectionImpl(liveCtx()),
+			resetZoom: () => resetZoomImpl(liveCtx()),
+			cancel: () => cancelImpl(liveCtx()),
 		};
-	}, [stores]);
+	}, [stores, toaster]);
 }
