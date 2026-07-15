@@ -386,5 +386,16 @@
 	"canvas.inspector.sizingFixed": "固定",
 	"canvas.inspector.sizingAutoWidth": "自动宽度",
 	"canvas.inspector.multiSelection": "已选择 {n} 个图层",
-	"canvas.inspector.page": "页面"
+	"canvas.inspector.page": "页面",
+	"canvas.footer.selectionCount": "已选 {n} 项",
+	"canvas.footer.selectionLocked": "{n} 项已锁定",
+	"canvas.footer.selectionHidden": "{n} 项已隐藏",
+	"canvas.workspace.resizePanel": "调整面板宽度",
+	"canvas.workspace.restoreLayout": "恢复默认布局",
+	"canvas.error.retry": "重试",
+	"canvas.error.reloadDocument": "重新加载文档",
+	"canvas.error.exportRecovery": "导出恢复 JSON",
+	"canvas.error.copyErrorId": "复制错误 ID",
+	"canvas.header.nothingToUndo": "没有可撤销的操作",
+	"canvas.header.nothingToRedo": "没有可重做的操作"
 }

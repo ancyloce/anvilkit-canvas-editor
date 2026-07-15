@@ -386,5 +386,16 @@
 	"canvas.inspector.sizingFixed": "Fixed",
 	"canvas.inspector.sizingAutoWidth": "Auto width",
 	"canvas.inspector.multiSelection": "{n} layers selected",
-	"canvas.inspector.page": "Page"
+	"canvas.inspector.page": "Page",
+	"canvas.footer.selectionCount": "{n} selected",
+	"canvas.footer.selectionLocked": "{n} locked",
+	"canvas.footer.selectionHidden": "{n} hidden",
+	"canvas.workspace.resizePanel": "Resize panel",
+	"canvas.workspace.restoreLayout": "Restore default layout",
+	"canvas.error.retry": "Try again",
+	"canvas.error.reloadDocument": "Reload document",
+	"canvas.error.exportRecovery": "Export recovery JSON",
+	"canvas.error.copyErrorId": "Copy error ID",
+	"canvas.header.nothingToUndo": "Nothing to undo",
+	"canvas.header.nothingToRedo": "Nothing to redo"
 }
