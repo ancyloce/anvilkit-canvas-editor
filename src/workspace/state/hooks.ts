@@ -40,3 +40,19 @@ export function usePanelSearch(): readonly [string, (query: string) => void] {
 	const set = useWorkspaceUiStore((s) => s.setPanelSearch);
 	return [value, set];
 }
+
+export function usePanelWidth(): readonly [number, (width: number) => void] {
+	const value = useWorkspaceUiStore((s) => s.panelWidth);
+	const set = useWorkspaceUiStore((s) => s.setPanelWidth);
+	return [value, set];
+}
+
+export function useRestoreLayout(): () => void {
+	return useWorkspaceUiStore((s) => s.restoreLayout);
+}
+
+export function usePanelOpen(): readonly [boolean, (open: boolean) => void] {
+	const value = useWorkspaceUiStore((s) => s.panelOpen);
+	const set = useWorkspaceUiStore((s) => s.setPanelOpen);
+	return [value, set];
+}
