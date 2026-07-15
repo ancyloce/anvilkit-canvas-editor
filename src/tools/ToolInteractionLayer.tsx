@@ -5,6 +5,7 @@ import { useEffect, useMemo } from "react";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { getStagePointer } from "./get-stage-pointer.js";
 import { defaultToolRegistry } from "./tool-registry.js";
+import { shouldReturnToSelect } from "./tool-completion.js";
 import type { Tool, ToolContext, ToolRegistry } from "./tool-types.js";
 
 export interface ToolInteractionLayerProps {
@@ -26,6 +27,7 @@ export function ToolInteractionLayer({
 		getIR,
 		commit,
 		commitBatch,
+		continuousCreation,
 		selectionStore,
 		focusStore,
 		viewportStore,
@@ -41,11 +43,37 @@ export function ToolInteractionLayer({
 
 	const ctx = useMemo<ToolContext | null>(() => {
 		if (!stage || !penStore) return null;
+		// FR-012 (A-10): creation tools return to Select after committing their
+		// element (unless the host opts into continuous creation). Wrapping THE
+		// tool-facing commit seam keeps every tool's own code untouched.
+		const completeCreation = (
+			cmds: readonly Parameters<typeof commit>[0][],
+		): void => {
+			if (
+				shouldReturnToSelect(
+					cmds,
+					toolStore.getState().activeTool,
+					continuousCreation === true,
+				)
+			) {
+				toolStore.getState().setActiveTool("select");
+			}
+		};
+		const commitWithCompletion: typeof commit = (cmd) => {
+			const ir = commit(cmd);
+			completeCreation([cmd]);
+			return ir;
+		};
+		const commitBatchWithCompletion: typeof commitBatch = (cmds, label) => {
+			const ir = commitBatch(cmds, label);
+			completeCreation(cmds as Parameters<typeof commit>[0][]);
+			return ir;
+		};
 		return {
 			stage,
 			getIR,
-			commit,
-			commitBatch,
+			commit: commitWithCompletion,
+			commitBatch: commitBatchWithCompletion,
 			selectionStore,
 			focusStore,
 			viewportStore,
@@ -72,6 +100,7 @@ export function ToolInteractionLayer({
 		pickAsset,
 		activePageId,
 		requestAiIntent,
+		continuousCreation,
 	]);
 
 	// Wire pointer dispatch.

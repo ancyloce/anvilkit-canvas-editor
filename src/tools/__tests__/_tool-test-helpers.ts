@@ -6,6 +6,7 @@ import type { CanvasStudioContextValue } from "@/context/canvas-studio-context.j
 import { createCropStore } from "@/stores/crop-store.js";
 import { createDraftStore } from "@/stores/draft-store.js";
 import { createEditingStore } from "@/stores/editing-store.js";
+import { createFieldPreviewStore } from "@/stores/field-preview-store.js";
 import { createFocusStore } from "@/stores/focus-store.js";
 import { createGuidesStore } from "@/stores/guides-store.js";
 import { createHistoryStore } from "@/stores/history-store.js";
@@ -76,6 +77,7 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 	const cropStore = createCropStore();
 	const penStore = createPenStore();
 	const pathEditStore = createPathEditStore();
+	const fieldPreviewStore = createFieldPreviewStore();
 	const pagesStore = createPagesStore({
 		initialActivePageId: opts.ir ? (opts.ir.pages[0]?.id ?? pageId) : pageId,
 	});
@@ -95,6 +97,12 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 	// valid whether a gesture commits singly or as a batch.
 	const commitBatch = vi.fn((cmds: readonly CanvasCommand[]) => {
 		for (const c of cmds) commits.push(c);
+		return ir;
+	});
+	// Record-only, like `commit` — coalescing behavior itself is history-store
+	// tested; field tests only assert what was committed (B-12).
+	const commitCoalesced = vi.fn((cmd: CanvasCommand, _mergeKey: string) => {
+		commits.push(cmd);
 		return ir;
 	});
 	const pickAsset = vi.fn(() => Promise.resolve("asset-1"));
@@ -136,7 +144,9 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 		pathEditStore,
 		getIR,
 		commit,
+		commitCoalesced,
 		commitBatch,
+		fieldPreviewStore,
 		pickAsset,
 		requestAiIntent,
 		stage,
