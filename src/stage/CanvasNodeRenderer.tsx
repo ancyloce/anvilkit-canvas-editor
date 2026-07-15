@@ -18,6 +18,7 @@ import {
 	type CanvasRichTextNode,
 	type CanvasShadow,
 	type CanvasStarNode,
+	type CanvasStrokeStyle,
 	type CanvasSvgNode,
 	type CanvasTextNode,
 	type CanvasVideoNode,
@@ -25,8 +26,9 @@ import {
 	resolveSpanStyle,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
-import { use } from "react";
+import { use, useSyncExternalStore } from "react";
 import {
+	Arrow,
 	Ellipse,
 	Group,
 	Image as KonvaImage,
@@ -72,6 +74,9 @@ interface CommonProps {
 	scaleY: number;
 	opacity: number;
 	visible: boolean;
+	/** FR-073 blend mode (B-12) — IR `blendMode` maps straight onto the
+	 * canvas compositing op; absent = source-over. */
+	globalCompositeOperation?: GlobalCompositeOperation;
 }
 
 function commonProps(node: CanvasNodeBase & { id: string }): CommonProps {
@@ -85,6 +90,11 @@ function commonProps(node: CanvasNodeBase & { id: string }): CommonProps {
 		scaleY: node.transform.scaleY,
 		opacity: node.opacity ?? 1,
 		visible: node.visible ?? true,
+		...(node.blendMode
+			? {
+					globalCompositeOperation: node.blendMode as GlobalCompositeOperation,
+				}
+			: {}),
 	};
 }
 
@@ -128,6 +138,44 @@ function fillProps(
 	};
 }
 
+/**
+ * B-03a stroke style → Konva props (B-12). `strokeOpacity` has no Konva
+ * counterpart, so it is baked into the stroke color's alpha — hex colors
+ * only; other syntaxes render at full opacity (the SVG export is exact).
+ */
+function strokeAlphaColor(
+	color: string | undefined,
+	opacity: number | undefined,
+): string | undefined {
+	if (!color || opacity === undefined || opacity >= 1) return color;
+	const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color)?.[1];
+	if (!hex) return color;
+	const full =
+		hex.length === 3
+			? hex
+					.split("")
+					.map((c) => c + c)
+					.join("")
+			: hex;
+	const n = Number.parseInt(full, 16);
+	const a = Math.max(0, opacity);
+	return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+function strokeStyleProps(
+	node: CanvasStrokeStyle & { stroke?: string; strokeWidth?: number },
+): Konva.ShapeConfig {
+	return {
+		stroke: strokeAlphaColor(node.stroke, node.strokeOpacity),
+		strokeWidth: node.strokeWidth,
+		...(node.strokeDash && node.strokeDash.length > 0
+			? { dash: [...node.strokeDash] }
+			: {}),
+		...(node.strokeCap ? { lineCap: node.strokeCap } : {}),
+		...(node.strokeJoin ? { lineJoin: node.strokeJoin } : {}),
+	};
+}
+
 /** Map an optional node shadow to Konva shadow props. */
 function shadowProps(shadow: CanvasShadow | undefined): Konva.ShapeConfig {
 	if (!shadow) return {};
@@ -165,6 +213,19 @@ function frameClipProps(node: CanvasFrameNode): Konva.ContainerConfig {
 	if (!node.clip) return {};
 	const { width, height } = node.bounds;
 	const radius = node.radius ?? 0;
+	const radii = node.cornerRadii;
+	if (radii) {
+		return {
+			clipFunc: (ctx) => {
+				ctx.roundRect(0, 0, width, height, [
+					radii.topLeft,
+					radii.topRight,
+					radii.bottomRight,
+					radii.bottomLeft,
+				]);
+			},
+		};
+	}
 	if (radius > 0) {
 		return {
 			clipFunc: (ctx) => {
@@ -233,7 +294,16 @@ function CanvasFrameNodeRenderer({ node }: { node: CanvasFrameNode }) {
 					y={0}
 					width={width}
 					height={height}
-					cornerRadius={node.radius}
+					cornerRadius={
+						node.cornerRadii
+							? [
+									node.cornerRadii.topLeft,
+									node.cornerRadii.topRight,
+									node.cornerRadii.bottomRight,
+									node.cornerRadii.bottomLeft,
+								]
+							: node.radius
+					}
 					{...fillProps(fill, node.bounds, brandKit)}
 				/>
 			) : null}
@@ -244,7 +314,16 @@ function CanvasFrameNodeRenderer({ node }: { node: CanvasFrameNode }) {
 						y={0}
 						width={width}
 						height={height}
-						cornerRadius={node.radius}
+						cornerRadius={
+							node.cornerRadii
+								? [
+										node.cornerRadii.topLeft,
+										node.cornerRadii.topRight,
+										node.cornerRadii.bottomRight,
+										node.cornerRadii.bottomLeft,
+									]
+								: node.radius
+						}
 						stroke={PLACEHOLDER_OUTLINE}
 						strokeWidth={1}
 						dash={[6, 4]}
@@ -288,9 +367,17 @@ function CanvasRectNodeRenderer({ node }: { node: CanvasRectNode }) {
 			height={node.bounds.height}
 			{...fillProps(node.fill, node.bounds, brandKit)}
 			{...shadowProps(node.shadow)}
-			stroke={node.stroke}
-			strokeWidth={node.strokeWidth}
-			cornerRadius={node.radius}
+			{...strokeStyleProps(node)}
+			cornerRadius={
+				node.cornerRadii
+					? [
+							node.cornerRadii.topLeft,
+							node.cornerRadii.topRight,
+							node.cornerRadii.bottomRight,
+							node.cornerRadii.bottomLeft,
+						]
+					: node.radius
+			}
 		/>
 	);
 }
@@ -313,8 +400,7 @@ function CanvasEllipseNodeRenderer({ node }: { node: CanvasEllipseNode }) {
 			radiusY={radiusY}
 			{...fillProps(node.fill, node.bounds, brandKit)}
 			{...shadowProps(node.shadow)}
-			stroke={node.stroke}
-			strokeWidth={node.strokeWidth}
+			{...strokeStyleProps(node)}
 		/>
 	);
 }
@@ -348,8 +434,7 @@ function CanvasPolygonNodeRenderer({ node }: { node: CanvasPolygonNode }) {
 			radius={node.bounds.width / 2}
 			{...fillProps(node.fill, node.bounds, brandKit)}
 			{...shadowProps(node.shadow)}
-			stroke={node.stroke}
-			strokeWidth={node.strokeWidth}
+			{...strokeStyleProps(node)}
 		/>
 	);
 }
@@ -370,19 +455,33 @@ function CanvasStarNodeRenderer({ node }: { node: CanvasStarNode }) {
 			outerRadius={outerRadius}
 			{...fillProps(node.fill, node.bounds, brandKit)}
 			{...shadowProps(node.shadow)}
-			stroke={node.stroke}
-			strokeWidth={node.strokeWidth}
+			{...strokeStyleProps(node)}
 		/>
 	);
 }
 
 function CanvasLineNodeRenderer({ node }: { node: CanvasLineNode }) {
+	// FR-075 arrowheads (B-03a): Konva's Arrow draws triangle pointers; the SVG
+	// exporter's <marker> path is the exact form. Plain lines stay Konva.Line.
+	const arrowStart = (node.arrowStart ?? "none") !== "none";
+	const arrowEnd = (node.arrowEnd ?? "none") !== "none";
+	if (arrowStart || arrowEnd) {
+		return (
+			<Arrow
+				{...commonProps(node)}
+				points={node.points}
+				{...strokeStyleProps(node)}
+				fill={node.stroke}
+				pointerAtBeginning={arrowStart}
+				pointerAtEnding={arrowEnd}
+			/>
+		);
+	}
 	return (
 		<Line
 			{...commonProps(node)}
 			points={node.points}
-			stroke={node.stroke}
-			strokeWidth={node.strokeWidth}
+			{...strokeStyleProps(node)}
 		/>
 	);
 }
@@ -395,8 +494,7 @@ function CanvasPathNodeRenderer({ node }: { node: CanvasPathNode }) {
 			data={node.d}
 			{...fillProps(node.fill, node.bounds, brandKit)}
 			{...shadowProps(node.shadow)}
-			stroke={node.stroke}
-			strokeWidth={node.strokeWidth}
+			{...strokeStyleProps(node)}
 		/>
 	);
 }
@@ -495,7 +593,12 @@ function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 							fontSize={style.fontSize}
 							fontStyle={`${style.italic ? "italic " : ""}${style.fontWeight}`}
 							letterSpacing={style.letterSpacing}
-							textDecoration={style.underline ? "underline" : ""}
+							textDecoration={[
+								style.underline ? "underline" : "",
+								style.strikethrough ? "line-through" : "",
+							]
+								.filter(Boolean)
+								.join(" ")}
 							{...fillProps(
 								style.fill,
 								{
@@ -517,15 +620,65 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 	const [image, status] = useImage(asset?.uri ?? "");
 	if (!asset) return null;
 	if (status !== "loaded" || !image) return null;
+	const { width, height } = node.bounds;
+	// FR-094 fit modes (B-02/B-12). An explicit `crop` keeps the legacy
+	// stretch+crop path (the editor does not compose crop with fit modes —
+	// the SVG exporter is the exact form; see core `serialize/svg.ts`).
+	const fitMode = node.crop ? "stretch" : (node.fitMode ?? "stretch");
+	if (fitMode === "stretch" || fitMode === "fill") {
+		const crop =
+			fitMode === "fill"
+				? centerCoverCrop(image.width, image.height, width, height)
+				: node.crop;
+		return (
+			<KonvaImage
+				{...commonProps(node)}
+				image={image}
+				width={width}
+				height={height}
+				{...(crop ? { crop } : {})}
+			/>
+		);
+	}
+	// fit / original / center: natural-ratio draw inside a bounds clip.
+	let dw = image.width;
+	let dh = image.height;
+	let dx = 0;
+	let dy = 0;
+	if (fitMode === "fit") {
+		const scale = Math.min(width / image.width, height / image.height);
+		dw = image.width * scale;
+		dh = image.height * scale;
+		dx = (width - dw) / 2;
+		dy = (height - dh) / 2;
+	} else if (fitMode === "center") {
+		dx = (width - dw) / 2;
+		dy = (height - dh) / 2;
+	}
 	return (
-		<KonvaImage
+		<Group
 			{...commonProps(node)}
-			image={image}
-			width={node.bounds.width}
-			height={node.bounds.height}
-			{...(node.crop ? { crop: node.crop } : {})}
-		/>
+			clipX={0}
+			clipY={0}
+			clipWidth={width}
+			clipHeight={height}
+		>
+			<KonvaImage image={image} x={dx} y={dy} width={dw} height={dh} />
+		</Group>
 	);
+}
+
+/** Source crop that covers `dw`x`dh` from the image center (fit mode "fill"). */
+function centerCoverCrop(
+	iw: number,
+	ih: number,
+	dw: number,
+	dh: number,
+): { x: number; y: number; width: number; height: number } {
+	const scale = Math.max(dw / iw, dh / ih);
+	const cw = dw / scale;
+	const ch = dh / scale;
+	return { x: (iw - cw) / 2, y: (ih - ch) / 2, width: cw, height: ch };
 }
 
 function CanvasSvgNodeRenderer({ node }: { node: CanvasSvgNode }) {
@@ -799,9 +952,30 @@ function CanvasCustomNodeRenderer({ node }: { node: CanvasNode }) {
 	return <Render node={node} />;
 }
 
+const NOOP_SUBSCRIBE = () => () => undefined;
+
+/**
+ * §10 field-input contract preview merge (B-12): a mid-edit inspector field
+ * publishes a transient node patch to `fieldPreviewStore`; it is shallow-merged
+ * over the IR node here — the same merge `node.update` applies on commit — so
+ * the canvas previews the pending value without a history entry. Nodes without
+ * a preview snapshot `undefined` and never re-render on preview changes.
+ * `rasterizePage` renders with no provider, so exports never see previews.
+ */
+function useFieldPreviewMerge(node: CanvasNode): CanvasNode {
+	const store = use(CanvasStudioContext)?.fieldPreviewStore;
+	const patch = useSyncExternalStore(
+		store ? store.subscribe : NOOP_SUBSCRIBE,
+		() => store?.getState().previews[node.id],
+		() => undefined,
+	);
+	return patch ? ({ ...node, ...patch } as CanvasNode) : node;
+}
+
 export function CanvasNodeRenderer({
-	node,
+	node: irNode,
 }: CanvasNodeRendererProps): React.JSX.Element | null {
+	const node = useFieldPreviewMerge(irNode);
 	switch (node.type) {
 		case "group":
 			return <CanvasGroupNodeRenderer node={node} />;
