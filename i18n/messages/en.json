@@ -397,5 +397,14 @@
 	"canvas.error.exportRecovery": "Export recovery JSON",
 	"canvas.error.copyErrorId": "Copy error ID",
 	"canvas.header.nothingToUndo": "Nothing to undo",
-	"canvas.header.nothingToRedo": "Nothing to redo"
+	"canvas.header.nothingToRedo": "Nothing to redo",
+	"canvas.shortcutHelp.title": "Keyboard shortcuts",
+	"canvas.shortcutHelp.search": "Search shortcuts",
+	"canvas.shortcutHelp.empty": "No shortcuts match.",
+	"canvas.shortcutHelp.categoryEdit": "Editing",
+	"canvas.shortcutHelp.categoryView": "View",
+	"canvas.shortcutHelp.categoryTools": "Tools",
+	"canvas.dialog.close": "Close",
+	"canvas.export.hint.jpeg": "Small photos, no transparency",
+	"canvas.export.hint.webp": "Modern small raster"
 }

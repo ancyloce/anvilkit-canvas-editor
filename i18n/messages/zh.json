@@ -397,5 +397,14 @@
 	"canvas.error.exportRecovery": "导出恢复 JSON",
 	"canvas.error.copyErrorId": "复制错误 ID",
 	"canvas.header.nothingToUndo": "没有可撤销的操作",
-	"canvas.header.nothingToRedo": "没有可重做的操作"
+	"canvas.header.nothingToRedo": "没有可重做的操作",
+	"canvas.shortcutHelp.title": "键盘快捷键",
+	"canvas.shortcutHelp.search": "搜索快捷键",
+	"canvas.shortcutHelp.empty": "没有匹配的快捷键。",
+	"canvas.shortcutHelp.categoryEdit": "编辑",
+	"canvas.shortcutHelp.categoryView": "视图",
+	"canvas.shortcutHelp.categoryTools": "工具",
+	"canvas.dialog.close": "关闭",
+	"canvas.export.hint.jpeg": "照片体积小，无透明度",
+	"canvas.export.hint.webp": "现代小体积位图"
 }
