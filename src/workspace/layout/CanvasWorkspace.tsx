@@ -142,6 +142,7 @@ export function CanvasWorkspace({
 									title={title}
 									onTitleChange={onTitleChange}
 									avatarsSlot={avatarsSlot}
+									shortcuts={shortcuts}
 									plugins={headerPlugins}
 									shareSlot={shareSlot}
 								/>

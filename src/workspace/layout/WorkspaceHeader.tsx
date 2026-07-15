@@ -14,7 +14,9 @@ import { Separator } from "@anvilkit/ui/separator";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import {
 	Fragment,
+	lazy,
 	type ReactNode,
+	Suspense,
 	useState,
 	useSyncExternalStore,
 } from "react";
@@ -28,7 +30,14 @@ import {
 // rslib rewrites alias paths only in .js, not in declarations — an aliased
 // import here would ship an unresolvable "@/" to consumers.
 import type { CanvasHeaderPlugin } from "../../header/types.js";
+// Relative (not @/): this type surfaces in the emitted .d.ts.
+import type { CanvasShortcutOptions } from "../shortcuts/shortcut-registry.js";
 import { useRestoreLayout } from "../state/hooks.js";
+
+/** FR-042 dialog-class surface — code-split like every dialog (§20.15). */
+const ShortcutHelpDialog = lazy(
+	() => import("../dialogs/ShortcutHelpDialog.js"),
+);
 
 export interface WorkspaceHeaderProps {
 	/** Host back action. When omitted, the Back button is hidden. */
@@ -42,6 +51,12 @@ export interface WorkspaceHeaderProps {
 	onTitleChange?: (next: string) => void;
 	/** Collaborator avatars slot (host-rendered). */
 	avatarsSlot?: ReactNode;
+	/**
+	 * The workspace's shortcut configuration (A-04), threaded through so the
+	 * FR-042 help dialog lists host-provided entries. `false` (shortcuts
+	 * disabled) hides the help menu item entirely.
+	 */
+	shortcuts?: boolean | CanvasShortcutOptions;
 	/**
 	 * Header plugins (e.g. the built-in export popover from
 	 * {@link createCanvasExportPlugin}). Rendered between the avatars and the
@@ -63,10 +78,12 @@ export function WorkspaceHeader({
 	title,
 	onTitleChange,
 	avatarsSlot,
+	shortcuts = true,
 	plugins,
 	shareSlot,
 	className,
 }: WorkspaceHeaderProps): React.JSX.Element {
+	const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
 	const backLabel = t("canvas.header.back", "Back");
@@ -327,6 +344,14 @@ export function WorkspaceHeader({
 					>
 						{t("canvas.workspace.restoreLayout", "Restore default layout")}
 					</DropdownMenuItem>
+					{shortcuts !== false ? (
+						<DropdownMenuItem
+							data-testid="header-menu-shortcut-help"
+							onClick={() => setShortcutHelpOpen(true)}
+						>
+							{t("canvas.shortcutHelp.title", "Keyboard shortcuts")}
+						</DropdownMenuItem>
+					) : null}
 				</DropdownMenuContent>
 			</DropdownMenu>
 
@@ -335,6 +360,14 @@ export function WorkspaceHeader({
 				<Fragment key={plugin.id}>{plugin.render()}</Fragment>
 			))}
 			{shareSlot}
+			{shortcutHelpOpen ? (
+				<Suspense fallback={null}>
+					<ShortcutHelpDialog
+						{...(typeof shortcuts === "object" ? { options: shortcuts } : {})}
+						onClose={() => setShortcutHelpOpen(false)}
+					/>
+				</Suspense>
+			) : null}
 		</header>
 	);
 }

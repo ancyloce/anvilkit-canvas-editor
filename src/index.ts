@@ -83,8 +83,10 @@ export {
 	DEFAULT_CANVAS_EXPORTERS,
 	downloadCanvasArtifact,
 	ExportMenu,
+	jpegExporter,
 	jsonExporter,
 	pngExporter,
+	webpExporter,
 } from "./header/index.js";
 // ── Pages ────────────────────────────────────────────────────────────────────
 export { type ClonePageOptions, clonePage } from "./pages/clone-page.js";
