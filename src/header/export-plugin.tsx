@@ -1,6 +1,6 @@
 "use client";
 
-import { ExportMenu } from "./ExportMenu.js";
+import { ExportDialogTrigger } from "./ExportDialogTrigger.js";
 import type { CanvasExportPluginOptions, CanvasHeaderPlugin } from "./types.js";
 
 /**
@@ -23,6 +23,9 @@ export function createCanvasExportPlugin(
 ): CanvasHeaderPlugin {
 	return {
 		id: "canvas-export",
-		render: () => <ExportMenu {...options} />,
+		// B-09: the popover's contents graduated into the FR-150 dialog. The
+		// legacy `<ExportMenu>` popover stays exported for hosts that mount it
+		// directly (PRD 0012 §15.9 compat).
+		render: () => <ExportDialogTrigger {...options} />,
 	};
 }
