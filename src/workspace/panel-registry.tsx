@@ -20,6 +20,7 @@ import { ElementsPanel } from "../panels/ElementsPanel.js";
 import { LayerPanel } from "../panels/LayerPanel.js";
 import { TemplatesPanel } from "../panels/TemplatesPanel.js";
 import type { DockId } from "./dock-ids.js";
+import { UploadsPanel } from "./uploads/UploadsPanel.js";
 
 export interface CanvasPanelContext {
 	/** Current Tab Panel search query (from the workspace UI store). */
@@ -172,13 +173,13 @@ export const defaultCanvasPanelRegistry: CanvasPanelRegistry = {
 		"canvas.panel.textSoon",
 		"Text presets coming soon.",
 	),
-	uploads: stubPanel(
-		"uploads",
-		"canvas.panel.uploads",
-		"Uploads",
-		"canvas.panel.uploadsSoon",
-		"Upload assets coming soon.",
-	),
+	uploads: {
+		kind: "builtin",
+		id: "uploads",
+		titleKey: "canvas.panel.uploads",
+		title: "Uploads",
+		render: () => <UploadsPanel />,
+	},
 };
 
 /** Merge host overrides over the defaults (override wins per dock id). */
