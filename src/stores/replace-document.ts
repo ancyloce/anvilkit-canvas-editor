@@ -3,6 +3,7 @@ import type { AiJobStoreApi } from "./ai-job-store.js";
 import type { CropStoreApi } from "./crop-store.js";
 import type { DraftStoreApi } from "./draft-store.js";
 import type { EditingStoreApi } from "./editing-store.js";
+import type { FieldPreviewStoreApi } from "./field-preview-store.js";
 import type { CanvasFocusStoreApi } from "./focus-store.js";
 import type { GuidesStoreApi } from "./guides-store.js";
 import type { HistoryStoreApi } from "./history-store.js";
@@ -32,6 +33,8 @@ export interface DocumentStores {
 	readonly pathEditStore: PathEditStoreApi;
 	readonly guidesStore: GuidesStoreApi;
 	readonly aiJobStore: AiJobStoreApi;
+	/** Optional so existing hand-built store bags keep compiling (B-12). */
+	readonly fieldPreviewStore?: FieldPreviewStoreApi;
 }
 
 /**
@@ -97,6 +100,7 @@ export function replaceDocumentSnapshot(
 		pathEditStore,
 		guidesStore,
 		aiJobStore,
+		fieldPreviewStore,
 	} = stores;
 	// `options.source` is not yet branched on (see the type's doc comment) —
 	// referencing it keeps the parameter intentional rather than unused.
@@ -117,6 +121,7 @@ export function replaceDocumentSnapshot(
 	pathEditStore.getState().clear();
 	guidesStore.getState().clearGuides();
 	aiJobStore.getState().reset();
+	fieldPreviewStore?.getState().clearPreviews();
 
 	sceneStore.getState().setIR(ir);
 	pagesStore.getState().setActivePageId(nextActivePageId);

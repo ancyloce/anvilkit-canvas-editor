@@ -9,11 +9,18 @@ export interface ViewportState {
 	gridEnabled: boolean;
 	gridSize: number;
 	snapToObjectsEnabled: boolean;
+	/**
+	 * Measured size of the canvas scroll viewport (A-07). Mirrored in by
+	 * `PagesCanvas`'s ResizeObserver so zoom-to-fit/zoom-to-selection actions
+	 * stay DOM-free. Null until first measurement.
+	 */
+	viewportSize: { width: number; height: number } | null;
 	setZoom: (zoom: number) => void;
 	setPan: (panX: number, panY: number) => void;
 	setGridEnabled: (enabled: boolean) => void;
 	setGridSize: (size: number) => void;
 	setSnapToObjectsEnabled: (enabled: boolean) => void;
+	setViewportSize: (size: { width: number; height: number } | null) => void;
 }
 
 export type ViewportStoreApi = StoreApi<ViewportState>;
@@ -37,6 +44,7 @@ export function createViewportStore(
 		gridEnabled: options.gridEnabled ?? true,
 		gridSize: options.gridSize ?? DEFAULT_GRID_SIZE,
 		snapToObjectsEnabled: options.snapToObjectsEnabled ?? true,
+		viewportSize: null,
 		setZoom(zoom) {
 			set({ zoom });
 		},
@@ -48,6 +56,9 @@ export function createViewportStore(
 		},
 		setGridSize(size) {
 			set({ gridSize: size });
+		},
+		setViewportSize(size) {
+			set({ viewportSize: size });
 		},
 		setSnapToObjectsEnabled(enabled) {
 			set({ snapToObjectsEnabled: enabled });

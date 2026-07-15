@@ -96,6 +96,21 @@ export interface HistoryState {
 	reset: () => void;
 	canUndo: () => boolean;
 	canRedo: () => boolean;
+	/**
+	 * Identity of the CURRENT document state (B-08, FR-161). Every commit —
+	 * including each coalesced fold — mints a fresh id; undo/redo walk back to
+	 * the ids they restore. Dirty tracking compares ids, never documents.
+	 */
+	getStateId: () => number;
+	/**
+	 * Record a save checkpoint (FR-161). Pass the state id CAPTURED when the
+	 * save snapshot was taken so late-arriving responses checkpoint the state
+	 * they actually persisted; defaults to the current id. `reset()` (document
+	 * replacement) re-checkpoints the fresh state as clean.
+	 */
+	markSaveCheckpoint: (stateId?: number) => void;
+	/** True when the current state IS the last-saved one (undo-to-clean). */
+	isAtSaveCheckpoint: () => boolean;
 }
 
 export type HistoryStoreApi = StoreApi<HistoryState>;
@@ -116,6 +131,19 @@ export function createHistoryStore(
 	let lastMergeKey: string | null = null;
 	let lastMergeTime = 0;
 
+	// FR-161 state identity (B-08). `pastBeforeIds[i]` is the state id undoing
+	// `past[i]` returns to; `futureStateIds[i]` the id redoing `future[i]`
+	// restores. Parallel to `past`/`future` so the public entry shape (and the
+	// history limit trimming) stays untouched.
+	let stateIdCounter = 0;
+	let stateId = 0;
+	let checkpointStateId: number | null = 0;
+	const pastBeforeIds: number[] = [];
+	const futureStateIds: number[] = [];
+	const trimTo = (len: number): void => {
+		while (pastBeforeIds.length > len) pastBeforeIds.shift();
+	};
+
 	return createStore<HistoryState>()((set, get) => ({
 		past: [],
 		future: [],
@@ -123,11 +151,15 @@ export function createHistoryStore(
 		commit(ir, cmd) {
 			lastMergeKey = null;
 			const result = apply(ir, cmd, applyOptions);
+			pastBeforeIds.push(stateId);
+			stateId = ++stateIdCounter;
+			futureStateIds.length = 0;
 			set((state) => {
 				const past = [...state.past, result.inverse];
 				while (past.length > state.limit) {
 					past.shift();
 				}
+				trimTo(past.length);
 				return { past, future: [] };
 			});
 			return result.ir;
@@ -141,11 +173,15 @@ export function createHistoryStore(
 				commands: [...commands],
 			};
 			const result = apply(ir, batch, applyOptions);
+			pastBeforeIds.push(stateId);
+			stateId = ++stateIdCounter;
+			futureStateIds.length = 0;
 			set((state) => {
 				const past = [...state.past, result.inverse];
 				while (past.length > state.limit) {
 					past.shift();
 				}
+				trimTo(past.length);
 				return { past, future: [] };
 			});
 			return result.ir;
@@ -165,13 +201,19 @@ export function createHistoryStore(
 				// already returns the node to the pre-burst state, so the whole run
 				// collapses to a single undo step. Redo re-derives correctly because
 				// each inverse is recomputed from the live state at undo time.
+				// The document DID change, so the state identity still advances.
+				stateId = ++stateIdCounter;
 				return result.ir;
 			}
+			pastBeforeIds.push(stateId);
+			stateId = ++stateIdCounter;
+			futureStateIds.length = 0;
 			set((state) => {
 				const past = [...state.past, result.inverse];
 				while (past.length > state.limit) {
 					past.shift();
 				}
+				trimTo(past.length);
 				return { past, future: [] };
 			});
 			return result.ir;
@@ -183,6 +225,8 @@ export function createHistoryStore(
 			const inverseCmd = state.past[state.past.length - 1];
 			if (!inverseCmd) return ir;
 			const result = apply(ir, inverseCmd, applyOptions);
+			futureStateIds.push(stateId);
+			stateId = pastBeforeIds.pop() ?? 0;
 			set((s) => ({
 				past: s.past.slice(0, -1),
 				future: [...s.future, result.inverse],
@@ -196,6 +240,8 @@ export function createHistoryStore(
 			const forwardCmd = state.future[state.future.length - 1];
 			if (!forwardCmd) return ir;
 			const result = apply(ir, forwardCmd, applyOptions);
+			pastBeforeIds.push(stateId);
+			stateId = futureStateIds.pop() ?? ++stateIdCounter;
 			set((s) => {
 				const past = [...s.past, result.inverse];
 				while (past.length > s.limit) {
@@ -211,6 +257,12 @@ export function createHistoryStore(
 		reset() {
 			lastMergeKey = null;
 			lastMergeTime = 0;
+			// A replaced document starts CLEAN relative to itself (FR-161 —
+			// snapshot source refinements can re-dirty explicitly).
+			stateId = ++stateIdCounter;
+			checkpointStateId = stateId;
+			pastBeforeIds.length = 0;
+			futureStateIds.length = 0;
 			set({ past: [], future: [] });
 		},
 		canUndo() {
@@ -218,6 +270,17 @@ export function createHistoryStore(
 		},
 		canRedo() {
 			return get().future.length > 0;
+		},
+		getStateId() {
+			return stateId;
+		},
+		markSaveCheckpoint(id) {
+			checkpointStateId = id ?? stateId;
+			// Nudge subscribers (save controllers) without changing history shape.
+			set((s) => ({ past: [...s.past] }));
+		},
+		isAtSaveCheckpoint() {
+			return checkpointStateId !== null && stateId === checkpointStateId;
 		},
 	}));
 }
