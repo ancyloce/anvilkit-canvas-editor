@@ -10,6 +10,13 @@
 
 // ── a11y ─────────────────────────────────────────────────────────────────────
 export { TOOL_LABELS } from "./a11y/tool-labels.js";
+// ── actions (M0-01 unified editor action layer) ──────────────────────────────
+export {
+	type CanvasDistributeAxis,
+	type CanvasEditorActions,
+	createCanvasEditorActions,
+	useCanvasActions,
+} from "./actions/editor-actions.js";
 // ── chrome ───────────────────────────────────────────────────────────────────
 export type { ChromeIcon, ToolDescriptor } from "./chrome/icons.js";
 export { ChromeIcons, TOOL_RAIL_ITEMS } from "./chrome/icons.js";

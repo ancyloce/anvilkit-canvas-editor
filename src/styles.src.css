@@ -152,32 +152,4 @@
 		background-clip: content-box;
 	}
 
-	/*
-	 * Floating selection toolbar: soft horizontal fade so trailing controls
-	 * remain reachable when the pill is wider than the stage. The mask can't
-	 * be expressed as a single Tailwind utility.
-	 */
-	[data-ak-floating-toolbar] {
-		-webkit-mask-image: linear-gradient(
-			90deg,
-			transparent 0,
-			#000 14px,
-			#000 calc(100% - 14px),
-			transparent 100%
-		);
-		mask-image: linear-gradient(
-			90deg,
-			transparent 0,
-			#000 14px,
-			#000 calc(100% - 14px),
-			transparent 100%
-		);
-	}
-	[data-ak-floating-toolbar]::-webkit-scrollbar {
-		display: none;
-	}
-	[data-ak-floating-toolbar][data-docked="true"] {
-		-webkit-mask-image: none;
-		mask-image: none;
-	}
 }
