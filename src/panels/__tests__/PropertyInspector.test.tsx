@@ -167,12 +167,32 @@ function mount(ctx: CanvasStudioContextValue) {
 }
 
 describe("PropertyInspector — empty state", () => {
-	it("shows empty hint when no selection", () => {
+	it("shows the active page's properties when nothing is selected (B-12)", () => {
 		const h = makeHarness();
 		const { container } = mount(h.studioCtx);
+		// FR-070: no selection edits the page, not an empty hint.
+		expect(
+			container.querySelector("[data-testid='page-properties']"),
+		).not.toBeNull();
+		expect(
+			container.querySelector("[data-testid='prop-page-width']"),
+		).not.toBeNull();
 		expect(
 			container.querySelector("[data-testid='property-inspector-empty']"),
-		).not.toBeNull();
+		).toBeNull();
+	});
+
+	it("editing the page width commits a page.resize", () => {
+		const h = makeHarness();
+		const { container } = mount(h.studioCtx);
+		const width = container.querySelector(
+			"[data-testid='prop-page-width']",
+		) as HTMLInputElement;
+		width.value = "1234";
+		fireEvent.blur(width);
+		const last = h.commits.at(-1) as { type: string; to?: { width: number } };
+		expect(last.type).toBe("page.resize");
+		expect(last.to?.width).toBe(1234);
 	});
 
 	it("exposes the panel as a labeled region even when empty", () => {
@@ -292,8 +312,12 @@ describe("PropertyInspector — a11y labels", () => {
 			"[data-testid='prop-fill']",
 		) as HTMLInputElement;
 		expect(fill.getAttribute("aria-label")).toBe("Fill");
-		// No control should be left without an accessible name.
-		const inputs = Array.from(container.querySelectorAll("input"));
+		// No user-facing control should be left without an accessible name.
+		// (Base UI Switch/Select render aria-hidden bookkeeping inputs — those
+		// are not accessible controls and carry no label by design.)
+		const inputs = Array.from(
+			container.querySelectorAll("input:not([aria-hidden='true'])"),
+		);
 		expect(inputs.length).toBeGreaterThan(0);
 		for (const input of inputs) {
 			expect(input.getAttribute("aria-label")).toBeTruthy();

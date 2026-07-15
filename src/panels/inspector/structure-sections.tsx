@@ -7,15 +7,9 @@ import type {
 	CanvasT,
 } from "../../context/canvas-studio-context.js";
 import { beginPathEdit } from "../../selection/path-edit-actions.js";
-import {
-	ColorField,
-	type CommitPatch,
-	FieldRow,
-	NumberField,
-	Section,
-	TextField,
-} from "../fields.js";
+import { type CommitPatch, FieldRow, Section, TextField } from "../fields.js";
 import { FillAndShadowFields } from "../fill-shadow-fields.js";
+import { StrokeFields } from "./stroke-section.js";
 
 /**
  * Path / group inspector sections (M0-07 split from `PropertyInspector.tsx`,
@@ -37,24 +31,12 @@ export function renderPathFields(
 				commitPatch={commitPatch}
 				t={t}
 			/>
-			<ColorField
-				label={t("canvas.inspector.stroke", "Stroke")}
-				value={node.stroke}
-				dataTestId="prop-stroke"
-				onCommit={(v) => commitPatch(node, { stroke: v })}
-			/>
-			<NumberField
-				label={t("canvas.inspector.strokeWidth", "Stroke W")}
-				value={node.strokeWidth ?? 1}
-				min={0}
-				dataTestId="prop-stroke-width"
-				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
-			/>
+			<StrokeFields node={node} commitPatch={commitPatch} t={t} arrows />
 			<TextField
 				label={t("canvas.inspector.pathD", "Path d")}
 				value={node.d}
 				dataTestId="prop-path-d"
-				onCommit={(v) => commitPatch(node, { d: v })}
+				contract={{ nodes: [node], buildPatch: (_n, v) => ({ d: v }) }}
 			/>
 			<Button
 				type="button"

@@ -1,6 +1,10 @@
 "use client";
 
-import type { CanvasFrameNode, CanvasImageNode } from "@anvilkit/canvas-core";
+import type {
+	CanvasFrameNode,
+	CanvasImageFitMode,
+	CanvasImageNode,
+} from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { Switch } from "@anvilkit/ui/components/animate-ui/components/base/switch";
 import {
@@ -25,11 +29,21 @@ import {
 } from "../../selection/frame-image-actions.js";
 import { type CommitPatch, FieldRow, NumberField, Section } from "../fields.js";
 import { FillAndShadowFields } from "../fill-shadow-fields.js";
+import { CornerRadiiFields } from "./stroke-section.js";
 
 /**
- * Image / frame inspector sections (M0-07 split from `PropertyInspector.tsx`,
- * verbatim). Dispatch lives in `./type-sections.tsx`.
+ * Image / frame inspector sections (M0-07 split from `PropertyInspector.tsx`).
+ * Dispatch lives in `./type-sections.tsx`.
  */
+
+/** FR-094 image fit modes (B-02); `stretch` is the schema default. */
+const FIT_MODES: readonly CanvasImageFitMode[] = [
+	"stretch",
+	"fill",
+	"fit",
+	"original",
+	"center",
+];
 
 export function renderImageFields(
 	node: CanvasImageNode,
@@ -39,8 +53,9 @@ export function renderImageFields(
 ): React.JSX.Element {
 	const crop = node.crop;
 	const c = crop ?? { x: 0, y: 0, width: 0, height: 0 };
-	const setCrop = (patch: Partial<typeof c>) =>
-		commitPatch(node, { crop: { ...c, ...patch } });
+	const cropPatch = (patch: Partial<typeof c>) => ({
+		crop: { ...c, ...patch },
+	});
 	return (
 		<>
 			<Section title={t("canvas.inspector.image", "Image")}>
@@ -64,6 +79,30 @@ export function renderImageFields(
 				>
 					{t("canvas.inspector.replaceImage", "Replace image")}
 				</Button>
+				<FieldRow label={t("canvas.inspector.fitMode", "Fit")}>
+					<Select
+						items={FIT_MODES.map((m) => ({ value: m, label: m }))}
+						value={node.fitMode ?? "stretch"}
+						onValueChange={(next) =>
+							next &&
+							commitPatch(node, {
+								fitMode:
+									next === "stretch" ? undefined : (next as CanvasImageFitMode),
+							})
+						}
+					>
+						<SelectTrigger data-testid="prop-fit-mode" className="h-7.5 flex-1">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{FIT_MODES.map((m) => (
+								<SelectItem key={m} value={m}>
+									{m}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</FieldRow>
 			</Section>
 			<Section title={t("canvas.inspector.crop", "Crop")}>
 				<Button
@@ -81,28 +120,40 @@ export function renderImageFields(
 					value={c.x}
 					min={0}
 					dataTestId="prop-crop-x"
-					onCommit={(v) => setCrop({ x: v })}
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => cropPatch({ x: v }),
+					}}
 				/>
 				<NumberField
 					label={t("canvas.inspector.cropY", "Crop Y")}
 					value={c.y}
 					min={0}
 					dataTestId="prop-crop-y"
-					onCommit={(v) => setCrop({ y: v })}
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => cropPatch({ y: v }),
+					}}
 				/>
 				<NumberField
 					label={t("canvas.inspector.cropW", "Crop W")}
 					value={c.width}
 					min={0}
 					dataTestId="prop-crop-width"
-					onCommit={(v) => setCrop({ width: v })}
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => cropPatch({ width: v }),
+					}}
 				/>
 				<NumberField
 					label={t("canvas.inspector.cropH", "Crop H")}
 					value={c.height}
 					min={0}
 					dataTestId="prop-crop-height"
-					onCommit={(v) => setCrop({ height: v })}
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => cropPatch({ height: v }),
+					}}
 				/>
 				{crop ? (
 					<Button
@@ -246,8 +297,12 @@ export function renderFrameFields(
 				value={node.radius ?? 0}
 				min={0}
 				dataTestId="prop-frame-radius"
-				onCommit={(v) => commitPatch(node, { radius: v })}
+				contract={{
+					nodes: [node],
+					buildPatch: (_n, v) => ({ radius: v, cornerRadii: undefined }),
+				}}
 			/>
+			<CornerRadiiFields node={node} t={t} />
 			<FillAndShadowFields
 				node={node}
 				fill={node.background}

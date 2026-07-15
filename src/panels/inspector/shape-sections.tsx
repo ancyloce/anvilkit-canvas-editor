@@ -8,18 +8,16 @@ import type {
 	CanvasStarNode,
 } from "@anvilkit/canvas-core";
 import type { CanvasT } from "../../context/canvas-studio-context.js";
-import {
-	ColorField,
-	type CommitPatch,
-	NumberField,
-	Section,
-} from "../fields.js";
+import { type CommitPatch, NumberField, Section } from "../fields.js";
 import { FillAndShadowFields } from "../fill-shadow-fields.js";
+import { CornerRadiiFields, StrokeFields } from "./stroke-section.js";
 
 /**
- * Shape-kind inspector sections (M0-07 split from `PropertyInspector.tsx`,
- * verbatim). One exported render function per built-in shape kind; dispatch
- * lives in `./type-sections.tsx`.
+ * Shape-kind inspector sections (M0-07 split from `PropertyInspector.tsx`).
+ * One exported render function per built-in shape kind; dispatch lives in
+ * `./type-sections.tsx`. B-12: stroke controls unified in `StrokeFields`
+ * (B-03a), per-corner radii on rect (B-03b), and every continuous field
+ * follows the §10 field-input contract via the `contract` prop.
  */
 
 export function renderRectFields(
@@ -36,26 +34,19 @@ export function renderRectFields(
 				commitPatch={commitPatch}
 				t={t}
 			/>
-			<ColorField
-				label={t("canvas.inspector.stroke", "Stroke")}
-				value={node.stroke}
-				dataTestId="prop-stroke"
-				onCommit={(v) => commitPatch(node, { stroke: v })}
-			/>
-			<NumberField
-				label={t("canvas.inspector.strokeWidth", "Stroke W")}
-				value={node.strokeWidth ?? 0}
-				min={0}
-				dataTestId="prop-stroke-width"
-				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
-			/>
+			<StrokeFields node={node} commitPatch={commitPatch} t={t} />
 			<NumberField
 				label={t("canvas.inspector.radius", "Radius")}
 				value={node.radius ?? 0}
 				min={0}
 				dataTestId="prop-radius"
-				onCommit={(v) => commitPatch(node, { radius: v })}
+				contract={{
+					nodes: [node],
+					// A uniform radius edit supersedes any per-corner values.
+					buildPatch: (_n, v) => ({ radius: v, cornerRadii: undefined }),
+				}}
 			/>
+			<CornerRadiiFields node={node} t={t} />
 		</Section>
 	);
 }
@@ -74,19 +65,7 @@ export function renderEllipseFields(
 				commitPatch={commitPatch}
 				t={t}
 			/>
-			<ColorField
-				label={t("canvas.inspector.stroke", "Stroke")}
-				value={node.stroke}
-				dataTestId="prop-stroke"
-				onCommit={(v) => commitPatch(node, { stroke: v })}
-			/>
-			<NumberField
-				label={t("canvas.inspector.strokeWidth", "Stroke W")}
-				value={node.strokeWidth ?? 0}
-				min={0}
-				dataTestId="prop-stroke-width"
-				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
-			/>
+			<StrokeFields node={node} commitPatch={commitPatch} t={t} />
 		</Section>
 	);
 }
@@ -104,7 +83,10 @@ export function renderPolygonFields(
 				min={3}
 				step={1}
 				dataTestId="prop-polygon-sides"
-				onCommit={(v) => commitPatch(node, { sides: Math.round(v) })}
+				contract={{
+					nodes: [node],
+					buildPatch: (_n, v) => ({ sides: Math.round(v) }),
+				}}
 			/>
 			<FillAndShadowFields
 				node={node}
@@ -113,19 +95,7 @@ export function renderPolygonFields(
 				commitPatch={commitPatch}
 				t={t}
 			/>
-			<ColorField
-				label={t("canvas.inspector.stroke", "Stroke")}
-				value={node.stroke}
-				dataTestId="prop-stroke"
-				onCommit={(v) => commitPatch(node, { stroke: v })}
-			/>
-			<NumberField
-				label={t("canvas.inspector.strokeWidth", "Stroke W")}
-				value={node.strokeWidth ?? 0}
-				min={0}
-				dataTestId="prop-stroke-width"
-				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
-			/>
+			<StrokeFields node={node} commitPatch={commitPatch} t={t} />
 		</Section>
 	);
 }
@@ -143,7 +113,10 @@ export function renderStarFields(
 				min={3}
 				step={1}
 				dataTestId="prop-star-points"
-				onCommit={(v) => commitPatch(node, { points: Math.round(v) })}
+				contract={{
+					nodes: [node],
+					buildPatch: (_n, v) => ({ points: Math.round(v) }),
+				}}
 			/>
 			<NumberField
 				label={t("canvas.inspector.innerRadiusRatio", "Inner radius")}
@@ -152,7 +125,10 @@ export function renderStarFields(
 				max={1}
 				step={0.05}
 				dataTestId="prop-star-inner-radius"
-				onCommit={(v) => commitPatch(node, { innerRadiusRatio: v })}
+				contract={{
+					nodes: [node],
+					buildPatch: (_n, v) => ({ innerRadiusRatio: v }),
+				}}
 			/>
 			<FillAndShadowFields
 				node={node}
@@ -161,19 +137,7 @@ export function renderStarFields(
 				commitPatch={commitPatch}
 				t={t}
 			/>
-			<ColorField
-				label={t("canvas.inspector.stroke", "Stroke")}
-				value={node.stroke}
-				dataTestId="prop-stroke"
-				onCommit={(v) => commitPatch(node, { stroke: v })}
-			/>
-			<NumberField
-				label={t("canvas.inspector.strokeWidth", "Stroke W")}
-				value={node.strokeWidth ?? 0}
-				min={0}
-				dataTestId="prop-stroke-width"
-				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
-			/>
+			<StrokeFields node={node} commitPatch={commitPatch} t={t} />
 		</Section>
 	);
 }
@@ -185,19 +149,7 @@ export function renderLineFields(
 ): React.JSX.Element {
 	return (
 		<Section title={t("canvas.inspector.line", "Line")}>
-			<ColorField
-				label={t("canvas.inspector.stroke", "Stroke")}
-				value={node.stroke}
-				dataTestId="prop-stroke"
-				onCommit={(v) => commitPatch(node, { stroke: v })}
-			/>
-			<NumberField
-				label={t("canvas.inspector.strokeWidth", "Stroke W")}
-				value={node.strokeWidth ?? 1}
-				min={0}
-				dataTestId="prop-stroke-width"
-				onCommit={(v) => commitPatch(node, { strokeWidth: v })}
-			/>
+			<StrokeFields node={node} commitPatch={commitPatch} t={t} arrows />
 		</Section>
 	);
 }

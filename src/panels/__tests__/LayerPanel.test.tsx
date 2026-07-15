@@ -153,7 +153,7 @@ describe("LayerPanel — selection", () => {
 		]);
 	});
 
-	it("shift-click toggles selection", () => {
+	it("shift-click RANGE-selects from the selection head (FR-051, A-08)", () => {
 		const h = makeHarness({ ir: withNodesIR() });
 		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
 		const { container } = mount(h.studioCtx);
@@ -161,9 +161,10 @@ describe("LayerPanel — selection", () => {
 			"[data-testid='layer-row-text-b']",
 		) as HTMLElement;
 		fireEvent.click(row, { shiftKey: true });
+		// Range is reported in panel order (top-most first).
 		expect(h.studioCtx.selectionStore.getState().selectedIds).toEqual([
-			"rect-a",
 			"text-b",
+			"rect-a",
 		]);
 	});
 });

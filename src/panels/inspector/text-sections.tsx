@@ -55,7 +55,7 @@ export function renderTextFields(
 				label={t("canvas.inspector.content", "Content")}
 				value={node.text}
 				dataTestId="prop-text"
-				onCommit={(v) => commitPatch(node, { text: v })}
+				contract={{ nodes: [node], buildPatch: (_n, v) => ({ text: v }) }}
 			/>
 			<TokenAwareFontField
 				label={t("canvas.inspector.font", "Font")}
@@ -65,6 +65,7 @@ export function renderTextFields(
 				fonts={brandKit.fonts}
 				dataTestId="prop-font-family"
 				onCommit={(v) => commitPatch(node, { fontFamily: v })}
+				contract={{ nodes: [node], buildPatch: (_n, v) => ({ fontFamily: v }) }}
 				t={t}
 			/>
 			<NumberField
@@ -72,7 +73,7 @@ export function renderTextFields(
 				value={node.fontSize}
 				min={1}
 				dataTestId="prop-font-size"
-				onCommit={(v) => commitPatch(node, { fontSize: v })}
+				contract={{ nodes: [node], buildPatch: (_n, v) => ({ fontSize: v }) }}
 			/>
 			<TokenAwareColorField
 				label={t("canvas.inspector.color", "Color")}
@@ -86,6 +87,7 @@ export function renderTextFields(
 				colors={brandKit.colors}
 				dataTestId="prop-text-fill"
 				onCommit={(v) => commitPatch(node, { fill: v })}
+				contract={{ nodes: [node], buildPatch: (_n, v) => ({ fill: v }) }}
 				t={t}
 			/>
 		</Section>
@@ -125,6 +127,20 @@ export function renderRichTextFields(
 	const wrap = node.wrap ?? "word";
 	const overflow = node.overflow ?? "visible";
 
+	const allParagraphsPatch = (
+		patch: Pick<
+			CanvasRichTextNode["paragraphs"][number],
+			"align" | "lineHeight"
+		>,
+	) => ({ paragraphs: node.paragraphs.map((p) => ({ ...p, ...patch })) });
+	const allSpansPatch = (
+		patch: Partial<CanvasRichTextNode["paragraphs"][number]["spans"][number]>,
+	) => ({
+		paragraphs: node.paragraphs.map((p) => ({
+			...p,
+			spans: p.spans.map((s) => ({ ...s, ...patch })),
+		})),
+	});
 	const commitAllParagraphs = (
 		patch: Pick<
 			CanvasRichTextNode["paragraphs"][number],
@@ -198,6 +214,29 @@ export function renderRichTextFields(
 						</option>
 					</select>
 				</FieldRow>
+				<FieldRow label={t("canvas.inspector.sizing", "Sizing")}>
+					<select
+						aria-label={t("canvas.inspector.sizing", "Sizing")}
+						data-testid="prop-rich-text-sizing"
+						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
+						value={node.sizing ?? "fixed"}
+						onChange={(e) =>
+							commitPatch(node, {
+								sizing:
+									e.currentTarget.value === "fixed"
+										? undefined
+										: (e.currentTarget.value as "auto-width"),
+							})
+						}
+					>
+						<option value="fixed">
+							{t("canvas.inspector.sizingFixed", "Fixed")}
+						</option>
+						<option value="auto-width">
+							{t("canvas.inspector.sizingAutoWidth", "Auto width")}
+						</option>
+					</select>
+				</FieldRow>
 			</Section>
 			<Section title={t("canvas.inspector.paragraph", "Paragraph")}>
 				<FieldRow label={t("canvas.inspector.align", "Align")}>
@@ -229,7 +268,10 @@ export function renderRichTextFields(
 					step={0.1}
 					min={0}
 					dataTestId="prop-rich-text-line-height"
-					onCommit={(v) => commitAllParagraphs({ lineHeight: v })}
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => allParagraphsPatch({ lineHeight: v }),
+					}}
 				/>
 			</Section>
 			<Section title={t("canvas.inspector.span", "Text style")}>
@@ -241,6 +283,10 @@ export function renderRichTextFields(
 					fonts={brandKit.fonts}
 					dataTestId="prop-rich-text-font-family"
 					onCommit={(v) => commitAllSpans({ fontFamily: v })}
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => allSpansPatch({ fontFamily: v }),
+					}}
 					t={t}
 				/>
 				<NumberField
@@ -248,20 +294,29 @@ export function renderRichTextFields(
 					value={style.fontSize}
 					min={1}
 					dataTestId="prop-rich-text-font-size"
-					onCommit={(v) => commitAllSpans({ fontSize: v })}
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => allSpansPatch({ fontSize: v }),
+					}}
 				/>
 				<TextField
 					label={t("canvas.inspector.fontWeight", "Weight")}
 					value={style.fontWeight}
 					dataTestId="prop-rich-text-font-weight"
-					onCommit={(v) => commitAllSpans({ fontWeight: v })}
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => allSpansPatch({ fontWeight: v }),
+					}}
 				/>
 				<NumberField
 					label={t("canvas.inspector.letterSpacing", "Letter spacing")}
 					value={style.letterSpacing}
 					step={0.1}
 					dataTestId="prop-rich-text-letter-spacing"
-					onCommit={(v) => commitAllSpans({ letterSpacing: v })}
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => allSpansPatch({ letterSpacing: v }),
+					}}
 				/>
 				<TokenAwareColorField
 					label={t("canvas.inspector.color", "Color")}
@@ -271,6 +326,10 @@ export function renderRichTextFields(
 					colors={brandKit.colors}
 					dataTestId="prop-rich-text-fill"
 					onCommit={(v) => commitAllSpans({ fill: v })}
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => allSpansPatch({ fill: v }),
+					}}
 					t={t}
 				/>
 				<FieldRow label={t("canvas.inspector.italic", "Italic")}>
@@ -289,6 +348,16 @@ export function renderRichTextFields(
 						}
 						aria-label={t("canvas.inspector.underline", "Underline")}
 						data-testid="prop-rich-text-underline"
+					/>
+				</FieldRow>
+				<FieldRow label={t("canvas.inspector.strikethrough", "Strikethrough")}>
+					<Switch
+						checked={style.strikethrough}
+						onCheckedChange={(checked) =>
+							commitAllSpans({ strikethrough: checked })
+						}
+						aria-label={t("canvas.inspector.strikethrough", "Strikethrough")}
+						data-testid="prop-rich-text-strikethrough"
 					/>
 				</FieldRow>
 				<FieldRow label={t("canvas.inspector.textTransform", "Transform")}>

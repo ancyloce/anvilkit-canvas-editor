@@ -16,7 +16,12 @@ import {
 import type { BrandColor, BrandKit } from "../brand/brand-kit.js";
 import { slug } from "../brand/resolve-brand-token.js";
 import type { CanvasT } from "../context/canvas-studio-context.js";
-import { ColorField, FieldRow, TextField } from "./fields.js";
+import {
+	ColorField,
+	type FieldContractTarget,
+	FieldRow,
+	TextField,
+} from "./fields.js";
 
 /** The identity a `BrandTokenRef` resolves against — mirrors `resolveBrandToken`'s own `color.id ?? slug(color.name)` fallback. */
 function colorIdentity(color: BrandColor): string {
@@ -66,6 +71,11 @@ export interface TokenAwareColorFieldProps {
 	colors: readonly BrandColor[];
 	dataTestId: string;
 	onCommit: (next: CanvasFill) => void;
+	/**
+	 * §10 field-input contract for the LITERAL color path (B-12) — the token
+	 * Select and detach/attach actions are discrete and stay on `onCommit`.
+	 */
+	contract?: FieldContractTarget<string>;
 	t: CanvasT;
 }
 
@@ -82,6 +92,7 @@ export function TokenAwareColorField({
 	colors,
 	dataTestId,
 	onCommit,
+	contract,
 	t,
 }: TokenAwareColorFieldProps): React.JSX.Element {
 	if (colors.length === 0) {
@@ -91,6 +102,7 @@ export function TokenAwareColorField({
 				value={resolvedValue}
 				dataTestId={dataTestId}
 				onCommit={(v) => onCommit(v)}
+				{...(contract ? { contract } : {})}
 			/>
 		);
 	}
@@ -147,6 +159,7 @@ export function TokenAwareColorField({
 						value={resolvedValue}
 						dataTestId={dataTestId}
 						onCommit={(v) => onCommit(v)}
+						{...(contract ? { contract } : {})}
 					/>
 				</div>
 				<Button
@@ -179,6 +192,8 @@ export interface TokenAwareFontFieldProps {
 	fonts: readonly string[];
 	dataTestId: string;
 	onCommit: (next: CanvasFontFamily) => void;
+	/** §10 contract for the LITERAL font path (B-12); see TokenAwareColorField. */
+	contract?: FieldContractTarget<string>;
 	t: CanvasT;
 }
 
@@ -191,6 +206,7 @@ export function TokenAwareFontField({
 	fonts,
 	dataTestId,
 	onCommit,
+	contract,
 	t,
 }: TokenAwareFontFieldProps): React.JSX.Element {
 	if (fonts.length === 0) {
@@ -200,6 +216,7 @@ export function TokenAwareFontField({
 				value={resolvedValue ?? ""}
 				dataTestId={dataTestId}
 				onCommit={(v) => onCommit(v)}
+				{...(contract ? { contract } : {})}
 			/>
 		);
 	}
@@ -256,6 +273,7 @@ export function TokenAwareFontField({
 						value={resolvedValue ?? ""}
 						dataTestId={dataTestId}
 						onCommit={(v) => onCommit(v)}
+						{...(contract ? { contract } : {})}
 					/>
 				</div>
 				<Button

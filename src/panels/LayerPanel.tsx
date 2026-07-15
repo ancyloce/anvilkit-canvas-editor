@@ -2,13 +2,17 @@
 
 import {
 	type CanvasAnyNodeUpdateCommand,
+	type CanvasCommand,
 	type CanvasGroupNode,
 	type CanvasNode,
 	type CanvasNodeKind,
 	type CanvasPage,
+	findNode,
 	isContainerNode,
+	parentOf,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
+import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { Windowed } from "@anvilkit/ui/windowed";
 import {
@@ -19,7 +23,14 @@ import {
 	LockOpen,
 	Ungroup,
 } from "lucide-react";
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import {
 	type CanvasT,
 	useCanvasStudio,
@@ -109,6 +120,33 @@ function nodeLabel(
 	return kindInspectors?.[kind]?.label ?? kind;
 }
 
+/** Where a drag is hovering relative to a row (A-08 FR-052). */
+type DropZone = "before" | "after" | "inside";
+
+interface DropState {
+	targetId: string;
+	zone: DropZone;
+	valid: boolean;
+}
+
+/**
+ * Visual→structural translation: the panel renders TOPMOST first, while
+ * `children` stores bottom-first. Dropping visually ABOVE a row means a
+ * HIGHER stacking index. Indices are computed on the target's children with
+ * the dragged ids removed, matching `node.reparent`'s remove-then-insert.
+ */
+function insertionIndex(
+	parentChildren: readonly CanvasNode[],
+	targetId: string,
+	zone: "before" | "after",
+	draggedIds: ReadonlySet<string>,
+): number {
+	const remaining = parentChildren.filter((c) => !draggedIds.has(c.id));
+	const idx = remaining.findIndex((c) => c.id === targetId);
+	if (idx < 0) return remaining.length;
+	return zone === "before" ? idx + 1 : idx;
+}
+
 export interface LayerPanelProps {
 	/** Optional id attribute for layout anchoring. */
 	id?: string;
@@ -139,16 +177,66 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 		[ctx.ir, selectedIds],
 	);
 
+	// FR-051 selection model: click = replace, Ctrl/Cmd = toggle, Shift =
+	// range from the last plain-clicked anchor within the flattened rows.
+	const anchorRef = useRef<string | null>(null);
+	const [renamingId, setRenamingId] = useState<string | null>(null);
+	const [dropState, setDropState] = useState<DropState | null>(null);
+	const draggedIdsRef = useRef<readonly string[]>([]);
+
 	const handleSelect = useCallback(
 		(nodeId: string, event: React.MouseEvent) => {
 			const sel = ctx.selectionStore.getState();
-			if (event.shiftKey) {
+			if (event.metaKey || event.ctrlKey) {
 				sel.toggleSelection(nodeId);
-			} else {
-				sel.setSelection([nodeId]);
+				anchorRef.current = nodeId;
+				return;
 			}
+			// Shift-range anchors on the last plain-clicked row, falling back to
+			// the current selection head (e.g. a canvas-made selection).
+			const anchorId = anchorRef.current ?? selectedIds[0] ?? null;
+			if (event.shiftKey && anchorId) {
+				const a = rows.findIndex((r) => r.node.id === anchorId);
+				const b = rows.findIndex((r) => r.node.id === nodeId);
+				if (a >= 0 && b >= 0) {
+					const [lo, hi] = a <= b ? [a, b] : [b, a];
+					sel.setSelection(rows.slice(lo, hi + 1).map((r) => r.node.id));
+					return;
+				}
+			}
+			sel.setSelection([nodeId]);
+			anchorRef.current = nodeId;
 		},
-		[ctx.selectionStore],
+		[ctx.selectionStore, rows, selectedIds],
+	);
+
+	// FR-051 auto-reveal: bring the first selected row into view when the
+	// selection changes from elsewhere (canvas click). Virtualized rows that
+	// aren't mounted (and jsdom, which lacks scrollIntoView) are skipped.
+	const firstSelectedId = selectedIds[0];
+	useEffect(() => {
+		if (!firstSelectedId) return;
+		const el = document.querySelector(
+			`[data-testid="layer-row-${firstSelectedId}"]`,
+		);
+		if (el && typeof (el as HTMLElement).scrollIntoView === "function") {
+			(el as HTMLElement).scrollIntoView({ block: "nearest" });
+		}
+	}, [firstSelectedId]);
+
+	const commitRename = useCallback(
+		(node: CanvasNode, name: string) => {
+			setRenamingId(null);
+			const trimmed = name.trim();
+			if (trimmed === (node.name ?? "")) return;
+			ctx.commit({
+				type: "node.update",
+				nodeId: node.id,
+				kind: node.type,
+				patch: { name: trimmed },
+			} as CanvasAnyNodeUpdateCommand);
+		},
+		[ctx],
 	);
 
 	const handleToggleVisibility = useCallback(
@@ -177,8 +265,141 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 		[ctx],
 	);
 
+	// ── FR-052 drag and drop ──────────────────────────────────────────────────
+
+	const isValidDrop = useCallback(
+		(targetId: string, zone: DropZone): boolean => {
+			const ir = ctx.getIR();
+			const dragged = draggedIdsRef.current;
+			if (dragged.length === 0) return false;
+			if (dragged.includes(targetId)) return false;
+			// Descendant guard: the target (or, for before/after, its parent
+			// chain) must not sit inside any dragged subtree.
+			let cursor: string | null = targetId;
+			while (cursor) {
+				if (dragged.includes(cursor)) return false;
+				const parentResult = parentOf(ir, cursor);
+				cursor = parentResult ? parentResult.parent.id : null;
+			}
+			if (zone === "inside") {
+				const target = findNode(ir, targetId);
+				return !!target && isContainerNode(target.node);
+			}
+			return true;
+		},
+		[ctx],
+	);
+
+	const handleDragStart = useCallback(
+		(node: CanvasNode, e: React.DragEvent) => {
+			// Locked nodes never move (FR-052); dragging a selected row drags the
+			// whole selection minus locked members.
+			const ir = ctx.getIR();
+			const base = selectedSet.has(node.id) ? selectedIds : [node.id];
+			const dragged = base.filter(
+				(dragId) => findNode(ir, dragId)?.node.locked !== true,
+			);
+			draggedIdsRef.current = dragged;
+			if (dragged.length === 0) {
+				e.preventDefault();
+				return;
+			}
+			e.dataTransfer?.setData("text/plain", dragged.join(","));
+		},
+		[ctx, selectedIds, selectedSet],
+	);
+
+	const handleDragOver = useCallback(
+		(node: CanvasNode, e: React.DragEvent) => {
+			if (draggedIdsRef.current.length === 0) return;
+			e.preventDefault(); // required to allow dropping
+			const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+			const container = isContainerNode(node);
+			let zone: DropZone;
+			if (rect.height <= 0) {
+				// jsdom / unmeasured rows: containers accept "inside", leaves "before".
+				zone = container ? "inside" : "before";
+			} else {
+				const y = e.clientY - rect.top;
+				if (container && y > rect.height / 4 && y < (rect.height * 3) / 4) {
+					zone = "inside";
+				} else {
+					zone = y < rect.height / 2 ? "before" : "after";
+				}
+			}
+			const valid = isValidDrop(node.id, zone);
+			setDropState((prev) =>
+				prev?.targetId === node.id && prev.zone === zone && prev.valid === valid
+					? prev
+					: { targetId: node.id, zone, valid },
+			);
+		},
+		[isValidDrop],
+	);
+
+	const handleDrop = useCallback(
+		(node: CanvasNode, e: React.DragEvent) => {
+			e.preventDefault();
+			const dragged = draggedIdsRef.current;
+			const state = dropState;
+			draggedIdsRef.current = [];
+			setDropState(null);
+			if (!state || state.targetId !== node.id || !state.valid) return;
+			const ir = ctx.getIR();
+			const draggedSet = new Set(dragged);
+			const cmds: CanvasCommand[] = [];
+			if (state.zone === "inside") {
+				const target = findNode(ir, node.id);
+				if (!target || !isContainerNode(target.node)) return;
+				// Drop "inside" lands on TOP of the container's stack.
+				let index = target.node.children.filter(
+					(c) => !draggedSet.has(c.id),
+				).length;
+				for (const dragId of dragged) {
+					cmds.push({
+						type: "node.reparent",
+						nodeId: dragId,
+						toParentId: node.id,
+						toIndex: index,
+					});
+					index += 1;
+				}
+			} else {
+				const parentResult = parentOf(ir, node.id);
+				if (!parentResult) return;
+				let index = insertionIndex(
+					parentResult.parent.children,
+					node.id,
+					state.zone,
+					draggedSet,
+				);
+				for (const dragId of dragged) {
+					cmds.push({
+						type: "node.reparent",
+						nodeId: dragId,
+						toParentId: parentResult.parent.id,
+						toIndex: index,
+					});
+					index += 1;
+				}
+			}
+			if (cmds.length === 0) return;
+			const first = cmds[0];
+			if (cmds.length === 1 && first) ctx.commit(first);
+			else ctx.commitBatch(cmds, "Move layers");
+			ctx.selectionStore.getState().setSelection([...dragged]);
+		},
+		[ctx, dropState],
+	);
+
+	const handleDragEnd = useCallback(() => {
+		draggedIdsRef.current = [];
+		setDropState(null);
+	}, []);
+
 	const handleKeyDown = useCallback(
 		(event: React.KeyboardEvent) => {
+			if (renamingId) return; // the rename input owns the keyboard
 			if (event.metaKey || event.ctrlKey) {
 				if (event.key === "g" || event.key === "G") {
 					event.preventDefault();
@@ -210,7 +431,7 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 				ctx.selectionStore.getState().clearSelection();
 			}
 		},
-		[ctx, rows, selectedIds],
+		[ctx, rows, selectedIds, renamingId],
 	);
 
 	// Stable row renderer for `Windowed` (W5). Identity changes on selection so
@@ -221,22 +442,53 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 			const isSelected = selectedSet.has(node.id);
 			const visible = node.visible !== false;
 			const locked = node.locked === true;
+			const isRenaming = renamingId === node.id;
+			const drop = dropState?.targetId === node.id ? dropState : null;
 			return (
 				<div
 					key={node.id}
 					data-testid={`layer-row-${node.id}`}
 					data-selected={isSelected ? "true" : "false"}
+					{...(drop
+						? {
+								"data-drop-zone": drop.zone,
+								"data-drop-valid": drop.valid ? "true" : "false",
+							}
+						: {})}
 					className={cn(
 						"flex h-7 items-center gap-1 rounded-md pr-1 text-[13px]",
 						"cursor-pointer hover:bg-muted",
 						isSelected
 							? "bg-accent text-accent-foreground hover:bg-accent"
 							: "text-foreground",
+						// FR-052 insertion preview / invalid-drop feedback.
+						drop &&
+							drop.valid &&
+							drop.zone === "before" &&
+							"shadow-[inset_0_2px_0_0_var(--color-primary)]",
+						drop &&
+							drop.valid &&
+							drop.zone === "after" &&
+							"shadow-[inset_0_-2px_0_0_var(--color-primary)]",
+						drop &&
+							drop.valid &&
+							drop.zone === "inside" &&
+							"ring-1 ring-primary ring-inset",
+						drop && !drop.valid && "opacity-50",
 					)}
 					style={{ paddingLeft: ROW_PAD_X + depth * INDENT_PX }}
+					draggable={!locked && !isRenaming}
+					onDragStart={(e) => handleDragStart(node, e)}
+					onDragOver={(e) => handleDragOver(node, e)}
+					onDrop={(e) => handleDrop(node, e)}
+					onDragEnd={handleDragEnd}
 					onClick={(e) => handleSelect(node.id, e)}
+					onDoubleClick={(e) => {
+						e.stopPropagation();
+						setRenamingId(node.id);
+					}}
 					onKeyDown={(e) => {
-						if (e.key === "Enter" || e.key === " ") {
+						if (!isRenaming && (e.key === "Enter" || e.key === " ")) {
 							e.preventDefault();
 							handleSelect(node.id, e as unknown as React.MouseEvent);
 						}
@@ -245,9 +497,30 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 					aria-selected={isSelected}
 					tabIndex={-1}
 				>
-					<span className="flex-1 truncate">
-						{nodeLabel(node, t, ctx.kindInspectors)}
-					</span>
+					{isRenaming ? (
+						<Input
+							autoFocus
+							defaultValue={node.name ?? ""}
+							data-testid={`layer-rename-${node.id}`}
+							aria-label={t("canvas.layer.rename", "Rename layer")}
+							className="h-5 flex-1 px-1 text-[13px]"
+							onClick={(e) => e.stopPropagation()}
+							onDoubleClick={(e) => e.stopPropagation()}
+							onBlur={(e) => commitRename(node, e.currentTarget.value)}
+							onKeyDown={(e) => {
+								e.stopPropagation();
+								if (e.key === "Enter") {
+									commitRename(node, e.currentTarget.value);
+								} else if (e.key === "Escape") {
+									setRenamingId(null);
+								}
+							}}
+						/>
+					) : (
+						<span className="flex-1 truncate">
+							{nodeLabel(node, t, ctx.kindInspectors)}
+						</span>
+					)}
 					<Button
 						type="button"
 						variant="ghost"
@@ -310,6 +583,13 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 			handleToggleVisibility,
 			handleToggleLock,
 			ctx.kindInspectors,
+			renamingId,
+			dropState,
+			commitRename,
+			handleDragStart,
+			handleDragOver,
+			handleDrop,
+			handleDragEnd,
 		],
 	);
 

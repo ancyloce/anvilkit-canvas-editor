@@ -85,8 +85,11 @@ export function FillAndShadowFields({
 	const solidColor =
 		typeof resolvedFill === "string" ? resolvedFill : "#000000";
 
+	const fillPatch = (next: CanvasFill): Record<string, unknown> => ({
+		[fillKey]: next,
+	});
 	const commitFill = (next: CanvasFill): void => {
-		commitPatch(node, { [fillKey]: next });
+		commitPatch(node, fillPatch(next));
 	};
 
 	const commitStops = (stops: CanvasGradientStop[]): void => {
@@ -135,13 +138,16 @@ export function FillAndShadowFields({
 								label={t("canvas.inspector.gradientStop", "Stop")}
 								value={stop.color}
 								dataTestId={`prop-gradient-stop-${i}`}
-								onCommit={(v) =>
-									commitStops(
-										grad.stops.map((s, j) =>
-											j === i ? { ...s, color: v } : s,
-										),
-									)
-								}
+								contract={{
+									nodes: [node],
+									buildPatch: (_n, v) =>
+										fillPatch({
+											...grad,
+											stops: grad.stops.map((s, j) =>
+												j === i ? { ...s, color: v } : s,
+											),
+										}),
+								}}
 							/>
 							<NumberField
 								label={t("canvas.inspector.gradientPos", "Pos")}
@@ -150,13 +156,16 @@ export function FillAndShadowFields({
 								max={1}
 								step={0.1}
 								dataTestId={`prop-gradient-offset-${i}`}
-								onCommit={(v) =>
-									commitStops(
-										grad.stops.map((s, j) =>
-											j === i ? { ...s, offset: v } : s,
-										),
-									)
-								}
+								contract={{
+									nodes: [node],
+									buildPatch: (_n, v) =>
+										fillPatch({
+											...grad,
+											stops: grad.stops.map((s, j) =>
+												j === i ? { ...s, offset: v } : s,
+											),
+										}),
+								}}
 							/>
 							{grad.stops.length > 2 ? (
 								<Button
@@ -202,6 +211,7 @@ export function FillAndShadowFields({
 					colors={brandKit.colors}
 					dataTestId="prop-fill"
 					onCommit={commitFill}
+					contract={{ nodes: [node], buildPatch: (_n, v) => fillPatch(v) }}
 					t={t}
 				/>
 			)}
@@ -210,11 +220,12 @@ export function FillAndShadowFields({
 					label={t("canvas.inspector.shadow", "Shadow")}
 					value={shadow?.color}
 					dataTestId="prop-shadow-color"
-					onCommit={(v) =>
-						commitPatch(node, {
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => ({
 							shadow: { ...(shadow ?? DEFAULT_SHADOW), color: v },
-						})
-					}
+						}),
+					}}
 				/>
 			) : null}
 			{showShadow && shadow ? (
@@ -224,25 +235,28 @@ export function FillAndShadowFields({
 						value={shadow.blur}
 						min={0}
 						dataTestId="prop-shadow-blur"
-						onCommit={(v) =>
-							commitPatch(node, { shadow: { ...shadow, blur: v } })
-						}
+						contract={{
+							nodes: [node],
+							buildPatch: (_n, v) => ({ shadow: { ...shadow, blur: v } }),
+						}}
 					/>
 					<NumberField
 						label={t("canvas.inspector.shadowX", "Sh X")}
 						value={shadow.offsetX}
 						dataTestId="prop-shadow-x"
-						onCommit={(v) =>
-							commitPatch(node, { shadow: { ...shadow, offsetX: v } })
-						}
+						contract={{
+							nodes: [node],
+							buildPatch: (_n, v) => ({ shadow: { ...shadow, offsetX: v } }),
+						}}
 					/>
 					<NumberField
 						label={t("canvas.inspector.shadowY", "Sh Y")}
 						value={shadow.offsetY}
 						dataTestId="prop-shadow-y"
-						onCommit={(v) =>
-							commitPatch(node, { shadow: { ...shadow, offsetY: v } })
-						}
+						contract={{
+							nodes: [node],
+							buildPatch: (_n, v) => ({ shadow: { ...shadow, offsetY: v } }),
+						}}
 					/>
 				</>
 			) : null}
