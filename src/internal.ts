@@ -14,16 +14,24 @@ export { TOOL_LABELS } from "./a11y/tool-labels.js";
 export {
 	type CanvasDistributeAxis,
 	type CanvasEditorActions,
+	type CanvasEditorActionsDeps,
 	createCanvasEditorActions,
 	useCanvasActions,
 } from "./actions/editor-actions.js";
 // ── chrome ───────────────────────────────────────────────────────────────────
 export type { ChromeIcon, ToolDescriptor } from "./chrome/icons.js";
 export { ChromeIcons, TOOL_RAIL_ITEMS } from "./chrome/icons.js";
-
+// ── toasts (A-09 feedback seam) ───────────────────────────────────────────────
+export {
+	CanvasToastContext,
+	type CanvasToaster,
+	type CanvasToastInput,
+	type CanvasToastType,
+	NOOP_CANVAS_TOASTER,
+	useCanvasToaster,
+} from "./context/toast-context.js";
 // ── pages ────────────────────────────────────────────────────────────────────
 export { regenerateIds } from "./pages/clone-page.js";
-
 // ── selection (overlays + actions) ───────────────────────────────────────────
 export { CanvasTransformer } from "./selection/CanvasTransformer.js";
 export { CropEditorOverlay } from "./selection/CropEditorOverlay.js";
@@ -46,7 +54,6 @@ export {
 	commitPathD,
 	endPathEdit,
 } from "./selection/path-edit-actions.js";
-
 // ── snap ─────────────────────────────────────────────────────────────────────
 export {
 	getNodeWorldRect,
@@ -65,7 +72,6 @@ export type {
 	SnapRect,
 	SnapResult,
 } from "./snap/snap-types.js";
-
 // ── stage ────────────────────────────────────────────────────────────────────
 export {
 	CanvasAssetsContext,
@@ -81,7 +87,6 @@ export { RemoteCursors } from "./stage/RemoteCursors.js";
 export { RemoteSelections } from "./stage/RemoteSelections.js";
 export type { RenderLayerName, RenderLayerProps } from "./stage/RenderLayer.js";
 export { RenderLayer } from "./stage/RenderLayer.js";
-
 // ── stores (factories + types) ───────────────────────────────────────────────
 export type {
 	AiJobEntry,
@@ -163,7 +168,6 @@ export {
 	createViewportStore,
 	DEFAULT_GRID_SIZE,
 } from "./stores/viewport-store.js";
-
 // ── tools (implementations, overlays, geometry, registry) ────────────────────
 export { aiBrushTool } from "./tools/ai-brush-tool.js";
 export { aiImageTool } from "./tools/ai-image-tool.js";
@@ -220,3 +224,4 @@ export type {
 	ToolPointerEvent,
 	ToolRegistry,
 } from "./tools/tool-types.js";
+export { CanvasToastHost } from "./workspace/toasts/CanvasToastHost.js";

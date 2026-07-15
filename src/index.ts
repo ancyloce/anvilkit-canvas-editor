@@ -39,6 +39,18 @@ export {
 } from "./CanvasErrorBoundary.js";
 // ── Core editor + shell ──────────────────────────────────────────────────────
 export { CanvasStudio, type CanvasStudioProps } from "./CanvasStudio.js";
+// ── Persistence (B-08, FR-160..163) ─────────────────────────────────────────
+export type {
+	CanvasAutoSaveOptions,
+	CanvasPersistenceAdapter,
+	CanvasSaveInput,
+	CanvasSaveResult,
+} from "./persistence/types.js";
+export type {
+	CanvasSaveState,
+	SaveStatusState,
+	SaveStatusStoreApi,
+} from "./stores/save-status-store.js";
 // ── Context + hooks ──────────────────────────────────────────────────────────
 export {
 	type CanvasIRGetter,
@@ -102,6 +114,7 @@ export {
 	ColorField,
 	type ColorFieldProps,
 	type CommitPatch,
+	type FieldContractTarget,
 	FieldRow,
 	NumberField,
 	type NumberFieldProps,
