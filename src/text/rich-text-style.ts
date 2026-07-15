@@ -18,6 +18,7 @@ export const DEFAULT_RICH_TEXT_STYLE: RichTextStyleDefaults = {
 	fontWeight: "400",
 	italic: false,
 	underline: false,
+	strikethrough: false,
 	letterSpacing: 0,
 	textTransform: "none",
 	fill: "#000000",
