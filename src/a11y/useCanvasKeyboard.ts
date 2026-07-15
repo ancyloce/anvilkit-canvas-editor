@@ -59,6 +59,23 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 			) {
 				return;
 			}
+			// Undo / redo (⌘Z / ⌘⇧Z, plus Ctrl+Y on Windows/Linux) — interim
+			// stage-scoped binding (M0-03); migrates into the workspace shortcut
+			// registry in Phase 1a. Mirrors the header buttons' historyStore →
+			// sceneStore wiring, and runs before the selection guard: history
+			// operations need no selection.
+			if (
+				(e.metaKey || e.ctrlKey) &&
+				(e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y")
+			) {
+				e.preventDefault();
+				const isRedo = e.key === "y" || e.key === "Y" || e.shiftKey;
+				const history = ctx.historyStore.getState();
+				if (isRedo ? !history.canRedo() : !history.canUndo()) return;
+				const next = isRedo ? history.redo(getIR()) : history.undo(getIR());
+				ctx.sceneStore?.getState().setIR(next);
+				return;
+			}
 			// Group / ungroup (⌘G / ⌘⇧G). group-actions read the selection + handle
 			// no-ops themselves, so this runs before the selection guard below.
 			if ((e.metaKey || e.ctrlKey) && (e.key === "g" || e.key === "G")) {
