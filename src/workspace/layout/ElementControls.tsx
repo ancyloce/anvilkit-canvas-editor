@@ -1,6 +1,7 @@
 "use client";
 
 import {
+	type AlignEdge,
 	type CanvasAnyNodeUpdateCommand,
 	type CanvasNode,
 	findNode,
@@ -21,6 +22,10 @@ import type Konva from "konva";
 import { Copy, Lock, LockOpen, MoreHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import {
+	type CanvasDistributeAxis,
+	useCanvasActions,
+} from "@/actions/editor-actions.js";
+import {
 	useCanvasStudio,
 	useCanvasT,
 } from "@/context/canvas-studio-context.js";
@@ -36,9 +41,11 @@ export type AlignDirection =
 export type ReorderDirection = "front" | "forward" | "backward" | "back";
 
 /**
- * Optional host-supplied actions for operations with **no backing IR command**
- * today (PRD §2). Each menu item is disabled until the host wires a handler —
- * the layout-only refactor adds the affordance without inventing commands.
+ * Optional host-supplied actions. Duplicate / copy-style / paste-style /
+ * reorder have **no backing IR command** today (PRD §2) — those menu items
+ * stay disabled until the host wires a handler. Align and distribute are
+ * built in via the unified action layer (M0-02); `onAlign` remains as a
+ * host OVERRIDE for backward compatibility and takes precedence when set.
  */
 export interface ElementActions {
 	onDuplicate?: (ids: readonly string[]) => void;
@@ -47,6 +54,16 @@ export interface ElementActions {
 	onAlign?: (ids: readonly string[], direction: AlignDirection) => void;
 	onReorder?: (ids: readonly string[], direction: ReorderDirection) => void;
 }
+
+/** Menu direction → core {@link AlignEdge} used by the action layer. */
+const ALIGN_EDGE: Record<AlignDirection, AlignEdge> = {
+	left: "left",
+	"center-h": "hcenter",
+	right: "right",
+	top: "top",
+	"center-v": "vcenter",
+	bottom: "bottom",
+};
 
 export interface ElementControlsProps {
 	actions?: ElementActions;
@@ -64,6 +81,23 @@ const ALIGN_OPTIONS: readonly {
 	{ dir: "top", labelKey: "canvas.align.top", label: "Align top" },
 	{ dir: "center-v", labelKey: "canvas.align.centerV", label: "Align middle" },
 	{ dir: "bottom", labelKey: "canvas.align.bottom", label: "Align bottom" },
+];
+
+const DISTRIBUTE_OPTIONS: readonly {
+	axis: CanvasDistributeAxis;
+	labelKey: string;
+	label: string;
+}[] = [
+	{
+		axis: "x",
+		labelKey: "canvas.distribute.h",
+		label: "Distribute horizontally",
+	},
+	{
+		axis: "y",
+		labelKey: "canvas.distribute.v",
+		label: "Distribute vertically",
+	},
 ];
 
 const REORDER_OPTIONS: readonly {
@@ -131,6 +165,7 @@ export function ElementControls({
 	className,
 }: ElementControlsProps): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
+	const editorActions = useCanvasActions();
 	const t = useCanvasT();
 	const selectedIds = useSyncExternalStore(
 		ctx.selectionStore.subscribe,
@@ -221,16 +256,11 @@ export function ElementControls({
 		if (nextLocked) ctx.selectionStore.getState().clearSelection();
 	};
 
+	// Unified action layer (M0-02): one undo entry for multi-delete, locked
+	// nodes protected, selection cleared — identical semantics from every UI
+	// surface.
 	const deleteSelection = () => {
-		// Locked nodes are protected from deletion.
-		const lockedIds = new Set(
-			irNodes.flatMap((n) => (n.locked === true ? [n.id] : [])),
-		);
-		for (const id of selectedIds) {
-			if (lockedIds.has(id)) continue;
-			ctx.commit({ type: "node.delete", nodeId: id });
-		}
-		ctx.selectionStore.getState().clearSelection();
+		editorActions.deleteSelection();
 	};
 
 	return (
@@ -328,28 +358,52 @@ export function ElementControls({
 						{t("canvas.element.delete", "Delete")}
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
-					{actions?.onAlign ? (
-						<DropdownMenuSub>
-							<DropdownMenuSubTrigger data-testid="more-align">
-								{t("canvas.element.align", "Align")}
-							</DropdownMenuSubTrigger>
-							<DropdownMenuSubContent>
-								{ALIGN_OPTIONS.map((o) => (
-									<DropdownMenuItem
-										key={o.dir}
-										data-testid={`more-align-${o.dir}`}
-										onClick={() => actions.onAlign?.(selectedIds, o.dir)}
-									>
-										{t(o.labelKey, o.label)}
-									</DropdownMenuItem>
-								))}
-							</DropdownMenuSubContent>
-						</DropdownMenuSub>
-					) : (
-						<DropdownMenuItem data-testid="more-align" disabled>
+					<DropdownMenuSub>
+						<DropdownMenuSubTrigger
+							data-testid="more-align"
+							disabled={selectedIds.length < 2}
+						>
 							{t("canvas.element.align", "Align")}
-						</DropdownMenuItem>
-					)}
+						</DropdownMenuSubTrigger>
+						<DropdownMenuSubContent>
+							{ALIGN_OPTIONS.map((o) => (
+								<DropdownMenuItem
+									key={o.dir}
+									data-testid={`more-align-${o.dir}`}
+									onClick={() => {
+										// Host override for backward compatibility; the built-in
+										// action layer otherwise (single undoable batch).
+										if (actions?.onAlign) {
+											actions.onAlign(selectedIds, o.dir);
+										} else {
+											editorActions.alignSelection(ALIGN_EDGE[o.dir]);
+										}
+									}}
+								>
+									{t(o.labelKey, o.label)}
+								</DropdownMenuItem>
+							))}
+						</DropdownMenuSubContent>
+					</DropdownMenuSub>
+					<DropdownMenuSub>
+						<DropdownMenuSubTrigger
+							data-testid="more-distribute"
+							disabled={selectedIds.length < 3}
+						>
+							{t("canvas.element.distribute", "Distribute")}
+						</DropdownMenuSubTrigger>
+						<DropdownMenuSubContent>
+							{DISTRIBUTE_OPTIONS.map((o) => (
+								<DropdownMenuItem
+									key={o.axis}
+									data-testid={`more-distribute-${o.axis}`}
+									onClick={() => editorActions.distributeSelection(o.axis)}
+								>
+									{t(o.labelKey, o.label)}
+								</DropdownMenuItem>
+							))}
+						</DropdownMenuSubContent>
+					</DropdownMenuSub>
 					{actions?.onReorder ? (
 						<DropdownMenuSub>
 							<DropdownMenuSubTrigger data-testid="more-reorder">

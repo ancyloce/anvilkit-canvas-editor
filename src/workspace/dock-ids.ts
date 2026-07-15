@@ -18,3 +18,16 @@ export const DOCK_IDS = [
 ] as const;
 
 export type DockId = (typeof DOCK_IDS)[number];
+
+/**
+ * Dock entries HIDDEN from the default rail because their features do not
+ * exist yet (M0-08 stub reconciliation): "coming soon" tabs don't ship in the
+ * default UI. `ai`/`text` return when their panels land (PRD 0012 Phase 2+);
+ * `uploads` stays visible as it is filled next milestone (B-10). The ids stay
+ * in {@link DOCK_IDS} so the type union, persisted-state migration, and host
+ * registry overrides remain stable.
+ */
+export const HIDDEN_DOCK_IDS: ReadonlySet<DockId> = new Set<DockId>([
+	"ai",
+	"text",
+]);

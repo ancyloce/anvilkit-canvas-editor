@@ -17,7 +17,7 @@ import {
 	Upload,
 } from "lucide-react";
 import type { ChromeIcon } from "../chrome/icons.js";
-import type { DockId } from "./dock-ids.js";
+import { type DockId, HIDDEN_DOCK_IDS } from "./dock-ids.js";
 
 export interface DockItem {
 	readonly id: DockId;
@@ -30,7 +30,7 @@ export interface DockItem {
 	readonly color?: string;
 }
 
-export const DOCK_ITEMS: readonly DockItem[] = [
+const ALL_DOCK_ITEMS: readonly DockItem[] = [
 	{
 		id: "ai",
 		labelKey: "canvas.dock.ai",
@@ -74,3 +74,12 @@ export const DOCK_ITEMS: readonly DockItem[] = [
 		icon: Layers,
 	},
 ] as const;
+
+/**
+ * Dock rail entries actually rendered — stub tabs whose features don't exist
+ * yet are filtered out (M0-08); see {@link HIDDEN_DOCK_IDS} for the list and
+ * the revival plan.
+ */
+export const DOCK_ITEMS: readonly DockItem[] = ALL_DOCK_ITEMS.filter(
+	(item) => !HIDDEN_DOCK_IDS.has(item.id),
+);

@@ -17,7 +17,7 @@
 
 import { persist } from "zustand/middleware";
 import { createStore, type StoreApi } from "zustand/vanilla";
-import { DOCK_IDS, type DockId } from "../dock-ids.js";
+import { DOCK_IDS, type DockId, HIDDEN_DOCK_IDS } from "../dock-ids.js";
 
 export interface WorkspaceUiState {
 	readonly activeDockId: DockId;
@@ -47,7 +47,12 @@ interface WorkspaceUiPersistedSlice {
 
 export const WORKSPACE_UI_STORE_PERSIST_VERSION = 1;
 
-const VALID_DOCK_IDS: ReadonlySet<DockId> = new Set(DOCK_IDS);
+// Hidden stub docks (M0-08) are excluded so a persisted selection of a
+// now-hidden tab falls back to the default instead of activating an
+// invisible panel.
+const VALID_DOCK_IDS: ReadonlySet<DockId> = new Set(
+	DOCK_IDS.filter((id) => !HIDDEN_DOCK_IDS.has(id)),
+);
 
 /**
  * Coerce a possibly-stale persisted payload back into a valid slice — an

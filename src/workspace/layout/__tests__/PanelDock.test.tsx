@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DOCK_IDS } from "@/workspace/dock-ids.js";
+import { DOCK_IDS, HIDDEN_DOCK_IDS } from "@/workspace/dock-ids.js";
 import { WorkspaceUiStoreProvider } from "@/workspace/state/WorkspaceUiStoreProvider.js";
 import { PanelDock } from "../PanelDock.js";
 
@@ -18,15 +18,20 @@ function renderDock(storeId: string) {
 }
 
 describe("PanelDock", () => {
-	it("renders a button per dock entry", () => {
+	it("renders a button per VISIBLE dock entry; hidden stubs get none (M0-08)", () => {
 		const { container } = renderDock("dock-render");
 		expect(
 			container.querySelector("[data-testid='panel-dock']"),
 		).not.toBeNull();
 		for (const id of DOCK_IDS) {
-			expect(
-				container.querySelector(`[data-testid='panel-dock-${id}']`),
-			).not.toBeNull();
+			const button = container.querySelector(
+				`[data-testid='panel-dock-${id}']`,
+			);
+			if (HIDDEN_DOCK_IDS.has(id)) {
+				expect(button).toBeNull();
+			} else {
+				expect(button).not.toBeNull();
+			}
 		}
 	});
 

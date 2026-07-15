@@ -98,6 +98,14 @@ function StubBody({
 	);
 }
 
+/**
+ * "Coming soon" panel body. NOTE (M0-08): the `ai` and `text` stub entries
+ * below stay registered so host registry overrides and the `DockId` union
+ * remain stable, but their tabs are HIDDEN from the default rail
+ * (`HIDDEN_DOCK_IDS` in `dock-ids.ts`) until the features exist. `uploads`
+ * remains visible — it is filled by the asset-upload work in the next
+ * milestone (PRD 0012 FR-091/092).
+ */
 function stubPanel(
 	id: DockId,
 	titleKey: string,
