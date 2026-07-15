@@ -139,6 +139,11 @@ export interface CanvasStudioProps {
 	 */
 	onAiIntent?: (intent: AiToolIntent) => void;
 	/**
+	 * FR-172 host error callback (B-15): fires when the canvas subtree throws
+	 * during render and the error boundary catches it. Wire to telemetry.
+	 */
+	onError?: (error: Error, info: React.ErrorInfo) => void;
+	/**
 	 * Fires once after `<CanvasStage>` has constructed the Konva.Stage, and
 	 * again with `null` when the stage tears down. Hosts use this to drive
 	 * export pipelines (e.g. `stage.toDataURL()`) without reaching into the
@@ -428,6 +433,9 @@ function EditorStage({
 	zoom,
 	panX,
 	panY,
+	onError,
+	onReloadDocument,
+	onExportRecovery,
 	onStageReady,
 	draggedIds,
 	toolRegistry,
@@ -442,6 +450,9 @@ function EditorStage({
 	zoom: number;
 	panX: number;
 	panY: number;
+	onError: ((error: Error, info: React.ErrorInfo) => void) | undefined;
+	onReloadDocument: () => void;
+	onExportRecovery: () => void;
 	onStageReady: (stage: Konva.Stage | null) => void;
 	draggedIds: ReadonlySet<string>;
 	toolRegistry: ToolRegistry | undefined;
@@ -456,6 +467,18 @@ function EditorStage({
 		<CanvasErrorBoundary
 			label={t("canvas.error.canvas", "The canvas failed to render.")}
 			resetKey={activePageId}
+			{...(onError ? { onError } : {})}
+			onReloadDocument={onReloadDocument}
+			onExportRecovery={onExportRecovery}
+			labels={{
+				retry: t("canvas.error.retry", "Try again"),
+				reloadDocument: t("canvas.error.reloadDocument", "Reload document"),
+				exportRecovery: t(
+					"canvas.error.exportRecovery",
+					"Export recovery JSON",
+				),
+				copyErrorId: t("canvas.error.copyErrorId", "Copy error ID"),
+			}}
 		>
 			<CanvasAssetsContext.Provider value={assets}>
 				<CanvasBrandKitContext.Provider value={brandKit ?? EMPTY_BRAND_KIT}>
@@ -521,6 +544,7 @@ export function CanvasStudio({
 	onActivePageChange,
 	onPickAsset,
 	onAiIntent,
+	onError,
 	onStageReady,
 	toolRegistry,
 	hidePageNavigator,
@@ -861,6 +885,26 @@ export function CanvasStudio({
 			</div>
 		);
 	}
+	// FR-172 recovery actions (B-15). Reload rebuilds every store around the
+	// CURRENT IR via `replaceDocument` — the document survives; wedged
+	// transient state (selection, drafts, history) is discarded. Export
+	// downloads the live IR as JSON so nothing is lost even mid-crash.
+	const reloadDocument = useCallback(() => {
+		replaceDocument(getIR(), "recovery");
+	}, [replaceDocument, getIR]);
+	const exportRecovery = useCallback(() => {
+		const doc = getIR();
+		const blob = new Blob([JSON.stringify(doc, null, "\t")], {
+			type: "application/json",
+		});
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `canvas-recovery-${doc.id}.json`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}, [getIR]);
+
 	// The Konva stage + its overlays. Computed once so it can be slotted either
 	// into the legacy bare layout or anywhere a `renderShell` decides to place
 	// it (e.g. the centre column of the reference editor grid).
@@ -876,6 +920,9 @@ export function CanvasStudio({
 			zoom={zoom}
 			panX={panX}
 			panY={panY}
+			onError={onError}
+			onReloadDocument={reloadDocument}
+			onExportRecovery={exportRecovery}
 			onStageReady={handleStageReady}
 			draggedIds={draggedIds}
 			toolRegistry={effectiveToolRegistry}
