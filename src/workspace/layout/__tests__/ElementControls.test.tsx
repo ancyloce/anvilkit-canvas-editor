@@ -178,3 +178,38 @@ describe("ElementControls — built-in align/distribute emission", () => {
 		expect(h.commits).toHaveLength(0);
 	});
 });
+
+describe("ElementControls — reorder + group via the action layer (B-13)", () => {
+	it("reorder submenu is built in: front emits reorder commands", async () => {
+		const { h, user } = setup(["a"]);
+		await clickSubmenuItem(user, "more-reorder", "more-reorder-front");
+		expect(h.commits.length).toBeGreaterThan(0);
+		expect(h.commits.every((c) => c.type === "node.reorder")).toBe(true);
+	});
+
+	it("a host onReorder override takes precedence", async () => {
+		const seen: string[] = [];
+		const { h, user } = setup(["a"], {
+			onReorder: (_ids, dir) => seen.push(dir),
+		});
+		await clickSubmenuItem(user, "more-reorder", "more-reorder-back");
+		expect(seen).toEqual(["back"]);
+		expect(h.commits).toHaveLength(0);
+	});
+
+	it("group needs 2+ nodes and emits node.group; ungroup needs a group", async () => {
+		const { h, user } = setup(["a", "b"]);
+		await openMoreMenu(user);
+		expect(isMenuItemDisabled(screen.getByTestId("more-group"))).toBe(false);
+		// No group node in the selection → ungroup disabled.
+		expect(isMenuItemDisabled(screen.getByTestId("more-ungroup"))).toBe(true);
+		fireEvent.click(screen.getByTestId("more-group"));
+		expect(h.commits.some((c) => c.type === "node.group")).toBe(true);
+	});
+
+	it("group is disabled for a single-node selection", async () => {
+		const { user } = setup(["a"]);
+		await openMoreMenu(user);
+		expect(isMenuItemDisabled(screen.getByTestId("more-group"))).toBe(true);
+	});
+});

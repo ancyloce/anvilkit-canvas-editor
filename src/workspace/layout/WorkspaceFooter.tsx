@@ -1,5 +1,6 @@
 "use client";
 
+import { type CanvasNode, findNode } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { Separator } from "@anvilkit/ui/separator";
@@ -41,6 +42,11 @@ export function WorkspaceFooter({
 		() => ctx.pagesStore.getState().activePageId,
 		() => ctx.pagesStore.getState().activePageId,
 	);
+	const selectedIds = useSyncExternalStore(
+		ctx.selectionStore.subscribe,
+		() => ctx.selectionStore.getState().selectedIds,
+		() => ctx.selectionStore.getState().selectedIds,
+	);
 
 	const pages = ctx.ir.pages;
 	const pageIndex = pages.findIndex((p) => p.id === activePageId);
@@ -64,6 +70,7 @@ export function WorkspaceFooter({
 					{t("canvas.footer.continuousCreation", "Continuous creation")}
 				</span>
 			) : null}
+			<SelectionSummary selectedIds={selectedIds} />
 			<div data-testid="workspace-zoom" className="flex items-center gap-2">
 				<Button
 					type="button"
@@ -117,5 +124,75 @@ export function WorkspaceFooter({
 					.replace("{total}", String(pages.length))}
 			</span>
 		</footer>
+	);
+}
+
+/**
+ * B-13 footer selection summary (FR-131): count, combined AABB
+ * (transform+bounds, rotation ignored — same convention as
+ * `zoomToSelectionImpl`), and locked/hidden counts. Hidden when nothing is
+ * selected.
+ */
+function SelectionSummary({
+	selectedIds,
+}: {
+	selectedIds: readonly string[];
+}): React.JSX.Element | null {
+	const ctx = useCanvasStudio();
+	const t = useCanvasT();
+	if (selectedIds.length === 0) return null;
+	const nodes = selectedIds
+		.map((id) => findNode(ctx.ir, id)?.node)
+		.filter((n): n is CanvasNode => Boolean(n));
+	if (nodes.length === 0) return null;
+	let minX = Number.POSITIVE_INFINITY;
+	let minY = Number.POSITIVE_INFINITY;
+	let maxX = Number.NEGATIVE_INFINITY;
+	let maxY = Number.NEGATIVE_INFINITY;
+	let locked = 0;
+	let hidden = 0;
+	for (const n of nodes) {
+		minX = Math.min(minX, n.transform.x);
+		minY = Math.min(minY, n.transform.y);
+		maxX = Math.max(maxX, n.transform.x + n.bounds.width);
+		maxY = Math.max(maxY, n.transform.y + n.bounds.height);
+		if (n.locked) locked += 1;
+		if (n.visible === false) hidden += 1;
+	}
+	const fmt = (v: number): string => String(Math.round(v));
+	return (
+		<span
+			data-testid="workspace-selection-summary"
+			className="mr-auto flex items-center gap-2 text-muted-foreground"
+		>
+			<span data-testid="selection-summary-count">
+				{t("canvas.footer.selectionCount", "{n} selected").replace(
+					"{n}",
+					String(nodes.length),
+				)}
+			</span>
+			<span
+				data-testid="selection-summary-bbox"
+				className="font-mono tabular-nums"
+			>
+				{`${fmt(minX)}, ${fmt(minY)} · ${fmt(maxX - minX)}×${fmt(maxY - minY)}`}
+			</span>
+			{locked > 0 ? (
+				<span data-testid="selection-summary-locked">
+					{t("canvas.footer.selectionLocked", "{n} locked").replace(
+						"{n}",
+						String(locked),
+					)}
+				</span>
+			) : null}
+			{hidden > 0 ? (
+				<span data-testid="selection-summary-hidden">
+					{t("canvas.footer.selectionHidden", "{n} hidden").replace(
+						"{n}",
+						String(hidden),
+					)}
+				</span>
+			) : null}
+		</span>
 	);
 }

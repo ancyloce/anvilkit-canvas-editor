@@ -3,7 +3,7 @@
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { useCanvasT } from "@/context/canvas-studio-context.js";
-import { useActiveDock } from "../state/hooks.js";
+import { useActiveDock, usePanelOpen } from "../state/hooks.js";
 import { DOCK_ITEMS, type DockItem } from "../workspace-config.js";
 
 export interface PanelDockProps {
@@ -22,6 +22,7 @@ export function PanelDock({
 	className,
 }: PanelDockProps): React.JSX.Element {
 	const [activeDockId, setActiveDockId] = useActiveDock();
+	const [panelOpen, setPanelOpen] = usePanelOpen();
 	const t = useCanvasT();
 
 	return (
@@ -46,7 +47,15 @@ export function PanelDock({
 						aria-pressed={active}
 						aria-label={resolvedLabel}
 						title={resolvedLabel}
-						onClick={() => setActiveDockId(id)}
+						onClick={() => {
+							// Re-clicking the active tab toggles the panel (B-14) — the
+							// desktop layout ignores `panelOpen`; the ≤768px overlay uses it.
+							if (active) setPanelOpen(!panelOpen);
+							else {
+								setActiveDockId(id);
+								setPanelOpen(true);
+							}
+						}}
 						className={cn(
 							"h-auto w-12 flex-col gap-1 rounded-lg px-0 py-2 text-[10px] leading-none font-medium",
 							active ? "bg-muted text-foreground" : "text-muted-foreground",

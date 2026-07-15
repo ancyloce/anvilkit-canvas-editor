@@ -28,6 +28,7 @@ import {
 // rslib rewrites alias paths only in .js, not in declarations — an aliased
 // import here would ship an unresolvable "@/" to consumers.
 import type { CanvasHeaderPlugin } from "../../header/types.js";
+import { useRestoreLayout } from "../state/hooks.js";
 
 export interface WorkspaceHeaderProps {
 	/** Host back action. When omitted, the Back button is hidden. */
@@ -94,6 +95,7 @@ export function WorkspaceHeader({
 	};
 
 	const actions = useCanvasActions();
+	const restoreLayout = useRestoreLayout();
 	const saveStatusStore = ctx.saveStatusStore;
 	const saveStatus = useSyncExternalStore(
 		saveStatusStore?.subscribe ?? (() => () => undefined),
@@ -159,7 +161,11 @@ export function WorkspaceHeader({
 				size="icon-sm"
 				data-testid="workspace-undo"
 				aria-label={undoLabel}
-				title={undoLabel}
+				title={
+					canUndo
+						? undoLabel
+						: t("canvas.header.nothingToUndo", "Nothing to undo")
+				}
 				disabled={!canUndo}
 				onClick={undo}
 			>
@@ -171,7 +177,11 @@ export function WorkspaceHeader({
 				size="icon-sm"
 				data-testid="workspace-redo"
 				aria-label={redoLabel}
-				title={redoLabel}
+				title={
+					canRedo
+						? redoLabel
+						: t("canvas.header.nothingToRedo", "Nothing to redo")
+				}
 				disabled={!canRedo}
 				onClick={redo}
 			>
@@ -309,6 +319,13 @@ export function WorkspaceHeader({
 						onClick={() => actions.resetZoom()}
 					>
 						{t("canvas.shortcut.actualSize", "Actual size")}
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem
+						data-testid="header-menu-restore-layout"
+						onClick={restoreLayout}
+					>
+						{t("canvas.workspace.restoreLayout", "Restore default layout")}
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>

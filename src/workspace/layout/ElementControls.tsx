@@ -41,11 +41,11 @@ export type AlignDirection =
 export type ReorderDirection = "front" | "forward" | "backward" | "back";
 
 /**
- * Optional host-supplied actions. Duplicate / copy-style / paste-style /
- * reorder have **no backing IR command** today (PRD §2) — those menu items
- * stay disabled until the host wires a handler. Align and distribute are
- * built in via the unified action layer (M0-02); `onAlign` remains as a
- * host OVERRIDE for backward compatibility and takes precedence when set.
+ * Optional host-supplied action OVERRIDES (backward compatibility) — they
+ * take precedence when set. Duplicate, align, distribute, reorder, group and
+ * ungroup are all built in via the unified action layer (M0-02/B-13).
+ * Copy/paste style still have no backing IR command (`node.applyStyle` lands
+ * in Phase 2, C-05) and stay disabled until then unless the host wires them.
  */
 export interface ElementActions {
 	onDuplicate?: (ids: readonly string[]) => void;
@@ -408,28 +408,43 @@ export function ElementControls({
 							))}
 						</DropdownMenuSubContent>
 					</DropdownMenuSub>
-					{actions?.onReorder ? (
-						<DropdownMenuSub>
-							<DropdownMenuSubTrigger data-testid="more-reorder">
-								{t("canvas.element.layerOrder", "Layer order")}
-							</DropdownMenuSubTrigger>
-							<DropdownMenuSubContent>
-								{REORDER_OPTIONS.map((o) => (
-									<DropdownMenuItem
-										key={o.dir}
-										data-testid={`more-reorder-${o.dir}`}
-										onClick={() => actions.onReorder?.(selectedIds, o.dir)}
-									>
-										{t(o.labelKey, o.label)}
-									</DropdownMenuItem>
-								))}
-							</DropdownMenuSubContent>
-						</DropdownMenuSub>
-					) : (
-						<DropdownMenuItem data-testid="more-reorder" disabled>
+					<DropdownMenuSub>
+						<DropdownMenuSubTrigger data-testid="more-reorder">
 							{t("canvas.element.layerOrder", "Layer order")}
-						</DropdownMenuItem>
-					)}
+						</DropdownMenuSubTrigger>
+						<DropdownMenuSubContent>
+							{REORDER_OPTIONS.map((o) => (
+								<DropdownMenuItem
+									key={o.dir}
+									data-testid={`more-reorder-${o.dir}`}
+									onClick={() => {
+										// Host override for backward compatibility; the built-in
+										// action layer otherwise (B-13, one undoable batch).
+										if (actions?.onReorder)
+											actions.onReorder(selectedIds, o.dir);
+										else editorActions.reorderSelection(o.dir);
+									}}
+								>
+									{t(o.labelKey, o.label)}
+								</DropdownMenuItem>
+							))}
+						</DropdownMenuSubContent>
+					</DropdownMenuSub>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem
+						data-testid="more-group"
+						disabled={selectedIds.length < 2}
+						onClick={() => editorActions.groupSelection()}
+					>
+						{t("canvas.menu.group", "Group")}
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						data-testid="more-ungroup"
+						disabled={!irNodes.some((n) => n.type === "group")}
+						onClick={() => editorActions.ungroupSelection()}
+					>
+						{t("canvas.menu.ungroup", "Ungroup")}
+					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
 		</div>

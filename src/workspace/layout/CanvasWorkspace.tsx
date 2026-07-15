@@ -3,7 +3,7 @@
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { type ReactNode, useMemo, useRef } from "react";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import { ToolAnnouncer } from "@/a11y/ToolAnnouncer.js";
 import { useCanvasT } from "@/context/canvas-studio-context.js";
 import { PropertyInspector } from "@/panels/PropertyInspector.js";
@@ -21,8 +21,22 @@ import {
 // Relative (not @/): CanvasShortcutOptions surfaces in the emitted .d.ts.
 import type { CanvasShortcutOptions } from "../shortcuts/shortcut-registry.js";
 import { WorkspaceShortcutLayer } from "../shortcuts/WorkspaceShortcutLayer.js";
-import { useInspectorCollapsed } from "../state/hooks.js";
+import {
+	useInspectorCollapsed,
+	usePanelOpen,
+	usePanelWidth,
+} from "../state/hooks.js";
+import {
+	COLLAPSE_INSPECTOR_QUERY,
+	OVERLAY_PANEL_QUERY,
+	useMediaQuery,
+} from "../state/use-media-query.js";
 import { WorkspaceUiStoreProvider } from "../state/WorkspaceUiStoreProvider.js";
+import {
+	PANEL_WIDTH_DEFAULT,
+	PANEL_WIDTH_MAX,
+	PANEL_WIDTH_MIN,
+} from "../state/workspace-ui-store.js";
 import { CanvasToastHost } from "../toasts/CanvasToastHost.js";
 import { ToolStrip } from "../toolstrip/ToolStrip.js";
 import { CanvasDropZone } from "../uploads/CanvasDropZone.js";
@@ -131,35 +145,163 @@ export function CanvasWorkspace({
 									plugins={headerPlugins}
 									shareSlot={shareSlot}
 								/>
-								<div className="grid min-h-0 grid-cols-[auto_280px_minmax(0,1fr)_auto]">
-									<PanelDock items={dockItems} />
-									<TabPanel registry={registry} />
-									{/* Main canvas: a neutral gray surface (theme-adaptive — light
-							    gray in light mode, charcoal in dark) so the white pages pop.
-							    Holds the floating toolbar, the scrollable multi-page stack
-							    (PagesCanvas owns the viewport + fit-on-entry zoom), and the
-							    footer pinned inside it. */}
-									<section className="relative flex min-h-0 min-w-0 flex-col bg-neutral-200 dark:bg-neutral-800">
-										<CanvasAreaContextMenu>
-											<CanvasDropZone>
-												{/* Fixed overlays — float over the canvas, never shift it. */}
-												{toolStrip ? <ToolStrip /> : null}
-												<CanvasToolbar />
-												<PagesCanvas
-													stage={stage}
-													elementActions={elementActions}
-												/>
-												<WorkspaceFooter className="absolute inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur" />
-											</CanvasDropZone>
-										</CanvasAreaContextMenu>
-									</section>
-									{inspector ? <WorkspaceInspector /> : null}
-								</div>
+								<WorkspaceBody
+									stage={stage}
+									dockItems={dockItems}
+									registry={registry}
+									inspector={inspector}
+									toolStrip={toolStrip}
+									elementActions={elementActions}
+								/>
 							</div>
 						</CanvasDialogHost>
 					</CanvasToastHost>
 				</WorkspaceUiStoreProvider>
 			)}
+		/>
+	);
+}
+
+/**
+ * The dockable middle band (B-14, FR-130/132): Panel Dock · resizable Tab
+ * Panel · canvas · inspector. Runs INSIDE the workspace UI store provider so
+ * it can read layout state. Desktop docks the Tab Panel as a grid column
+ * whose width is persisted and drag-resizable; ≤768px the panel floats over
+ * the canvas as a dismissable overlay; crossing ≤1024px auto-collapses the
+ * inspector (the user can re-expand it).
+ */
+function WorkspaceBody({
+	stage,
+	dockItems,
+	registry,
+	inspector,
+	toolStrip,
+	elementActions,
+}: {
+	stage: ReactNode;
+	dockItems?: readonly DockItem[];
+	registry: CanvasPanelRegistry;
+	inspector: boolean;
+	toolStrip: boolean;
+	elementActions?: ElementActions;
+}): React.JSX.Element {
+	const [panelWidth] = usePanelWidth();
+	const [panelOpen, setPanelOpen] = usePanelOpen();
+	const overlay = useMediaQuery(OVERLAY_PANEL_QUERY);
+	const narrow = useMediaQuery(COLLAPSE_INSPECTOR_QUERY);
+	const [, setInspectorCollapsed] = useInspectorCollapsed();
+
+	// Auto-collapse the inspector when ENTERING the narrow range; expanding
+	// again is the user's call (no auto-expand on widen).
+	useEffect(() => {
+		if (narrow) setInspectorCollapsed(true);
+	}, [narrow, setInspectorCollapsed]);
+
+	const canvasSection = (
+		<section className="relative flex min-h-0 min-w-0 flex-col bg-neutral-200 dark:bg-neutral-800">
+			<CanvasAreaContextMenu>
+				<CanvasDropZone>
+					{/* Fixed overlays — float over the canvas, never shift it. */}
+					{toolStrip ? <ToolStrip /> : null}
+					<CanvasToolbar />
+					<PagesCanvas stage={stage} elementActions={elementActions} />
+					<WorkspaceFooter className="absolute inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur" />
+					{overlay && panelOpen ? (
+						<>
+							{/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss mirrors dialog scrims; the panel itself stays keyboard-reachable via the dock. */}
+							<div
+								data-testid="panel-overlay-backdrop"
+								className="absolute inset-0 z-30 bg-black/20"
+								onClick={() => setPanelOpen(false)}
+							/>
+							<div
+								data-testid="panel-overlay"
+								className="absolute inset-y-0 left-0 z-40 flex w-[min(85vw,320px)] flex-col border-r border-border bg-card shadow-xl"
+							>
+								<TabPanel registry={registry} />
+							</div>
+						</>
+					) : null}
+				</CanvasDropZone>
+			</CanvasAreaContextMenu>
+		</section>
+	);
+
+	if (overlay) {
+		return (
+			<div
+				data-testid="workspace-body"
+				data-layout="overlay"
+				className="grid min-h-0 grid-cols-[auto_minmax(0,1fr)_auto]"
+			>
+				<PanelDock items={dockItems} />
+				{canvasSection}
+				{inspector ? <WorkspaceInspector /> : null}
+			</div>
+		);
+	}
+	return (
+		<div
+			data-testid="workspace-body"
+			data-layout="docked"
+			className="grid min-h-0 grid-cols-[auto_var(--ak-panel-width)_auto_minmax(0,1fr)_auto]"
+			style={{ "--ak-panel-width": `${panelWidth}px` } as React.CSSProperties}
+		>
+			<PanelDock items={dockItems} />
+			<TabPanel registry={registry} />
+			<PanelResizeHandle />
+			{canvasSection}
+			{inspector ? <WorkspaceInspector /> : null}
+		</div>
+	);
+}
+
+/** Keyboard step for the panel-resize separator (arrow keys). */
+const PANEL_RESIZE_STEP = 16;
+
+/**
+ * Drag handle between the Tab Panel and the canvas (B-14, FR-130). Pointer
+ * drag resizes; arrow keys nudge (a11y `role="separator"`); double-click
+ * restores the default width. The store clamps to
+ * [{@link PANEL_WIDTH_MIN}, {@link PANEL_WIDTH_MAX}].
+ */
+function PanelResizeHandle(): React.JSX.Element {
+	const [width, setWidth] = usePanelWidth();
+	const t = useCanvasT();
+	const drag = useRef<{ startX: number; startWidth: number } | null>(null);
+	return (
+		<div
+			role="separator"
+			aria-orientation="vertical"
+			aria-label={t("canvas.workspace.resizePanel", "Resize panel")}
+			aria-valuenow={width}
+			aria-valuemin={PANEL_WIDTH_MIN}
+			aria-valuemax={PANEL_WIDTH_MAX}
+			tabIndex={0}
+			data-testid="panel-resize-handle"
+			className="h-full w-1.5 cursor-col-resize border-r border-border bg-transparent outline-none transition-colors hover:bg-primary/30 focus-visible:bg-primary/40"
+			onPointerDown={(e) => {
+				drag.current = { startX: e.clientX, startWidth: width };
+				e.currentTarget.setPointerCapture(e.pointerId);
+			}}
+			onPointerMove={(e) => {
+				if (!drag.current) return;
+				setWidth(drag.current.startWidth + (e.clientX - drag.current.startX));
+			}}
+			onPointerUp={(e) => {
+				drag.current = null;
+				e.currentTarget.releasePointerCapture(e.pointerId);
+			}}
+			onDoubleClick={() => setWidth(PANEL_WIDTH_DEFAULT)}
+			onKeyDown={(e) => {
+				if (e.key === "ArrowLeft") {
+					e.preventDefault();
+					setWidth(width - PANEL_RESIZE_STEP);
+				} else if (e.key === "ArrowRight") {
+					e.preventDefault();
+					setWidth(width + PANEL_RESIZE_STEP);
+				}
+			}}
 		/>
 	);
 }
