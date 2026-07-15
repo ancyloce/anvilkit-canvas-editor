@@ -3,6 +3,10 @@
 import type { CanvasIR, CanvasRuntime } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { createContext, use } from "react";
+import type {
+	CanvasAssetPicker,
+	CanvasAssetUploader,
+} from "../assets/adapter-types.js";
 import type { BrandKit } from "../brand/brand-kit.js";
 import type {
 	CanvasKindInspector,
@@ -12,6 +16,7 @@ import type { AiJobStoreApi } from "../stores/ai-job-store.js";
 import type { CropStoreApi } from "../stores/crop-store.js";
 import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
+import type { FieldPreviewStoreApi } from "../stores/field-preview-store.js";
 import type { CanvasFocusStoreApi } from "../stores/focus-store.js";
 import type { GuidesStoreApi } from "../stores/guides-store.js";
 import type {
@@ -22,9 +27,11 @@ import type { PagesStoreApi } from "../stores/pages-store.js";
 import type { PathEditStoreApi } from "../stores/path-edit-store.js";
 import type { PenStoreApi } from "../stores/pen-store.js";
 import type { DocumentSnapshotSource } from "../stores/replace-document.js";
+import type { SaveStatusStoreApi } from "../stores/save-status-store.js";
 import type { SceneStoreApi } from "../stores/scene-store.js";
 import type { SelectionStoreApi } from "../stores/selection-store.js";
 import type { ToolStoreApi } from "../stores/tool-store.js";
+import type { UploadStoreApi } from "../stores/upload-store.js";
 import type { ViewportStoreApi } from "../stores/viewport-store.js";
 import type { CanvasTemplateEntry } from "../templates/template-entry.js";
 import type { AiToolIntent } from "../tools/ai-intent.js";
@@ -94,6 +101,22 @@ export interface CanvasStudioContextValue {
 		label?: string,
 	) => CanvasIR;
 	/**
+	 * Coalescing commit — the §10 field-input contract's commit half (B-12,
+	 * first production consumer of the history store's coalesced-commit API).
+	 * Successive calls sharing `mergeKey` within the history store's merge
+	 * window fold into ONE undo entry (e.g. rapid re-commits of the same
+	 * inspector field). Optional so hand-built partial test contexts keep
+	 * working — consumers fall back to {@link commit}.
+	 */
+	commitCoalesced?: (cmd: AnyCanvasCommand, mergeKey: string) => CanvasIR;
+	/**
+	 * §10 field-input contract, preview half (B-12): transient per-node patches
+	 * a mid-edit field renders through `CanvasNodeRenderer` without touching
+	 * history. Optional for partial test contexts; always provided by
+	 * `<CanvasStudio>`.
+	 */
+	fieldPreviewStore?: FieldPreviewStoreApi;
+	/**
 	 * Replace the WHOLE document with an unrelated `CanvasIR` snapshot (P0-9) —
 	 * not a normal edit, so it does not go through {@link commit}. Resets undo/
 	 * redo history, clears selection/focus/draft/editing/crop/pen/path-edit/
@@ -137,6 +160,28 @@ export interface CanvasStudioContextValue {
 	 * built-in-only runtime is in use.
 	 */
 	runtime?: CanvasRuntime;
+	/**
+	 * FR-012 (A-10): when true, creation tools stay active after committing an
+	 * element (the pre-PRD-0012 behavior). Default false — tools return to
+	 * Select on completion.
+	 */
+	continuousCreation?: boolean;
+	/**
+	 * Save lifecycle (B-08, FR-160/161). Always provided by `<CanvasStudio>`;
+	 * optional in the type only for partial test contexts. Without a
+	 * `persistenceAdapter`, `save()` resolves false and `canLeave()` is true.
+	 */
+	saveStatusStore?: SaveStatusStoreApi;
+	save?: () => Promise<boolean>;
+	canLeave?: () => boolean;
+	/**
+	 * FR-090/091 asset adapters (B-10). Present when the host wires them;
+	 * `pickAsset` keeps its legacy single-uri contract for existing tools.
+	 */
+	assetPicker?: CanvasAssetPicker;
+	assetUploader?: CanvasAssetUploader;
+	/** Upload task registry (B-10). Provided by `<CanvasStudio>`. */
+	uploadStore?: UploadStoreApi;
 	/** Konva.Stage instance — null until <CanvasStage>'s onReady fires. */
 	stage: Konva.Stage | null;
 	/**
