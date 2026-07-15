@@ -116,6 +116,8 @@ export function useFieldContract<T>(
 	commit: (value: T) => void;
 	cancel: () => void;
 	enabled: boolean;
+	/** Localized multi-selection placeholder ("Mixed"), host catalog willing. */
+	mixedLabel: string;
 } {
 	// Non-throwing context read: fields also render standalone (e.g. the
 	// token-aware fields' literal fallback in isolation); without a studio
@@ -166,6 +168,7 @@ export function useFieldContract<T>(
 		commit,
 		cancel,
 		enabled: contract !== undefined && ctx !== null,
+		mixedLabel: ctx?.t?.("canvas.inspector.mixed", "Mixed") ?? "Mixed",
 	};
 }
 
@@ -217,7 +220,7 @@ export function NumberField({
 				type="number"
 				aria-label={label}
 				defaultValue={mixed ? "" : value}
-				placeholder={mixed ? "Mixed" : undefined}
+				placeholder={mixed ? field.mixedLabel : undefined}
 				step={step ?? 1}
 				className="h-7.5 text-xs"
 				{...(min !== undefined ? { min } : {})}
@@ -305,7 +308,7 @@ export function TextField({
 				type="text"
 				aria-label={label}
 				defaultValue={mixed ? "" : value}
-				placeholder={mixed ? "Mixed" : undefined}
+				placeholder={mixed ? field.mixedLabel : undefined}
 				className="h-7.5 text-xs"
 				data-testid={dataTestId}
 				onFocus={fk.onFocus}
