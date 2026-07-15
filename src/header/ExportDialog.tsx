@@ -28,6 +28,8 @@ import type {
 
 const FORMAT_ORDER: readonly CanvasExportFormat[] = [
 	"png",
+	"jpeg",
+	"webp",
 	"svg",
 	"pdf",
 	"json",

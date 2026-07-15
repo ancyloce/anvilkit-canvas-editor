@@ -14,23 +14,46 @@ function exportFilename(ir: CanvasIR, ext: string): string {
 }
 
 /**
- * Built-in PNG exporter. Reads the live Konva stage directly — no extra deps.
- * `resolution` scales the (retina) pixel ratio; `quality` is a no-op for PNG.
+ * Shared raster exporter factory (B-18, AC-010): PNG/JPEG/WebP all read the
+ * live Konva stage directly — no extra deps. `resolution` scales the (retina)
+ * pixel ratio; `quality` applies to the lossy formats (Konva forwards it to
+ * `canvas.toDataURL`) and is a no-op for PNG.
  */
-export const pngExporter: CanvasExporter = ({ ir, stage }, { resolution }) => {
-	if (!stage) {
-		throw new Error("PNG export needs a ready Konva stage.");
-	}
-	const url = stage.toDataURL({
-		pixelRatio: 2 * (resolution || 1),
-		mimeType: "image/png",
-	});
-	return {
-		filename: exportFilename(ir, "png"),
-		data: url,
-		mimeType: "image/png",
+function rasterExporter(
+	mimeType: "image/png" | "image/jpeg" | "image/webp",
+	ext: string,
+): CanvasExporter {
+	return ({ ir, stage }, { resolution, quality }) => {
+		if (!stage) {
+			throw new Error(`${ext.toUpperCase()} export needs a ready Konva stage.`);
+		}
+		const url = stage.toDataURL({
+			pixelRatio: 2 * (resolution || 1),
+			mimeType,
+			...(mimeType !== "image/png" && quality !== undefined ? { quality } : {}),
+		});
+		return {
+			filename: exportFilename(ir, ext),
+			data: url,
+			mimeType,
+		};
 	};
-};
+}
+
+/** Built-in PNG exporter. */
+export const pngExporter: CanvasExporter = rasterExporter("image/png", "png");
+
+/** Built-in JPEG exporter (AC-010). White-on-transparent flattens to black in
+ * JPEG's opaque colorspace — hosts needing a background should export PNG or
+ * paint a page background. */
+export const jpegExporter: CanvasExporter = rasterExporter("image/jpeg", "jpg");
+
+/** Built-in WebP exporter (AC-010). Chromium-family browsers only — others
+ * silently fall back to PNG bytes per the canvas spec. */
+export const webpExporter: CanvasExporter = rasterExporter(
+	"image/webp",
+	"webp",
+);
 
 /** Built-in JSON exporter. Serializes the IR; round-trips back into the editor. */
 export const jsonExporter: CanvasExporter = ({ ir }) => ({
@@ -44,6 +67,8 @@ export const DEFAULT_CANVAS_EXPORTERS: Partial<
 	Record<CanvasExportFormat, CanvasExporter>
 > = {
 	png: pngExporter,
+	jpeg: jpegExporter,
+	webp: webpExporter,
 	json: jsonExporter,
 };
 

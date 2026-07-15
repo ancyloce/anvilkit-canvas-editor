@@ -3,8 +3,10 @@ export { createCanvasExportPlugin } from "./export-plugin.js";
 export {
 	DEFAULT_CANVAS_EXPORTERS,
 	downloadCanvasArtifact,
+	jpegExporter,
 	jsonExporter,
 	pngExporter,
+	webpExporter,
 } from "./exporters.js";
 export type {
 	CanvasExportArtifact,

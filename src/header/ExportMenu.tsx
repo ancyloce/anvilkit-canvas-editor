@@ -41,6 +41,18 @@ const FORMAT_META: Record<CanvasExportFormat, FormatMeta> = {
 		hint: "Best for photos",
 		raster: true,
 	},
+	jpeg: {
+		label: "JPG",
+		hintKey: "canvas.export.hint.jpeg",
+		hint: "Small photos, no transparency",
+		raster: true,
+	},
+	webp: {
+		label: "WebP",
+		hintKey: "canvas.export.hint.webp",
+		hint: "Modern small raster",
+		raster: true,
+	},
 	svg: {
 		label: "SVG",
 		hintKey: "canvas.export.hint.svg",
@@ -63,6 +75,8 @@ const FORMAT_META: Record<CanvasExportFormat, FormatMeta> = {
 
 const FORMAT_ORDER: readonly CanvasExportFormat[] = [
 	"png",
+	"jpeg",
+	"webp",
 	"svg",
 	"pdf",
 	"json",

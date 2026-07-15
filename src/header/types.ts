@@ -13,8 +13,16 @@ export interface CanvasHeaderPlugin {
 	readonly render: () => ReactNode;
 }
 
-/** Built-in export formats. PNG/JSON ship with the editor; SVG/PDF are host-injected. */
-export type CanvasExportFormat = "png" | "svg" | "pdf" | "json";
+/** Built-in export formats (AC-010). PNG/JPEG/WebP/JSON ship with the
+ * editor; SVG/PDF are host-injected. Mirrors core's export vocabulary
+ * (B-04) for the formats the editor UI can drive. */
+export type CanvasExportFormat =
+	| "png"
+	| "jpeg"
+	| "webp"
+	| "svg"
+	| "pdf"
+	| "json";
 
 /** The live editor state an exporter reads from (sourced from the studio context). */
 export interface CanvasExportContext {
