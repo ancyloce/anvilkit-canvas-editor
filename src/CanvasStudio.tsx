@@ -20,6 +20,10 @@ import { CanvasFocusRing } from "./a11y/CanvasFocusRing.js";
 import { SceneAccessibilityTree } from "./a11y/SceneAccessibilityTree.js";
 import { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
 import { CanvasKeyboardLayer } from "./a11y/useCanvasKeyboard.js";
+import type {
+	CanvasAssetPicker,
+	CanvasAssetUploader,
+} from "./assets/adapter-types.js";
 import type { BrandKit } from "./brand/brand-kit.js";
 import { EMPTY_BRAND_KIT } from "./brand/brand-kit.js";
 import { CanvasErrorBoundary } from "./CanvasErrorBoundary.js";
@@ -38,6 +42,14 @@ import type {
 import { PageNavigator } from "./pages/PageNavigator.js";
 import { draggedIdsKey } from "./perf/active-nodes.js";
 import { useStaticGroupCache } from "./perf/static-cache.js";
+import {
+	createSaveController,
+	type SaveController,
+} from "./persistence/save-controller.js";
+import type {
+	CanvasAutoSaveOptions,
+	CanvasPersistenceAdapter,
+} from "./persistence/types.js";
 import { CanvasTransformer } from "./selection/CanvasTransformer.js";
 import { CropEditorOverlay } from "./selection/CropEditorOverlay.js";
 import { PathEditOverlay } from "./selection/PathEditOverlay.js";
@@ -55,6 +67,7 @@ import { createAiJobStore } from "./stores/ai-job-store.js";
 import { createCropStore } from "./stores/crop-store.js";
 import { createDraftStore } from "./stores/draft-store.js";
 import { createEditingStore } from "./stores/editing-store.js";
+import { createFieldPreviewStore } from "./stores/field-preview-store.js";
 import { createFocusStore } from "./stores/focus-store.js";
 import { createGuidesStore } from "./stores/guides-store.js";
 import {
@@ -69,9 +82,12 @@ import {
 	type DocumentStores,
 	replaceDocumentSnapshot,
 } from "./stores/replace-document.js";
+import type { CanvasSaveState } from "./stores/save-status-store.js";
+import { createSaveStatusStore } from "./stores/save-status-store.js";
 import { createSceneStore } from "./stores/scene-store.js";
 import { createSelectionStore } from "./stores/selection-store.js";
 import { createToolStore, type ToolId } from "./stores/tool-store.js";
+import { createUploadStore } from "./stores/upload-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
 import type { CanvasTemplateEntry } from "./templates/template-entry.js";
 import type { AiToolIntent } from "./tools/ai-intent.js";
@@ -144,6 +160,29 @@ export interface CanvasStudioProps {
 	 * this with the full editor shell.
 	 */
 	renderShell?: (stage: React.ReactNode) => React.ReactNode;
+	/**
+	 * FR-012 (A-10): keep the creation tool active after it commits an element
+	 * (continuous creation). Default false — the editor returns to Select.
+	 */
+	continuousCreation?: boolean;
+	/**
+	 * FR-160 host persistence (B-08). When present, edits mark the document
+	 * dirty, auto-save runs per `autoSave` (default on), a beforeunload guard
+	 * warns while unsaved (FR-163), and pending changes flush on unmount.
+	 */
+	persistenceAdapter?: CanvasPersistenceAdapter;
+	/** FR-162 auto-save tuning. `false` = manual saves only. Default on. */
+	autoSave?: boolean | CanvasAutoSaveOptions;
+	/** Save-state observer (PRD §11.1). */
+	onSaveStateChange?: (state: CanvasSaveState) => void;
+	/**
+	 * FR-090 asset picker adapter (B-10). When present it supersedes
+	 * `onPickAsset` for tools (single pick) and powers multi-select flows;
+	 * the legacy `onPickAsset` keeps working unchanged.
+	 */
+	assetPicker?: CanvasAssetPicker;
+	/** FR-091 upload adapter (B-10) — enables drag-and-drop + the Uploads panel. */
+	assetUploader?: CanvasAssetUploader;
 	/**
 	 * Shared brand colors + fonts (I3-4). Hosts map their Studio config to a
 	 * {@link BrandKit} and pass it here; the editor surfaces it via
@@ -247,6 +286,7 @@ function useEditorStores({
 	const [cropStore] = useState(() => createCropStore());
 	const [penStore] = useState(() => createPenStore());
 	const [pathEditStore] = useState(() => createPathEditStore());
+	const [fieldPreviewStore] = useState(() => createFieldPreviewStore());
 	return {
 		sceneStore,
 		historyStore,
@@ -262,6 +302,7 @@ function useEditorStores({
 		cropStore,
 		penStore,
 		pathEditStore,
+		fieldPreviewStore,
 	};
 }
 
@@ -290,6 +331,25 @@ function useCommitPipeline(
 				// union; a custom command (P0-7) has no built-in change-record shape
 				// and falls through with no granular record — same as `batch` already
 				// does today. `change ?` treats that fallthrough the same as `null`.
+				const change = commandToChange(cmd as CanvasCommand);
+				onChangesRef.current(change ? [change] : [], next);
+			}
+			return next;
+		},
+		[historyStore, sceneStore, onChangeRef, onChangesRef],
+	);
+
+	// §10 field-input contract commit half (B-12): same pipeline as `commit`,
+	// but successive calls sharing `mergeKey` inside the history store's merge
+	// window fold into one undo entry.
+	const commitCoalesced = useCallback(
+		(cmd: AnyCanvasCommand, mergeKey: string): CanvasIR => {
+			const next = historyStore
+				.getState()
+				.commitCoalesced(sceneStore.getState().ir, cmd, mergeKey);
+			sceneStore.getState().setIR(next);
+			onChangeRef.current?.(next, cmd);
+			if (onChangesRef.current) {
 				const change = commandToChange(cmd as CanvasCommand);
 				onChangesRef.current(change ? [change] : [], next);
 			}
@@ -331,7 +391,7 @@ function useCommitPipeline(
 
 	const getIR = useCallback(() => sceneStore.getState().ir, [sceneStore]);
 
-	return { commit, commitBatch, getIR };
+	return { commit, commitCoalesced, commitBatch, getIR };
 }
 
 /**
@@ -470,6 +530,12 @@ export function CanvasStudio({
 	extensions,
 	runtime,
 	renderShell,
+	continuousCreation = false,
+	persistenceAdapter,
+	autoSave,
+	onSaveStateChange,
+	assetPicker,
+	assetUploader,
 	children,
 }: CanvasStudioProps): React.JSX.Element {
 	const {
@@ -487,6 +553,7 @@ export function CanvasStudio({
 		cropStore,
 		penStore,
 		pathEditStore,
+		fieldPreviewStore,
 	} = useEditorStores({ initialIR, initialActivePageId, initialTool, runtime });
 	const ir = useSyncExternalStore(
 		sceneStore.subscribe,
@@ -539,7 +606,7 @@ export function CanvasStudio({
 		() => viewportStore.getState().panY,
 		() => viewportStore.getState().panY,
 	);
-	const { commit, commitBatch, getIR } = useCommitPipeline(
+	const { commit, commitCoalesced, commitBatch, getIR } = useCommitPipeline(
 		sceneStore,
 		historyStore,
 		onChange,
@@ -558,12 +625,70 @@ export function CanvasStudio({
 		pathEditStore,
 		guidesStore,
 		aiJobStore,
+		fieldPreviewStore,
 	});
+
+	// B-08 save lifecycle. The controller subscribes to history state identity;
+	// stable `save`/`canLeave` wrappers go into context so consumers never
+	// re-render on controller recreation.
+	const saveStatusStore = useMemo(() => createSaveStatusStore(), []);
+	const uploadStore = useMemo(() => createUploadStore(), []);
+	const saveControllerRef = useRef<SaveController | null>(null);
+	const onSaveStateChangeRef = useHostCallbackRef(onSaveStateChange);
+	useEffect(() => {
+		if (!persistenceAdapter) return;
+		const controller = createSaveController({
+			adapter: persistenceAdapter,
+			getIR,
+			historyStore,
+			saveStatusStore,
+			...(autoSave !== undefined ? { autoSave } : {}),
+			onSaveStateChange: (state) => onSaveStateChangeRef.current?.(state),
+		});
+		saveControllerRef.current = controller;
+		const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+			if (!controller.canLeave()) {
+				e.preventDefault();
+				e.returnValue = "";
+				void controller.flush();
+			}
+		};
+		window.addEventListener("beforeunload", onBeforeUnload);
+		return () => {
+			window.removeEventListener("beforeunload", onBeforeUnload);
+			void controller.flush();
+			controller.dispose();
+			saveControllerRef.current = null;
+		};
+	}, [
+		persistenceAdapter,
+		autoSave,
+		getIR,
+		historyStore,
+		saveStatusStore,
+		onSaveStateChangeRef,
+	]);
+	const save = useCallback(
+		() => saveControllerRef.current?.save() ?? Promise.resolve(false),
+		[],
+	);
+	const canLeave = useCallback(
+		() => saveControllerRef.current?.canLeave() ?? true,
+		[],
+	);
 
 	const onPickAssetRef = useHostCallbackRef(onPickAsset);
 	const onAiIntentRef = useHostCallbackRef(onAiIntent);
 
 	const pickAsset = useCallback(async () => {
+		// FR-090 (B-10): a full assetPicker adapter supersedes the legacy
+		// single-uri callback; `onPickAsset` keeps working unchanged.
+		if (assetPicker) {
+			const picked = await assetPicker.pick({ multiple: false, kind: "image" });
+			const first = picked[0];
+			if (!first) return "";
+			return first.id;
+		}
 		const fn = onPickAssetRef.current;
 		if (!fn) {
 			throw new Error(
@@ -571,7 +696,7 @@ export function CanvasStudio({
 			);
 		}
 		return fn();
-	}, [onPickAssetRef]);
+	}, [onPickAssetRef, assetPicker]);
 
 	// Stable seam for the AI tools (I1-7). Always defined; a no-op when no host
 	// wired `onAiIntent`. The AI tools call it on gesture completion.
@@ -659,7 +784,9 @@ export function CanvasStudio({
 			pathEditStore,
 			getIR,
 			commit,
+			commitCoalesced,
 			commitBatch,
+			fieldPreviewStore,
 			replaceDocument,
 			pickAsset,
 			requestAiIntent,
@@ -669,6 +796,15 @@ export function CanvasStudio({
 			kindRenderers,
 			kindInspectors,
 			runtime,
+			continuousCreation,
+			// Present only with a persistence adapter — the header's save
+			// indicator keys its visibility off this field (B-07).
+			...(persistenceAdapter ? { saveStatusStore } : {}),
+			save,
+			canLeave,
+			...(assetPicker ? { assetPicker } : {}),
+			...(assetUploader ? { assetUploader } : {}),
+			uploadStore,
 		}),
 		[
 			historyStore,
@@ -687,7 +823,9 @@ export function CanvasStudio({
 			pathEditStore,
 			getIR,
 			commit,
+			commitCoalesced,
 			commitBatch,
+			fieldPreviewStore,
 			replaceDocument,
 			pickAsset,
 			requestAiIntent,
@@ -697,6 +835,14 @@ export function CanvasStudio({
 			kindRenderers,
 			kindInspectors,
 			runtime,
+			continuousCreation,
+			persistenceAdapter,
+			saveStatusStore,
+			save,
+			canLeave,
+			assetPicker,
+			assetUploader,
+			uploadStore,
 		],
 	);
 
