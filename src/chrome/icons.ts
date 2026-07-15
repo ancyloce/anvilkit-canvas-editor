@@ -51,8 +51,11 @@ export interface ToolDescriptor {
 }
 
 /**
- * Default tool-rail order. Drawing tools first, then the AI tools. Hosts can
- * pass a narrower list to `<ToolRail tools=…>` (e.g. to hide pen/AI).
+ * Default tool order. Drawing tools first, then the AI tools. Consumed today
+ * by the Elements dock panel; the floating tool strip (PRD 0012 FR-010,
+ * Phase 1b) will reuse this same list. Hosts can consume a narrower slice
+ * (e.g. to hide pen/AI). NOTE: no `<ToolRail>` component exists (M0-08 doc
+ * fix — an earlier draft referenced one that was never built).
  */
 export const TOOL_RAIL_ITEMS: readonly ToolDescriptor[] = [
 	{
