@@ -55,10 +55,12 @@ const LAYERS = [
 		rank: 1,
 		match: (p) =>
 			p.startsWith("actions/") ||
+			p.startsWith("assets/") ||
 			p.startsWith("brand/") ||
 			p.startsWith("context/") ||
 			p.startsWith("extensions/") ||
 			p.startsWith("perf/") ||
+			p.startsWith("persistence/") ||
 			p.startsWith("render/") ||
 			p.startsWith("selection/") ||
 			p.startsWith("snap/") ||
