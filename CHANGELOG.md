@@ -31,6 +31,31 @@ The PRD 0012 delivery (Phases 1a "editing loop", 1b "product chrome", 2
 - **Open as new document (FR-132)**: `onCreateDocument` prop + Templates-panel
   choice; destructive template replace now confirms when the document is
   dirty.
+- **Locked-node enforcement (FR-024/§20.13)**: user-initiated commits now
+  enforce locking at the command boundary (`createHistoryStore({
+  enforceLocked: true })`); the commit pipeline no-ops on the typed
+  `node-locked` rejection. Unlocking a node is always allowed. Undo/redo replay
+  inverses unguarded.
+- **Action layer through every surface**: the Layer panel's Delete/Backspace
+  now routes through `deleteSelection()` (one undo entry, locked-safe,
+  descendant-deduped) instead of a per-node commit loop. Keyboard ⌘A routes
+  through the isolation-scoped, locked-safe `progressiveSelectAll` path
+  (FR-190).
+- **Clipboard rejection feedback (AC-002/FR-021)**: an oversized/too-many/
+  too-deep/unsupported-version AnvilKit payload surfaces an error toast and
+  never silently pastes stale internal content; only genuinely foreign content
+  degrades to the internal store.
+- **Stable action API (§11.2)**: `useCanvasActions` / `createCanvasEditorActions`
+  and the asset-adapter types are now exported from the package root (stable),
+  not just `/internal`. The facade gains `save()` and `requestExport(scope)`.
+  `pdfExporter`/`svgExporter`/`sanitizeExportFilename` are exported too.
+- **Inspector transform completeness (FR-071)**: scale field, aspect-ratio
+  lock, reset rotation, flip horizontal/vertical.
+- **Fill completion (FR-074)**: no-fill state, fill alpha channel, and a
+  recent-colors strip.
+- **Text (FR-080/FR-082/FR-083)**: empty text nodes are removed on close; the
+  rich-text toolbar gains a font-family control; font-loading states are
+  test-covered.
 
 ### Editing loop (Phase 1a)
 
