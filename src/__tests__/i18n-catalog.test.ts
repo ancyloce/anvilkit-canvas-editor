@@ -2,6 +2,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import en from "../../i18n/messages/en.json";
+import ja from "../../i18n/messages/ja.json";
+import ko from "../../i18n/messages/ko.json";
 import zh from "../../i18n/messages/zh.json";
 
 /**
@@ -29,11 +31,12 @@ function collectSourceKeys(dir: string, out: Set<string>): void {
 	}
 }
 
-describe("i18n catalogs (A-11)", () => {
-	it("en and zh cover the exact same key set", () => {
+describe("i18n catalogs (A-11, OD-3: four bundled locales)", () => {
+	it("every bundled locale covers the exact same key set", () => {
 		const enKeys = Object.keys(en).sort();
-		const zhKeys = Object.keys(zh).sort();
-		expect(zhKeys).toEqual(enKeys);
+		expect(Object.keys(zh).sort()).toEqual(enKeys);
+		expect(Object.keys(ja).sort()).toEqual(enKeys);
+		expect(Object.keys(ko).sort()).toEqual(enKeys);
 	});
 
 	it("every canvas.* key referenced in src has a catalog entry", () => {
@@ -44,11 +47,36 @@ describe("i18n catalogs (A-11)", () => {
 	});
 
 	it("no catalog entry is empty", () => {
-		for (const [key, value] of Object.entries(en)) {
-			expect(value, `en ${key}`).not.toBe("");
+		const catalogs: Array<[string, Record<string, string>]> = [
+			["en", en],
+			["zh", zh],
+			["ja", ja],
+			["ko", ko],
+		];
+		for (const [locale, catalog] of catalogs) {
+			for (const [key, value] of Object.entries(catalog)) {
+				expect(value, `${locale} ${key}`).not.toBe("");
+			}
 		}
-		for (const [key, value] of Object.entries(zh)) {
-			expect(value, `zh ${key}`).not.toBe("");
+	});
+
+	it("placeholders survive translation in every locale", () => {
+		const placeholderPattern = /\{[a-zA-Z]+\}/g;
+		for (const [key, value] of Object.entries(en)) {
+			const expected = [...value.matchAll(placeholderPattern)]
+				.map((m) => m[0])
+				.sort();
+			if (expected.length === 0) continue;
+			for (const [locale, catalog] of [
+				["zh", zh],
+				["ja", ja],
+				["ko", ko],
+			] as Array<[string, Record<string, string>]>) {
+				const actual = [...(catalog[key] ?? "").matchAll(placeholderPattern)]
+					.map((m) => m[0])
+					.sort();
+				expect(actual, `${locale} ${key}`).toEqual(expected);
+			}
 		}
 	});
 });
