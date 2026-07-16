@@ -43,30 +43,29 @@ function fakeStage(layers: ReturnType<typeof fakeLayer>[]) {
 }
 
 describe("exportStageContentDataURL", () => {
-	it("hides the selection + presence layers during serialization", () => {
-		const background = fakeLayer("background");
-		const objects = fakeLayer("objects");
+	it("hides the overlay + presence layers during serialization", () => {
+		const content = fakeLayer("content");
 		const drag = fakeLayer("drag");
-		const selection = fakeLayer("selection");
+		const overlay = fakeLayer("overlay");
 		const presence = fakeLayer("presence");
-		const stage = fakeStage([background, objects, drag, selection, presence]);
+		const stage = fakeStage([content, drag, overlay, presence]);
 
 		const url = exportStageContentDataURL(stage, { pixelRatio: 2 });
 
-		// Only content layers were visible at serialize time — selection and
-		// presence (transformer handles, smart guides, remote cursors) were not.
-		expect(url).toBe("data:image/png;base64,background+objects+drag");
+		// Only content layers were visible at serialize time — overlay (guides
+		// + selection chrome) and presence (remote cursors) were not.
+		expect(url).toBe("data:image/png;base64,content+drag");
 	});
 
 	it("restores chrome-layer visibility after serialization", () => {
-		const objects = fakeLayer("objects");
-		const selection = fakeLayer("selection");
+		const content = fakeLayer("content");
+		const overlay = fakeLayer("overlay");
 		const presence = fakeLayer("presence");
-		const stage = fakeStage([objects, selection, presence]);
+		const stage = fakeStage([content, overlay, presence]);
 
 		exportStageContentDataURL(stage);
 
-		expect(selection._isVisible()).toBe(true);
+		expect(overlay._isVisible()).toBe(true);
 		expect(presence._isVisible()).toBe(true);
 		// A redraw flushes the restored visibility back onto the on-screen stage.
 		expect(stage.batchDraw).toHaveBeenCalledTimes(1);

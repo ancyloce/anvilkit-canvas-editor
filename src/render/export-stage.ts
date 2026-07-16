@@ -2,12 +2,13 @@ import type Konva from "konva";
 import type { RenderLayerName } from "../stage/RenderLayer.js";
 
 /**
- * Editor-only RenderLayers that must NOT appear in an exported preview:
- * the selection chrome (transformer handles, draft outlines, smart guides,
- * pen/path overlays) and collaborator presence (remote cursors/selections).
- * `background`, `objects`, and `drag` are real design content and are kept.
+ * Editor-only RenderLayers that must NOT appear in an exported preview: the
+ * "overlay" layer (persistent guides/layout aids plus selection chrome —
+ * transformer handles, draft outlines, smart guides, pen/path overlays) and
+ * collaborator presence (remote cursors/selections). `content` (background +
+ * objects) and `drag` are real design content and are kept.
  */
-const CHROME_LAYER_NAMES = new Set<RenderLayerName>(["selection", "presence"]);
+const CHROME_LAYER_NAMES = new Set<RenderLayerName>(["overlay", "presence"]);
 
 export interface ExportStageContentOptions {
 	/** Defaults handled by the caller; forwarded verbatim to `toDataURL`. */
