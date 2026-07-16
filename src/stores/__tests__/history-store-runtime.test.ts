@@ -132,3 +132,55 @@ describe("createHistoryStore — injected runtime (P0-7)", () => {
 		expect(() => store.getState().commit(ir, { type: "custom.tag" })).toThrow();
 	});
 });
+
+describe("createHistoryStore — enforceLocked (FR-024 / §20.13)", () => {
+	function lockedFixture(): CanvasIR {
+		const rect = createRect({
+			id: "rectA",
+			bounds: { width: 100, height: 50 },
+			fill: "#f00",
+		});
+		(rect as { locked?: boolean }).locked = true;
+		const page = createPage({ id: "page-1" });
+		page.root = createGroup({
+			id: "page-1-root",
+			bounds: page.root.bounds,
+			children: [rect],
+		});
+		return createCanvasIR({ id: "ir-l", title: "t", pages: [page], now });
+	}
+
+	it("throws node-locked for a mutation of a locked node when enabled", () => {
+		const store = createHistoryStore({ now, enforceLocked: true });
+		expect(() =>
+			store.getState().commit(lockedFixture(), {
+				type: "node.update",
+				nodeId: "rectA",
+				kind: "rect",
+				patch: { fill: "#0f0" },
+			}),
+		).toThrow(/locked/i);
+	});
+
+	it("allows unlocking a locked node (exemption)", () => {
+		const store = createHistoryStore({ now, enforceLocked: true });
+		const next = store.getState().commit(lockedFixture(), {
+			type: "node.update",
+			nodeId: "rectA",
+			kind: "rect",
+			patch: { locked: false },
+		});
+		expect(next.pages[0]?.root.children[0]).toMatchObject({ locked: false });
+	});
+
+	it("does not enforce on a store without the option (default off)", () => {
+		const store = createHistoryStore({ now });
+		const next = store.getState().commit(lockedFixture(), {
+			type: "node.update",
+			nodeId: "rectA",
+			kind: "rect",
+			patch: { fill: "#0f0" },
+		});
+		expect(next.pages[0]?.root.children[0]).toMatchObject({ fill: "#0f0" });
+	});
+});

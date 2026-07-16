@@ -64,6 +64,16 @@ export interface CreateHistoryStoreOptions {
 	 * participate in commit/batch/undo/redo the same way built-ins do.
 	 */
 	apply?: CommandApplyFn;
+	/**
+	 * FR-024 / §20.13 lock enforcement. When true, every command applied through
+	 * this store passes core's `enforceLocked` option, so mutating a locked node
+	 * throws a typed `node-locked` `CanvasCommandError` at the command boundary
+	 * (the unlock patch — setting `locked:false` — is exempted, so unlocking a
+	 * node always works). The editor enables this for user-initiated commits;
+	 * the commit pipeline catches the rejection and no-ops. Default false keeps
+	 * the pre-PRD behavior for existing/test consumers.
+	 */
+	enforceLocked?: boolean;
 }
 
 export interface HistoryState {
@@ -122,9 +132,15 @@ export function createHistoryStore(
 	const mergeWindowMs = options.mergeWindowMs ?? DEFAULT_MERGE_WINDOW_MS;
 	const nowMs = options.nowMs ?? (() => Date.now());
 	const apply = options.apply ?? defaultApply;
-	const applyOptions: CommandApplyOptions = options.now
+	// Forward user commits enforce locking (FR-024); undo/redo replay
+	// system-generated inverses that must always apply (a prior state can be
+	// restored even across a later lock), so they use `replayOptions`.
+	const replayOptions: CommandApplyOptions = options.now
 		? { now: options.now }
 		: {};
+	const applyOptions: CommandApplyOptions = options.enforceLocked
+		? { ...replayOptions, enforceLocked: true }
+		: replayOptions;
 
 	// Coalescing run state — not reactive, so it lives in the closure rather than
 	// the store. Any non-coalesced action (commit/batch/undo/redo/reset) ends a run.
@@ -224,7 +240,7 @@ export function createHistoryStore(
 			if (state.past.length === 0) return ir;
 			const inverseCmd = state.past[state.past.length - 1];
 			if (!inverseCmd) return ir;
-			const result = apply(ir, inverseCmd, applyOptions);
+			const result = apply(ir, inverseCmd, replayOptions);
 			futureStateIds.push(stateId);
 			stateId = pastBeforeIds.pop() ?? 0;
 			set((s) => ({
@@ -239,7 +255,7 @@ export function createHistoryStore(
 			if (state.future.length === 0) return ir;
 			const forwardCmd = state.future[state.future.length - 1];
 			if (!forwardCmd) return ir;
-			const result = apply(ir, forwardCmd, applyOptions);
+			const result = apply(ir, forwardCmd, replayOptions);
 			pastBeforeIds.push(stateId);
 			stateId = futureStateIds.pop() ?? ++stateIdCounter;
 			set((s) => {
