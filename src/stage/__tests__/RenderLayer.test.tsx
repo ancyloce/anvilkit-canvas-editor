@@ -49,7 +49,7 @@ describe("RenderLayer", () => {
 
 	it("renders its children inside the Layer", () => {
 		const { getByTestId } = render(
-			<RenderLayer name="selection">
+			<RenderLayer name="overlay">
 				<div data-testid="layer-child" />
 			</RenderLayer>,
 		);
