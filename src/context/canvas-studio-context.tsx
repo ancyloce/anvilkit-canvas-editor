@@ -204,6 +204,14 @@ export interface CanvasStudioContextValue {
 	 * contexts, where isolation features simply stay off.
 	 */
 	isolationStore?: IsolationStoreApi;
+	/**
+	 * Export invocation channel (FR-031/FR-032): entry points such as the node
+	 * context menu's "Export selection" and the page menu's "Export page" post
+	 * a scoped request here; the export UI mounted by
+	 * `createCanvasExportPlugin` consumes it and opens preselected. Always
+	 * provided by `<CanvasStudio>`; optional for partial test contexts.
+	 */
+	exportRequestStore?: ExportRequestStoreApi;
 	/** Konva.Stage instance — null until <CanvasStage>'s onReady fires. */
 	stage: Konva.Stage | null;
 	/**
