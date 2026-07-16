@@ -42,6 +42,14 @@ import {
 	groupSelection,
 	ungroupSelection,
 } from "../selection/group-actions.js";
+import {
+	EMPTY_LAYER_FILTER,
+	findLayers,
+	isEmptyLayerFilter,
+	type LayerFilter,
+	matchesLayerFilter,
+	revealLayer,
+} from "./layer-filter.js";
 
 const INDENT_PX = 14;
 const ROW_PAD_X = 8;
@@ -163,9 +171,31 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 	const activePage: CanvasPage | undefined = ctx.ir.pages.find(
 		(p) => p.id === ctx.activePageId,
 	);
-	const rows = useMemo(
+	const allRows = useMemo(
 		() => (activePage ? flattenChildren(activePage.root) : []),
 		[activePage],
+	);
+
+	// FR-053 layer search (C-08): pure, non-mutating row filter. While a
+	// filter is active, drag-and-drop is disabled — reordering against an
+	// incomplete view invites accidental structure changes.
+	const [filter, setFilter] = useState<LayerFilter>(EMPTY_LAYER_FILTER);
+	const [searchScope, setSearchScope] = useState<"page" | "document">("page");
+	const filterActive = !isEmptyLayerFilter(filter);
+	const rows = useMemo(
+		() =>
+			filterActive
+				? allRows.filter((row) => matchesLayerFilter(row.node, filter))
+				: allRows,
+		[allRows, filterActive, filter],
+	);
+	// FR-191 find layer: document-scoped results across every page.
+	const findResults = useMemo(
+		() =>
+			searchScope === "document" && filterActive
+				? findLayers(ctx.ir, filter)
+				: null,
+		[searchScope, filterActive, ctx.ir, filter],
 	);
 	const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 	const canGroup = useMemo(
@@ -477,7 +507,7 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 						drop && !drop.valid && "opacity-50",
 					)}
 					style={{ paddingLeft: ROW_PAD_X + depth * INDENT_PX }}
-					draggable={!locked && !isRenaming}
+					draggable={!locked && !isRenaming && !filterActive}
 					onDragStart={(e) => handleDragStart(node, e)}
 					onDragOver={(e) => handleDragOver(node, e)}
 					onDrop={(e) => handleDrop(node, e)}
@@ -590,6 +620,7 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 			handleDragOver,
 			handleDrop,
 			handleDragEnd,
+			filterActive,
 		],
 	);
 
@@ -632,33 +663,153 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 					<Ungroup aria-hidden />
 				</Button>
 			</div>
-			<div
-				className="flex-1 overflow-y-auto p-1.5"
-				role="tree"
-				aria-label={t("canvas.layer.title", "Layers")}
-			>
-				{rows.length === 0 ? (
-					<div
-						className="px-2 py-1.5 text-xs text-muted-foreground italic"
-						data-testid="layer-panel-empty"
-					>
-						{t("canvas.layer.empty", "No layers on this page yet.")}
+			<div className="flex flex-col gap-1 border-b border-border p-1.5">
+				<Input
+					data-testid="layer-search"
+					placeholder={t("canvas.layer.searchPlaceholder", "Search layers…")}
+					value={filter.query}
+					onChange={(e) =>
+						setFilter((prev) => ({ ...prev, query: e.currentTarget.value }))
+					}
+					className="h-7 text-xs"
+				/>
+				{filterActive ? (
+					<div className="flex gap-1">
+						<Button
+							type="button"
+							variant={filter.visibility === "all" ? "ghost" : "secondary"}
+							size="sm"
+							className="h-6 flex-1 px-1 text-[11px]"
+							data-testid="layer-filter-visibility"
+							onClick={() =>
+								setFilter((prev) => ({
+									...prev,
+									visibility:
+										prev.visibility === "all"
+											? "visible"
+											: prev.visibility === "visible"
+												? "hidden"
+												: "all",
+								}))
+							}
+						>
+							{filter.visibility === "visible"
+								? t("canvas.layer.filterVisible", "Visible")
+								: filter.visibility === "hidden"
+									? t("canvas.layer.filterHidden", "Hidden")
+									: t("canvas.layer.filterVisibilityAll", "Any visibility")}
+						</Button>
+						<Button
+							type="button"
+							variant={filter.lock === "all" ? "ghost" : "secondary"}
+							size="sm"
+							className="h-6 flex-1 px-1 text-[11px]"
+							data-testid="layer-filter-lock"
+							onClick={() =>
+								setFilter((prev) => ({
+									...prev,
+									lock:
+										prev.lock === "all"
+											? "locked"
+											: prev.lock === "locked"
+												? "unlocked"
+												: "all",
+								}))
+							}
+						>
+							{filter.lock === "locked"
+								? t("canvas.layer.filterLocked", "Locked")
+								: filter.lock === "unlocked"
+									? t("canvas.layer.filterUnlocked", "Unlocked")
+									: t("canvas.layer.filterLockAll", "Any lock state")}
+						</Button>
+						<Button
+							type="button"
+							variant={searchScope === "document" ? "secondary" : "ghost"}
+							size="sm"
+							className="h-6 flex-1 px-1 text-[11px]"
+							data-testid="layer-search-scope"
+							onClick={() =>
+								setSearchScope((prev) =>
+									prev === "page" ? "document" : "page",
+								)
+							}
+						>
+							{searchScope === "document"
+								? t("canvas.layer.scopeDocument", "All pages")
+								: t("canvas.layer.scopePage", "This page")}
+						</Button>
 					</div>
-				) : (
-					// Virtualized (W5): below 50 layers this is identical DOM to the old
-					// inline map (keyed Fragments add no nodes); above it only the
-					// visible window mounts, so a 1000-layer page stops rendering 1000
-					// rows. The outer `role="tree"` container stays the scroll owner.
-					<Windowed
-						items={rows}
-						renderItem={renderRow}
-						itemKey={(row) => row.node.id}
-						estimateSize={28}
-						maxHeight={600}
-						data-testid="layer-rows"
-					/>
-				)}
+				) : null}
 			</div>
+			{findResults ? (
+				// FR-191 find layer: flat cross-page results; picking one switches
+				// page, selects, zooms, and reveals the row.
+				<div
+					className="flex-1 overflow-y-auto p-1.5"
+					data-testid="layer-find-results"
+				>
+					{findResults.length === 0 ? (
+						<div
+							className="px-2 py-1.5 text-xs text-muted-foreground italic"
+							data-testid="layer-find-no-results"
+						>
+							{t("canvas.layer.noMatches", "No layers match.")}
+						</div>
+					) : (
+						findResults.map((result) => (
+							<button
+								type="button"
+								key={`${result.pageId}-${result.node.id}`}
+								data-testid={`layer-find-result-${result.node.id}`}
+								className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] hover:bg-muted"
+								onClick={() => revealLayer(ctx, result)}
+							>
+								<span className="flex-1 truncate">
+									{nodeLabel(result.node, t, ctx.kindInspectors)}
+								</span>
+								<span className="text-[11px] text-muted-foreground">
+									{result.pageName ??
+										t("canvas.layer.pageN", "Page {n}").replace(
+											"{n}",
+											String(result.pageIndex + 1),
+										)}
+								</span>
+							</button>
+						))
+					)}
+				</div>
+			) : (
+				<div
+					className="flex-1 overflow-y-auto p-1.5"
+					role="tree"
+					aria-label={t("canvas.layer.title", "Layers")}
+				>
+					{rows.length === 0 ? (
+						<div
+							className="px-2 py-1.5 text-xs text-muted-foreground italic"
+							data-testid="layer-panel-empty"
+						>
+							{filterActive
+								? t("canvas.layer.noMatches", "No layers match.")
+								: t("canvas.layer.empty", "No layers on this page yet.")}
+						</div>
+					) : (
+						// Virtualized (W5): below 50 layers this is identical DOM to the old
+						// inline map (keyed Fragments add no nodes); above it only the
+						// visible window mounts, so a 1000-layer page stops rendering 1000
+						// rows. The outer `role="tree"` container stays the scroll owner.
+						<Windowed
+							items={rows}
+							renderItem={renderRow}
+							itemKey={(row) => row.node.id}
+							estimateSize={28}
+							maxHeight={600}
+							data-testid="layer-rows"
+						/>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }

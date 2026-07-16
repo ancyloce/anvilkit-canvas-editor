@@ -7,10 +7,14 @@ import {
 	createRect,
 	insertNode,
 } from "@anvilkit/canvas-core";
-import { cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
 import type { CanvasTemplateEntry } from "@/templates/template-entry.js";
+import type {
+	CanvasTemplateProvider,
+	CanvasTemplateSearchQuery,
+} from "@/templates/template-provider.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { TemplatesPanel } from "../TemplatesPanel.js";
 import { insertTemplateAsNewPages, loadTemplate } from "../template-actions.js";
@@ -54,10 +58,15 @@ function entry(
 // react-library vitest preset has globals:false — RTL auto-cleanup is OFF.
 afterEach(cleanup);
 
-function renderPanel(templates?: readonly CanvasTemplateEntry[]) {
+function renderPanel(
+	templates?: readonly CanvasTemplateEntry[],
+	templateProvider?: CanvasTemplateProvider,
+) {
 	const h = makeHarness();
 	const view = render(
-		<CanvasStudioContext.Provider value={{ ...h.studioCtx, templates }}>
+		<CanvasStudioContext.Provider
+			value={{ ...h.studioCtx, templates, templateProvider }}
+		>
 			<TemplatesPanel />
 		</CanvasStudioContext.Provider>,
 	);
@@ -70,8 +79,9 @@ describe("TemplatesPanel", () => {
 		expect(view.getByTestId("templates-panel-empty")).toBeDefined();
 	});
 
-	it("lists templates and reveals an inline confirm on click", () => {
+	it("lists templates and reveals an inline confirm on click", async () => {
 		const { view } = renderPanel([entry()]);
+		await view.findByTestId("template-item-poster");
 		expect(view.queryByTestId("template-confirm-poster")).toBeNull();
 		fireEvent.click(view.getByTestId("template-item-poster"));
 		expect(view.getByTestId("template-confirm-poster")).toBeDefined();
@@ -80,7 +90,7 @@ describe("TemplatesPanel", () => {
 		expect(view.queryByTestId("template-confirm-poster")).toBeNull();
 	});
 
-	it("filters the list by a free-text search across title/description/tags", () => {
+	it("filters the list by a free-text search across title/description/tags", async () => {
 		const flyer = entry({
 			id: "flyer",
 			title: "Flyer",
@@ -89,26 +99,30 @@ describe("TemplatesPanel", () => {
 			tags: ["flyer", "print"],
 		});
 		const { view } = renderPanel([entry(), flyer]);
-		expect(view.getByTestId("template-item-poster")).toBeDefined();
+		await view.findByTestId("template-item-poster");
 		expect(view.getByTestId("template-item-flyer")).toBeDefined();
 
 		fireEvent.change(view.getByTestId("templates-search"), {
 			target: { value: "flyer" },
 		});
-		expect(view.queryByTestId("template-item-poster")).toBeNull();
+		await waitFor(() =>
+			expect(view.queryByTestId("template-item-poster")).toBeNull(),
+		);
 		expect(view.getByTestId("template-item-flyer")).toBeDefined();
 	});
 
-	it("shows a no-results message when the search matches nothing", () => {
+	it("shows a no-results message when the search matches nothing", async () => {
 		const { view } = renderPanel([entry()]);
+		await view.findByTestId("template-item-poster");
 		fireEvent.change(view.getByTestId("templates-search"), {
 			target: { value: "no such template" },
 		});
-		expect(view.getByTestId("templates-panel-no-results")).toBeDefined();
+		await view.findByTestId("templates-panel-no-results");
 	});
 
-	it("confirm dispatches ONE batch that creates template pages then deletes prior pages", () => {
+	it("confirm dispatches ONE batch that creates template pages then deletes prior pages", async () => {
 		const { h, view } = renderPanel([entry()]);
+		await view.findByTestId("template-item-poster");
 		fireEvent.click(view.getByTestId("template-item-poster"));
 		fireEvent.click(view.getByTestId("template-load-poster"));
 
@@ -134,8 +148,9 @@ describe("TemplatesPanel", () => {
 		expect(deletes[0].pageId).toBe("p1");
 	});
 
-	it("insert-as-new commits a single batch via ctx.commit and never touches commitBatch", () => {
+	it("insert-as-new commits a single batch via ctx.commit and never touches commitBatch", async () => {
 		const { h, view } = renderPanel([entry()]);
+		await view.findByTestId("template-item-poster");
 		fireEvent.click(view.getByTestId("template-item-poster"));
 		fireEvent.click(view.getByTestId("template-insert-new-poster"));
 
@@ -191,5 +206,62 @@ describe("insertTemplateAsNewPages", () => {
 		const result = insertTemplateAsNewPages(h.studioCtx, tpl);
 		expect(result.ok).toBe(false);
 		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+	});
+});
+
+describe("TemplatesPanel — provider protocol (C-06, FR-130/131)", () => {
+	it("a host provider takes precedence and pagination loads more", async () => {
+		const first = entry({ id: "page1-item", title: "Alpha" });
+		const second = entry({ id: "page2-item", title: "Beta" });
+		const search = vi.fn((query: CanvasTemplateSearchQuery) =>
+			Promise.resolve(
+				query.cursor
+					? { entries: [second] }
+					: { entries: [first], nextCursor: "1" },
+			),
+		);
+		const provider: CanvasTemplateProvider = {
+			search,
+			getById: () => Promise.resolve(null),
+		};
+		const { view } = renderPanel(undefined, provider);
+		await view.findByTestId("template-item-page1-item");
+		expect(view.queryByTestId("template-item-page2-item")).toBeNull();
+		fireEvent.click(view.getByTestId("templates-load-more"));
+		await view.findByTestId("template-item-page2-item");
+		// Loaded pages accumulate.
+		expect(view.getByTestId("template-item-page1-item")).toBeDefined();
+		expect(view.queryByTestId("templates-load-more")).toBeNull();
+	});
+
+	it("a rejecting provider shows the error state and Retry re-queries", async () => {
+		let fail = true;
+		const provider: CanvasTemplateProvider = {
+			search: () =>
+				fail
+					? Promise.reject(new Error("network"))
+					: Promise.resolve({ entries: [entry()] }),
+			getById: () => Promise.resolve(null),
+		};
+		const { view } = renderPanel(undefined, provider);
+		await view.findByTestId("templates-panel-error");
+		fail = false;
+		fireEvent.click(view.getByTestId("templates-retry"));
+		await view.findByTestId("template-item-poster");
+		expect(view.queryByTestId("templates-panel-error")).toBeNull();
+	});
+
+	it("the size filter is passed to the provider as first-page dimensions", async () => {
+		const search = vi.fn(() => Promise.resolve({ entries: [entry()] }));
+		const provider: CanvasTemplateProvider = {
+			search,
+			getById: () => Promise.resolve(null),
+		};
+		const { view } = renderPanel(undefined, provider);
+		await view.findByTestId("template-item-poster");
+		expect(view.getByTestId("templates-size-filter")).toBeDefined();
+		expect(search).toHaveBeenCalledWith(
+			expect.not.objectContaining({ size: expect.anything() }),
+		);
 	});
 });

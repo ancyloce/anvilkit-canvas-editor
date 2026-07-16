@@ -57,7 +57,8 @@ const APPLY_ACTIONS: ReadonlyArray<{
 	},
 ];
 
-function complianceIssueMessage(
+/** Shared with the inspector's passive warnings (C-07) — one wording everywhere. */
+export function complianceIssueMessage(
 	t: CanvasT,
 	issue: BrandComplianceIssue,
 ): string {

@@ -14,6 +14,7 @@ import {
 	useCommitPatch,
 } from "./fields.js";
 import { AppearanceSection } from "./inspector/appearance-section.js";
+import { BrandComplianceWarnings } from "./inspector/brand-warnings.js";
 import { summarizeSelection } from "./inspector/selection-summary.js";
 import { renderTypeSpecificFields } from "./inspector/type-sections.js";
 
@@ -112,6 +113,7 @@ export function PropertyInspector({
 							)}
 				</div>
 			</div>
+			<BrandComplianceWarnings nodes={nodes} />
 			<div
 				className="flex flex-col gap-4"
 				key={multi ? selectedIds.join(",") : node.id}
