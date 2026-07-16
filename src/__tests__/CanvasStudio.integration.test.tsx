@@ -680,7 +680,9 @@ describe("CanvasStudio integration", () => {
 			pages: [createPage({ id: "p1" })],
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
-		const { getByTestId } = render(
+		// Scoped to this render's container: the preset has RTL auto-cleanup
+		// off, so the previous test's fallback div is still in document.body.
+		const { container } = render(
 			<CanvasStudio initialIR={ir} initialActivePageId="p1">
 				<CapturePagesStore />
 			</CanvasStudio>,
@@ -688,7 +690,9 @@ describe("CanvasStudio integration", () => {
 		act(() => {
 			setActivePageId?.("missing");
 		});
-		expect(getByTestId("canvas-empty")).toBeTruthy();
+		expect(
+			container.querySelector('[data-testid="canvas-empty"]'),
+		).toBeTruthy();
 	});
 
 	it("does not manually destroy the stage on unmount (react-konva owns it)", () => {

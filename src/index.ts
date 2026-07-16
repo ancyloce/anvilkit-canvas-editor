@@ -14,6 +14,24 @@
 
 // ── a11y ─────────────────────────────────────────────────────────────────────
 export { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
+// ── Editor action layer (§11.2 stable high-level actions) ─────────────────────
+// The unified action facade behind every editor mutation. Hosts drive common
+// operations (copy/cut/paste/duplicate/delete, group/ungroup, align/distribute,
+// zoom, save, requestExport) through `useCanvasActions()` without coordinating
+// low-level stores. Behavior — locked-node protection, batch boundaries,
+// one-action/one-undo — is identical to the built-in UI.
+export {
+	type CanvasDistributeAxis,
+	type CanvasEditorActions,
+	type CanvasEditorActionsDeps,
+	createCanvasEditorActions,
+	useCanvasActions,
+} from "./actions/editor-actions.js";
+// ── Asset adapter contracts (FR-090/091) ─────────────────────────────────────
+export type {
+	CanvasAssetPicker,
+	CanvasAssetUploader,
+} from "./assets/adapter-types.js";
 // ── Brand kit ────────────────────────────────────────────────────────────────
 export type { BrandColor, BrandKit } from "./brand/brand-kit.js";
 export {
@@ -73,7 +91,10 @@ export {
 	ExportMenu,
 	jpegExporter,
 	jsonExporter,
+	pdfExporter,
 	pngExporter,
+	sanitizeExportFilename,
+	svgExporter,
 	webpExporter,
 } from "./header/index.js";
 // ── Pages ────────────────────────────────────────────────────────────────────

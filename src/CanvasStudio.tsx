@@ -3,6 +3,7 @@
 import {
 	type CanvasChange,
 	type CanvasCommand,
+	CanvasCommandError,
 	type CanvasIR,
 	type CanvasRuntime,
 	commandToChange,
@@ -310,7 +311,13 @@ function useEditorStores({
 	// change what undo/redo dispatches through mid-session, which is exactly the
 	// "multiple unrelated runtime instances" P0-7 asks to avoid.
 	const [historyStore] = useState(() =>
-		createHistoryStore({ apply: runtime?.apply }),
+		createHistoryStore({
+			...(runtime?.apply ? { apply: runtime.apply } : {}),
+			// FR-024 / §20.13: user-initiated commits enforce locking at the
+			// command boundary; the pipeline catches the typed rejection and
+			// no-ops. Undo/redo replay inverses unguarded (see the store).
+			enforceLocked: true,
+		}),
 	);
 	const [toolStore] = useState(() => createToolStore({ initialTool }));
 	const [selectionStore] = useState(() => createSelectionStore());
@@ -357,6 +364,16 @@ function useEditorStores({
 }
 
 /**
+ * True for core's typed `node-locked` rejection (FR-024): a user command tried
+ * to mutate a locked node. The commit pipeline no-ops on it rather than
+ * letting it reach the error boundary. The action layer surfaces its own toast
+ * for the operations it fronts; direct edits (inspector/drag) just no-op.
+ */
+function isLockedRejection(err: unknown): boolean {
+	return err instanceof CanvasCommandError && err.code === "node-locked";
+}
+
+/**
  * The commit pipeline: history-tracked command application plus the host
  * `onChange`/`onChanges` notification seams.
  */
@@ -371,9 +388,14 @@ function useCommitPipeline(
 
 	const commit = useCallback(
 		(cmd: AnyCanvasCommand): CanvasIR => {
-			const next = historyStore
-				.getState()
-				.commit(sceneStore.getState().ir, cmd);
+			const current = sceneStore.getState().ir;
+			let next: CanvasIR;
+			try {
+				next = historyStore.getState().commit(current, cmd);
+			} catch (err) {
+				if (isLockedRejection(err)) return current; // FR-024: no-op on lock
+				throw err;
+			}
 			sceneStore.getState().setIR(next);
 			onChangeRef.current?.(next, cmd);
 			if (onChangesRef.current) {
@@ -394,9 +416,14 @@ function useCommitPipeline(
 	// window fold into one undo entry.
 	const commitCoalesced = useCallback(
 		(cmd: AnyCanvasCommand, mergeKey: string): CanvasIR => {
-			const next = historyStore
-				.getState()
-				.commitCoalesced(sceneStore.getState().ir, cmd, mergeKey);
+			const current = sceneStore.getState().ir;
+			let next: CanvasIR;
+			try {
+				next = historyStore.getState().commitCoalesced(current, cmd, mergeKey);
+			} catch (err) {
+				if (isLockedRejection(err)) return current; // FR-024: no-op on lock
+				throw err;
+			}
 			sceneStore.getState().setIR(next);
 			onChangeRef.current?.(next, cmd);
 			if (onChangesRef.current) {
@@ -413,9 +440,14 @@ function useCommitPipeline(
 	const commitBatch = useCallback(
 		(commands: readonly AnyCanvasCommand[], label?: string): CanvasIR => {
 			if (commands.length === 0) return sceneStore.getState().ir;
-			const next = historyStore
-				.getState()
-				.commitBatch(sceneStore.getState().ir, commands, label);
+			const current = sceneStore.getState().ir;
+			let next: CanvasIR;
+			try {
+				next = historyStore.getState().commitBatch(current, commands, label);
+			} catch (err) {
+				if (isLockedRejection(err)) return current; // FR-024: no-op on lock
+				throw err;
+			}
 			sceneStore.getState().setIR(next);
 			// Not annotated `AnyCanvasCommand` — that would force TS to match this
 			// literal against `CanvasBatchCommand`'s `commands: CanvasCommand[]`,
