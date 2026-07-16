@@ -5,6 +5,7 @@ import {
 	distributeRects,
 	findNode,
 	type SnapRect,
+	tidyUpRects,
 } from "@anvilkit/canvas-core";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
 
@@ -92,4 +93,28 @@ export function distributeSelection(
 		axis,
 	);
 	ctx.commitBatch(moveCmds(items, deltas, axis), "Distribute");
+}
+
+/**
+ * FR-072 Tidy Up (C-12): arrange the multi-selection into a clean grid via
+ * core's `tidyUpRects`, as one undo entry. No-op for fewer than 2 nodes or
+ * when everything is already tidy.
+ */
+export function tidyUpSelection(ctx: CanvasStudioContextValue): void {
+	const items = selectedItems(ctx);
+	if (items.length < 2) return;
+	const deltas = tidyUpRects(items.map((it) => it.rect));
+	const cmds: CanvasNodeMoveCommand[] = [];
+	for (const [i, it] of items.entries()) {
+		const d = deltas[i];
+		if (!d || (d.dx === 0 && d.dy === 0)) continue;
+		cmds.push({
+			type: "node.move",
+			nodeId: it.id,
+			from: { x: it.x, y: it.y },
+			to: { x: it.x + d.dx, y: it.y + d.dy },
+		});
+	}
+	if (cmds.length === 0) return;
+	ctx.commitBatch(cmds, "Tidy up");
 }
