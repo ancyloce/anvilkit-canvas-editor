@@ -108,4 +108,27 @@ describe("useCanvasKeyboard — undo/redo shortcuts (M0-03 interim)", () => {
 		fireEvent.keyDown(input, { key: "z", ctrlKey: true });
 		expect(nodeX(sceneStore.getState().ir)).toBe(10);
 	});
+
+	it("Ctrl/Cmd+A selects all top-level nodes but excludes locked ones (FR-190)", () => {
+		const ir = fixtureIR();
+		// Add a locked sibling; FR-190 select-all must skip it.
+		const locked = createRect({
+			id: "locked",
+			bounds: { width: 10, height: 10 },
+		});
+		(locked as { locked?: boolean }).locked = true;
+		ir.pages[0]?.root.children.push(locked);
+		const h = makeHarness({ ir });
+		const sceneStore = createSceneStore({ initialIR: ir });
+		h.studioCtx.sceneStore = sceneStore;
+		render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<CanvasKeyboardLayer />
+			</CanvasStudioContext.Provider>,
+		);
+		const container = h.studioCtx.stage?.container();
+		if (!container) throw new Error("fake stage has no container");
+		fireEvent.keyDown(container, { key: "a", ctrlKey: true });
+		expect(h.studioCtx.selectionStore.getState().selectedIds).toEqual(["a"]);
+	});
 });

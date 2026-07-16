@@ -10,6 +10,7 @@ import {
 	groupSelection,
 	ungroupSelection,
 } from "../selection/group-actions.js";
+import { progressiveSelectAllImpl } from "../selection/isolation.js";
 import {
 	nudgeCommand,
 	resizeStepCommand,
@@ -92,8 +93,8 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 				e.preventDefault();
 				const page = getIR().pages.find((p) => p.id === activePageId);
 				if (!page) return;
-				const children = page.root.children;
 				if (e.shiftKey) {
+					const children = page.root.children;
 					const refId = selectionStore.getState().selectedIds[0];
 					const ref = refId ? findNode(getIR(), refId) : null;
 					if (ref) {
@@ -105,7 +106,10 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 							);
 					}
 				} else {
-					selectionStore.getState().setSelection(children.map((c) => c.id));
+					// FR-190 progressive select-all: same isolation-scoped path the
+					// context menu uses, so ⌘A respects the active container scope
+					// (and never selects into a locked container's exterior).
+					progressiveSelectAllImpl(ctx);
 				}
 				return;
 			}
