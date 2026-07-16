@@ -37,6 +37,7 @@ import {
 	switchToPage,
 } from "@/pages/page-actions.js";
 import { usePageThumbnails } from "@/perf/page-thumbnails.js";
+import { CanvasRulers } from "./CanvasRulers.js";
 import { type ElementActions, ElementControls } from "./ElementControls.js";
 
 /** Dialog-class UI is code-split (PRD 0012 constraint 20.15). */
@@ -178,27 +179,32 @@ export function PagesCanvas({
 	}, [ctx]);
 
 	return (
-		<div
-			ref={scrollRef}
-			data-testid="pages-canvas"
-			className="min-h-0 flex-1 overflow-auto px-7 pt-16 pb-14 dark:bg-neutral-800 bg-neutral-50"
-		>
-			<div className="flex flex-col items-center gap-8 pb-8">
-				{pages.map((page, index) => (
-					<PageRow
-						key={page.id}
-						page={page}
-						index={index}
-						total={pages.length}
-						zoom={zoom}
-						isActive={page.id === activePageId}
-						stage={stage}
-						elementActions={elementActions}
-						thumbnail={thumbnails.get(page.id)}
-					/>
-				))}
-				<AddPageButton width={addWidth} />
+		// Relative wrapper so the rulers (C-02) can overlay the scroll viewport's
+		// top/left edges without joining the scroll flow.
+		<div className="relative flex min-h-0 flex-1 flex-col">
+			<div
+				ref={scrollRef}
+				data-testid="pages-canvas"
+				className="min-h-0 flex-1 overflow-auto px-7 pt-16 pb-14 dark:bg-neutral-800 bg-neutral-50"
+			>
+				<div className="flex flex-col items-center gap-8 pb-8">
+					{pages.map((page, index) => (
+						<PageRow
+							key={page.id}
+							page={page}
+							index={index}
+							total={pages.length}
+							zoom={zoom}
+							isActive={page.id === activePageId}
+							stage={stage}
+							elementActions={elementActions}
+							thumbnail={thumbnails.get(page.id)}
+						/>
+					))}
+					<AddPageButton width={addWidth} />
+				</div>
 			</div>
+			<CanvasRulers scrollRef={scrollRef} />
 		</div>
 	);
 }
@@ -431,7 +437,10 @@ function PageRow({
 						// the page; the inner frame is the active-page card.
 						<div className="relative mx-auto w-fit">
 							<ElementControls actions={elementActions} />
-							<div className="overflow-hidden rounded-[3px] bg-background ring-2 ring-violet-500/80 shadow-[0_6px_24px_-6px_rgba(0,0,0,0.3)]">
+							<div
+								data-page-surface="active"
+								className="overflow-hidden rounded-[3px] bg-background ring-2 ring-violet-500/80 shadow-[0_6px_24px_-6px_rgba(0,0,0,0.3)]"
+							>
 								{stage}
 							</div>
 						</div>
