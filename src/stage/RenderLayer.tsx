@@ -7,6 +7,7 @@ export type RenderLayerName =
 	| "background"
 	| "objects"
 	| "drag"
+	| "guides"
 	| "selection"
 	| "presence";
 

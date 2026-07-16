@@ -1,13 +1,17 @@
 "use client";
 
 import {
+	adjustmentBlurRadius,
+	applyColorMatrixToPixels,
 	type CanvasAiPlaceholderNode,
 	type CanvasAiPlaceholderStatus,
 	type CanvasAudioNode,
+	type CanvasEffect,
 	type CanvasEllipseNode,
 	type CanvasFill,
 	type CanvasFrameNode,
 	type CanvasGroupNode,
+	type CanvasImageAdjustments,
 	type CanvasImageNode,
 	type CanvasLineNode,
 	type CanvasNode,
@@ -22,11 +26,14 @@ import {
 	type CanvasSvgNode,
 	type CanvasTextNode,
 	type CanvasVideoNode,
+	computeAdjustmentColorMatrix,
 	type FramePlaceholderKind,
+	firstDropShadow,
+	resolveNodeEffects,
 	resolveSpanStyle,
 } from "@anvilkit/canvas-core";
-import type Konva from "konva";
-import { use, useSyncExternalStore } from "react";
+import Konva from "konva";
+import { use, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
 	Arrow,
 	Ellipse,
@@ -176,12 +183,22 @@ function strokeStyleProps(
 	};
 }
 
-/** Map an optional node shadow to Konva shadow props. */
-function shadowProps(shadow: CanvasShadow | undefined): Konva.ShapeConfig {
+/**
+ * Map a node's resolved effects (C-03 — `effects` wins over legacy `shadow`,
+ * via core's ONE resolver) to Konva shadow props. Konva renders a single
+ * shadow with no spread primitive, so the live canvas shows the FIRST drop
+ * shadow and approximates `spread` by widening the blur; SVG/PDF exports
+ * render spread and shadow stacks exactly.
+ */
+function shadowProps(node: {
+	effects?: CanvasEffect[];
+	shadow?: CanvasShadow;
+}): Konva.ShapeConfig {
+	const shadow = firstDropShadow(resolveNodeEffects(node));
 	if (!shadow) return {};
 	return {
 		shadowColor: shadow.color,
-		shadowBlur: shadow.blur,
+		shadowBlur: shadow.blur + (shadow.spread ?? 0),
 		shadowOffsetX: shadow.offsetX,
 		shadowOffsetY: shadow.offsetY,
 		...(shadow.opacity !== undefined ? { shadowOpacity: shadow.opacity } : {}),
@@ -366,7 +383,7 @@ function CanvasRectNodeRenderer({ node }: { node: CanvasRectNode }) {
 			width={node.bounds.width}
 			height={node.bounds.height}
 			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node.shadow)}
+			{...shadowProps(node)}
 			{...strokeStyleProps(node)}
 			cornerRadius={
 				node.cornerRadii
@@ -399,7 +416,7 @@ function CanvasEllipseNodeRenderer({ node }: { node: CanvasEllipseNode }) {
 			radiusX={radiusX}
 			radiusY={radiusY}
 			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node.shadow)}
+			{...shadowProps(node)}
 			{...strokeStyleProps(node)}
 		/>
 	);
@@ -433,7 +450,7 @@ function CanvasPolygonNodeRenderer({ node }: { node: CanvasPolygonNode }) {
 			sides={node.sides}
 			radius={node.bounds.width / 2}
 			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node.shadow)}
+			{...shadowProps(node)}
 			{...strokeStyleProps(node)}
 		/>
 	);
@@ -454,7 +471,7 @@ function CanvasStarNodeRenderer({ node }: { node: CanvasStarNode }) {
 			innerRadius={outerRadius * node.innerRadiusRatio}
 			outerRadius={outerRadius}
 			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node.shadow)}
+			{...shadowProps(node)}
 			{...strokeStyleProps(node)}
 		/>
 	);
@@ -493,7 +510,7 @@ function CanvasPathNodeRenderer({ node }: { node: CanvasPathNode }) {
 			{...commonProps(node)}
 			data={node.d}
 			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node.shadow)}
+			{...shadowProps(node)}
 			{...strokeStyleProps(node)}
 		/>
 	);
@@ -513,7 +530,7 @@ function CanvasTextNodeRenderer({ node }: { node: CanvasTextNode }) {
 			fontSize={node.fontSize}
 			fontStyle={node.fontWeight}
 			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node.shadow)}
+			{...shadowProps(node)}
 			align={node.align}
 			width={node.bounds.width}
 			height={node.bounds.height}
@@ -615,6 +632,60 @@ function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 	);
 }
 
+/**
+ * C-04 (FR-100): `<KonvaImage>` plus non-destructive adjustments. The color
+ * math delegates to core's `applyColorMatrixToPixels` — the EXACT matrix the
+ * SVG export embeds — and blur rides Konva's built-in filter (radius ≈ the
+ * export's 2·stdDeviation convention). Konva filters require a node cache;
+ * it is (re)built only while adjustments are active and cleared otherwise,
+ * so unadjusted images keep the uncached fast path.
+ */
+function AdjustedKonvaImage({
+	adjustments,
+	image,
+	...imageProps
+}: {
+	adjustments: CanvasImageAdjustments | undefined;
+	image: HTMLImageElement;
+} & Konva.ImageConfig): React.JSX.Element {
+	const ref = useRef<Konva.Image>(null);
+	const matrix = adjustments ? computeAdjustmentColorMatrix(adjustments) : null;
+	const blurRadius = adjustments ? adjustmentBlurRadius(adjustments) : 0;
+	const matrixKey = matrix ? matrix.join(",") : "";
+	const colorFilter = useMemo(() => {
+		if (!matrixKey) return null;
+		const m = matrixKey.split(",").map(Number);
+		return (imageData: ImageData): void => {
+			applyColorMatrixToPixels(imageData.data, m);
+		};
+	}, [matrixKey]);
+	const filters = [
+		...(colorFilter ? [colorFilter] : []),
+		...(blurRadius > 0 ? [Konva.Filters.Blur] : []),
+	];
+	const active = filters.length > 0;
+	const { width, height } = imageProps;
+	useEffect(() => {
+		const node = ref.current;
+		if (!node) return;
+		if (active) {
+			node.cache();
+		} else {
+			node.clearCache();
+		}
+		node.getLayer()?.batchDraw();
+	}, [active, matrixKey, blurRadius, image, width, height]);
+	return (
+		<KonvaImage
+			ref={ref}
+			image={image}
+			{...imageProps}
+			{...(active ? { filters } : {})}
+			{...(blurRadius > 0 ? { blurRadius } : {})}
+		/>
+	);
+}
+
 function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 	const asset = useCanvasAsset(node.assetId);
 	const [image, status] = useImage(asset?.uri ?? "");
@@ -631,8 +702,9 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 				? centerCoverCrop(image.width, image.height, width, height)
 				: node.crop;
 		return (
-			<KonvaImage
+			<AdjustedKonvaImage
 				{...commonProps(node)}
+				adjustments={node.adjustments}
 				image={image}
 				width={width}
 				height={height}
@@ -663,7 +735,14 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 			clipWidth={width}
 			clipHeight={height}
 		>
-			<KonvaImage image={image} x={dx} y={dy} width={dw} height={dh} />
+			<AdjustedKonvaImage
+				adjustments={node.adjustments}
+				image={image}
+				x={dx}
+				y={dy}
+				width={dw}
+				height={dh}
+			/>
 		</Group>
 	);
 }

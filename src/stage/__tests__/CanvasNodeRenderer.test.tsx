@@ -976,3 +976,68 @@ describe("CanvasNodeRenderer — rich text", () => {
 		);
 	});
 });
+
+describe("effects → Konva shadow props (C-03)", () => {
+	beforeEachReset();
+
+	it("legacy shadow still renders (resolver fallback)", () => {
+		const rect = createRect({
+			id: "r-legacy",
+			bounds: { width: 10, height: 10 },
+		});
+		(rect as { shadow?: unknown }).shadow = {
+			color: "#112233",
+			blur: 4,
+			offsetX: 2,
+			offsetY: 3,
+		};
+		render(<CanvasNodeRenderer node={rect} />);
+		expect(callsOfType("Rect")[0]?.props).toMatchObject({
+			shadowColor: "#112233",
+			shadowBlur: 4,
+			shadowOffsetX: 2,
+			shadowOffsetY: 3,
+		});
+	});
+
+	it("effects win over legacy shadow; spread widens the blur (live-canvas approximation)", () => {
+		const rect = createRect({ id: "r-fx", bounds: { width: 10, height: 10 } });
+		(rect as { shadow?: unknown; effects?: unknown }).shadow = {
+			color: "#000000",
+			blur: 1,
+			offsetX: 0,
+			offsetY: 0,
+		};
+		(rect as { effects?: unknown }).effects = [
+			{
+				type: "drop-shadow",
+				color: "#ff0000",
+				blur: 4,
+				offsetX: 1,
+				offsetY: 1,
+				spread: 3,
+			},
+		];
+		render(<CanvasNodeRenderer node={rect} />);
+		expect(callsOfType("Rect")[0]?.props).toMatchObject({
+			shadowColor: "#ff0000",
+			shadowBlur: 7,
+		});
+	});
+
+	it("effects: [] suppresses the legacy shadow entirely", () => {
+		const rect = createRect({
+			id: "r-none",
+			bounds: { width: 10, height: 10 },
+		});
+		(rect as { shadow?: unknown; effects?: unknown }).shadow = {
+			color: "#000000",
+			blur: 4,
+			offsetX: 2,
+			offsetY: 2,
+		};
+		(rect as { effects?: unknown }).effects = [];
+		render(<CanvasNodeRenderer node={rect} />);
+		expect(callsOfType("Rect")[0]?.props.shadowColor).toBeUndefined();
+	});
+});
