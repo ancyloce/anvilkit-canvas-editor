@@ -39,6 +39,13 @@ export interface RasterizePageInput {
 	readonly mimeType?: "image/png" | "image/jpeg" | "image/webp";
 	/** Only honored for image/jpeg + image/webp. Defaults to 0.92. */
 	readonly quality?: number;
+	/**
+	 * Paint the page background (default `true`). `false` renders content only
+	 * — the FR-150 "transparent background" / "include background" export
+	 * options. JPEG has no alpha channel, so a background-less JPEG flattens
+	 * to black; the export dialog disables the option there.
+	 */
+	readonly includeBackground?: boolean;
 }
 
 export interface RasterizePageResult {
@@ -68,6 +75,7 @@ export async function rasterizePage(
 	const quality = input.quality ?? 0.92;
 	const assets = input.assets ?? {};
 	const brandKit = input.brandKit ?? EMPTY_BRAND_KIT;
+	const includeBackground = input.includeBackground ?? true;
 
 	await preloadImageAssets(page, assets);
 
@@ -94,15 +102,17 @@ export async function rasterizePage(
 								stage = s;
 							}}
 						>
-							<RenderLayer name="background" listening={false}>
-								<Rect
-									x={0}
-									y={0}
-									width={page.size.width}
-									height={page.size.height}
-									fill={page.background.value}
-								/>
-							</RenderLayer>
+							{includeBackground ? (
+								<RenderLayer name="background" listening={false}>
+									<Rect
+										x={0}
+										y={0}
+										width={page.size.width}
+										height={page.size.height}
+										fill={page.background.value}
+									/>
+								</RenderLayer>
+							) : null}
 							<RenderLayer name="objects" listening={false}>
 								<CanvasNodeRenderer node={page.root} />
 							</RenderLayer>
