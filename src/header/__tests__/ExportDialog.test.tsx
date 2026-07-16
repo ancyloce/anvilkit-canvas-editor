@@ -43,7 +43,9 @@ function setup(exporters: Partial<Record<string, CanvasExporter>> = {}) {
 
 async function openDialog(): Promise<void> {
 	fireEvent.click(screen.getByTestId("workspace-export"));
-	await screen.findByTestId("export-dialog"); // lazy chunk
+	// The dialog is a lazy import() chunk; under CPU contention its resolution
+	// can exceed RTL's default 1 s wait (recurring full-suite flake).
+	await screen.findByTestId("export-dialog", undefined, { timeout: 15_000 });
 }
 
 describe("ExportDialog (B-09, FR-150..154)", () => {
