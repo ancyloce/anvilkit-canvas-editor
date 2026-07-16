@@ -264,6 +264,25 @@ describe("TextEditorOverlay", () => {
 		expect(ctx.editingStore.getState().editingNodeId).toBeNull();
 	});
 
+	it("emptying a text node deletes it on blur (FR-080 empty-node cleanup)", () => {
+		const ir = fixtureIR();
+		const { ctx, commits } = makeCtx(ir, makeFakeStage());
+		ctx.editingStore.getState().setEditing("text1");
+		const { container } = render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<TextEditorOverlay />
+			</CanvasStudioContext.Provider>,
+		);
+		const ta = container.querySelector(
+			"[data-testid=text-editor-overlay]",
+		) as HTMLTextAreaElement;
+		fireEvent.change(ta, { target: { value: "   " } });
+		fireEvent.blur(ta);
+		expect(commits).toHaveLength(1);
+		expect(commits[0]).toMatchObject({ type: "node.delete", nodeId: "text1" });
+		expect(ctx.editingStore.getState().editingNodeId).toBeNull();
+	});
+
 	it("blur with unchanged text closes overlay but does not commit", () => {
 		const ir = fixtureIR();
 		const { ctx, commits } = makeCtx(ir, makeFakeStage());

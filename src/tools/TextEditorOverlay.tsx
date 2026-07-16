@@ -175,6 +175,18 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 		// Read the live DOM value rather than React state — state updates from
 		// `onChange` may not have re-rendered before `onBlur` fires.
 		const newText = textareaRef.current?.value ?? draftText;
+		// FR-080 empty-node cleanup: a text/rich-text node left with no content
+		// (whitespace-only) is removed rather than persisted as an invisible
+		// empty box — one undo entry. Locked nodes are protected by the commit
+		// pipeline (the delete no-ops).
+		if (
+			(original?.type === "text" || original?.type === "rich-text") &&
+			newText.trim().length === 0
+		) {
+			commit({ type: "node.delete", nodeId: editingNodeId });
+			editingStore.getState().clearEditing();
+			return;
+		}
 		if (original?.type === "text") {
 			if (newText !== original.text) {
 				const cmd: CanvasNodeUpdateCommand<"text"> = {
