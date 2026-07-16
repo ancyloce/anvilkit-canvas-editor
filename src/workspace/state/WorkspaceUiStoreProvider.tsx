@@ -9,7 +9,18 @@
  * supplies it via context (cf. core's SSR-gated `EditorUiStoreProvider`).
  */
 
-import { createContext, type ReactNode, use, useState } from "react";
+import {
+	createContext,
+	type ReactNode,
+	use,
+	useMemo,
+	useState,
+	useSyncExternalStore,
+} from "react";
+import {
+	type RecentTemplates,
+	RecentTemplatesContext,
+} from "../../context/recent-templates-context.js";
 import {
 	createWorkspaceUiStore,
 	type WorkspaceUiStoreApi,
@@ -48,4 +59,29 @@ export function useWorkspaceUiStoreApi(): WorkspaceUiStoreApi {
 		);
 	}
 	return store;
+}
+
+/**
+ * Bridges the persisted UI store's recents slice (C-06) into the low-layer
+ * {@link RecentTemplatesContext} so `panels/` never imports `workspace/`.
+ * Mounted by `<CanvasWorkspace>` inside this provider.
+ */
+export function RecentTemplatesBridge({
+	children,
+}: {
+	children: ReactNode;
+}): React.JSX.Element {
+	const store = useWorkspaceUiStoreApi();
+	const ids = useSyncExternalStore(
+		store.subscribe,
+		() => store.getState().recentTemplateIds,
+		() => store.getState().recentTemplateIds,
+	);
+	const value = useMemo<RecentTemplates>(
+		() => ({ ids, add: (id) => store.getState().addRecentTemplate(id) }),
+		[ids, store],
+	);
+	return (
+		<RecentTemplatesContext value={value}>{children}</RecentTemplatesContext>
+	);
 }

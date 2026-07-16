@@ -31,7 +31,11 @@ export interface WorkspaceUiState {
 	 */
 	readonly panelOpen: boolean;
 	readonly panelSearch: string;
+	/** FR-130 recently-used templates (C-06), most recent first, capped. Persisted. */
+	readonly recentTemplateIds: readonly string[];
 	setActiveDockId(id: DockId): void;
+	/** Record a template application; moves an existing id to the front. */
+	addRecentTemplate(id: string): void;
 	setPanelOpen(open: boolean): void;
 	setInspectorCollapsed(collapsed: boolean): void;
 	/** Clamped to [{@link PANEL_WIDTH_MIN}, {@link PANEL_WIDTH_MAX}] (B-14). */
@@ -49,12 +53,16 @@ export const PANEL_WIDTH_DEFAULT = 280;
 const clampPanelWidth = (w: number): number =>
 	Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, Math.round(w)));
 
+/** Cap for {@link WorkspaceUiState.recentTemplateIds}. */
+export const RECENT_TEMPLATES_MAX = 8;
+
 const INITIAL_STATE = {
 	activeDockId: "templates" as DockId,
 	inspectorCollapsed: false,
 	panelWidth: PANEL_WIDTH_DEFAULT,
 	panelOpen: true,
 	panelSearch: "",
+	recentTemplateIds: [] as readonly string[],
 } as const;
 
 /**
@@ -66,10 +74,14 @@ interface WorkspaceUiPersistedSlice {
 	readonly activeDockId: DockId;
 	readonly inspectorCollapsed: boolean;
 	readonly panelWidth: number;
+	readonly recentTemplateIds: readonly string[];
 }
 
-/** v2 (B-14): adds `panelWidth`; v1 payloads migrate with the default. */
-export const WORKSPACE_UI_STORE_PERSIST_VERSION = 2;
+/**
+ * v2 (B-14): adds `panelWidth`; v1 payloads migrate with the default.
+ * v3 (C-06): adds `recentTemplateIds`; older payloads migrate with `[]`.
+ */
+export const WORKSPACE_UI_STORE_PERSIST_VERSION = 3;
 
 // Hidden stub docks (M0-08) are excluded so a persisted selection of a
 // now-hidden tab falls back to the default instead of activating an
@@ -103,6 +115,11 @@ function migratePersistedState(persisted: unknown): unknown {
 			Number.isFinite(source.panelWidth)
 				? clampPanelWidth(source.panelWidth)
 				: INITIAL_STATE.panelWidth,
+		recentTemplateIds: Array.isArray(source.recentTemplateIds)
+			? source.recentTemplateIds
+					.filter((id): id is string => typeof id === "string")
+					.slice(0, RECENT_TEMPLATES_MAX)
+			: INITIAL_STATE.recentTemplateIds,
 	} satisfies WorkspaceUiPersistedSlice;
 }
 
@@ -146,6 +163,14 @@ export function createWorkspaceUiStore(
 				setPanelSearch(panelSearch) {
 					set({ panelSearch });
 				},
+				addRecentTemplate(id) {
+					set((state) => ({
+						recentTemplateIds: [
+							id,
+							...state.recentTemplateIds.filter((r) => r !== id),
+						].slice(0, RECENT_TEMPLATES_MAX),
+					}));
+				},
 				reset() {
 					set({ ...INITIAL_STATE });
 				},
@@ -157,6 +182,7 @@ export function createWorkspaceUiStore(
 					activeDockId: state.activeDockId,
 					inspectorCollapsed: state.inspectorCollapsed,
 					panelWidth: state.panelWidth,
+					recentTemplateIds: state.recentTemplateIds,
 				}),
 				migrate: migratePersistedState,
 				// `migrate` only runs for OLD versions; `merge` sanitizes every
