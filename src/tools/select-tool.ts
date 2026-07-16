@@ -1,12 +1,34 @@
-import { type CanvasNodeMoveCommand, marqueeHits } from "@anvilkit/canvas-core";
+import {
+	type CanvasNode,
+	type CanvasNodeMoveCommand,
+	marqueeHits,
+} from "@anvilkit/canvas-core";
 import type Konva from "konva";
+import { isolationScopeChildren } from "../selection/isolation.js";
 import { getOtherNodeRects } from "../snap/get-node-rect.js";
 import { computeSnap } from "../snap/snap-engine.js";
 import { nodeRenderOffset } from "../stage/node-render-offset.js";
 import type { Tool, ToolContext, ToolPointerEvent } from "./tool-types.js";
 
+/**
+ * The children the select tool operates over (C-09, FR-055): the isolated
+ * container's children while isolation is active, else the page top level.
+ */
+function selectionScope(ctx: ToolContext): readonly CanvasNode[] {
+	const page = ctx.getIR().pages.find((p) => p.id === ctx.activePageId);
+	return isolationScopeChildren(
+		page,
+		ctx.isolationStore?.getState().path ?? [],
+	);
+}
+
 const MIN_MOVE_DISTANCE = 0.5;
 const MIN_MARQUEE_SIZE = 2;
+
+/** Same-node repeat-click window for isolation entry (C-09). */
+const DOUBLE_CLICK_MS = 400;
+/** Last primary click, for the double-click detector. Module-level: the select tool is a singleton. */
+let lastClick: { id: string; time: number } | null = null;
 
 /**
  * Walk up the Konva tree from the hit target until we find an ancestor whose
@@ -48,14 +70,13 @@ function findHitNodeId(
 	target: Konva.Node | undefined | null,
 	ctx: ToolContext,
 ): string | null {
-	const ir = ctx.getIR();
-	const page = ir.pages.find((p) => p.id === ctx.activePageId);
-	if (!page) return null;
 	// Map id → node so we can skip `locked` nodes during hit-test. A locked
 	// node is treated as if the click missed it — the marquee/empty-stage path
 	// takes over instead. This is the canvas-side enforcement of "locked
 	// elements can't be selected"; unlock via the layer panel to re-edit.
-	const byId = new Map(page.root.children.map((c) => [c.id, c]));
+	// C-09: inside isolation the candidates are the isolated container's
+	// children, not the page's top level (FR-055).
+	const byId = new Map(selectionScope(ctx).map((c) => [c.id, c]));
 	let cur: Konva.Node | null = target ?? null;
 	let safety = 16;
 	while (cur && safety-- > 0) {
@@ -83,8 +104,7 @@ function snapMoveDelta(
 	guides: ReturnType<typeof computeSnap>["guides"];
 } {
 	const ir = ctx.getIR();
-	const page = ir.pages.find((p) => p.id === ctx.activePageId);
-	const node = page?.root.children.find((c) => c.id === nodeId);
+	const node = selectionScope(ctx).find((c) => c.id === nodeId);
 	if (!node) return { dx, dy, guides: [] };
 	const vs = ctx.viewportStore.getState();
 	const candidate = {
@@ -120,6 +140,29 @@ export const selectTool: Tool = {
 		const hitId = findHitNodeId(e.target, ctx);
 		const sel = ctx.selectionStore.getState();
 		if (hitId) {
+			// C-09 (FR-055): double-clicking a group/frame enters isolation for
+			// it. Uses the event timestamp so tests can drive it deterministically.
+			const now =
+				typeof e.evt?.timeStamp === "number" && e.evt.timeStamp > 0
+					? e.evt.timeStamp
+					: Date.now();
+			if (
+				ctx.isolationStore &&
+				lastClick &&
+				lastClick.id === hitId &&
+				now - lastClick.time <= DOUBLE_CLICK_MS
+			) {
+				lastClick = null;
+				const node = selectionScope(ctx).find((c) => c.id === hitId);
+				if (node && (node.type === "group" || node.type === "frame")) {
+					ctx.isolationStore.getState().enter(hitId);
+					sel.clearSelection();
+					ctx.draftStore.getState().clearDraft();
+					return;
+				}
+			} else {
+				lastClick = { id: hitId, time: now };
+			}
 			if (e.shiftKey) {
 				sel.toggleSelection(hitId);
 			} else if (!sel.isSelected(hitId)) {
@@ -132,7 +175,7 @@ export const selectTool: Tool = {
 			if (!page) return;
 			// Locked nodes are excluded from the move draft — they don't move
 			// even when caught in a multi-selection from the layer panel.
-			const nodeStarts = page.root.children
+			const nodeStarts = selectionScope(ctx)
 				.filter((c) => currentSelection.includes(c.id) && c.locked !== true)
 				.map((c) => ({ id: c.id, x: c.transform.x, y: c.transform.y }));
 			if (nodeStarts.length === 0) return;
@@ -175,11 +218,11 @@ export const selectTool: Tool = {
 			// Apply each node's render offset so centered shapes (Konva.Ellipse,
 			// whose `position()` is its center, not its top-left) track the cursor
 			// instead of drifting by half their bounds. See `nodeRenderOffset`.
-			const page = ctx.getIR().pages.find((p) => p.id === ctx.activePageId);
+			const scope = selectionScope(ctx);
 			for (const start of draft.nodeStarts) {
 				const konvaNode = ctx.stage.findOne(`.${start.id}`);
 				if (!konvaNode) continue;
-				const node = page?.root.children.find((c) => c.id === start.id);
+				const node = scope.find((c) => c.id === start.id);
 				const offset = node ? nodeRenderOffset(node) : { x: 0, y: 0 };
 				konvaNode.position({
 					x: start.x + dx + offset.x,
@@ -249,13 +292,12 @@ export const selectTool: Tool = {
 			}
 
 			const marquee = { minX: x, minY: y, maxX: x + w, maxY: y + h };
-			const page = ctx.getIR().pages.find((p) => p.id === ctx.activePageId);
-			if (!page) return;
 			// Locked nodes are skipped by the marquee — they can't be selected via
 			// the canvas (unlock via the layer panel to re-edit). marqueeHits uses
 			// each node's rotation-aware world AABB, replacing the earlier
-			// rotation-ignoring inline rect + local aabbIntersect.
-			const hitIds = marqueeHits(page.root.children, marquee, {
+			// rotation-ignoring inline rect + local aabbIntersect. C-09: the
+			// candidate set is the isolation scope (FR-055).
+			const hitIds = marqueeHits(selectionScope(ctx), marquee, {
 				skipLocked: true,
 			}).map((n) => n.id);
 

@@ -39,6 +39,7 @@ export function ToolInteractionLayer({
 		pickAsset,
 		activePageId,
 		requestAiIntent,
+		isolationStore,
 	} = useCanvasStudio();
 
 	const ctx = useMemo<ToolContext | null>(() => {
@@ -85,6 +86,7 @@ export function ToolInteractionLayer({
 			pickAsset,
 			activePageId,
 			requestAiIntent,
+			...(isolationStore ? { isolationStore } : {}),
 		};
 	}, [
 		stage,
@@ -100,6 +102,7 @@ export function ToolInteractionLayer({
 		pickAsset,
 		activePageId,
 		requestAiIntent,
+		isolationStore,
 		continuousCreation,
 	]);
 

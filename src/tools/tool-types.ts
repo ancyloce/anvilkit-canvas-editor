@@ -4,6 +4,7 @@ import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
 import type { CanvasFocusStoreApi } from "../stores/focus-store.js";
 import type { GuidesStoreApi } from "../stores/guides-store.js";
+import type { IsolationStoreApi } from "../stores/isolation-store.js";
 import type { PenStoreApi } from "../stores/pen-store.js";
 import type { SelectionStoreApi } from "../stores/selection-store.js";
 import type { ToolId, ToolStoreApi } from "../stores/tool-store.js";
@@ -47,6 +48,12 @@ export interface ToolContext {
 	 * (a no-op when no `onAiIntent` prop is wired), but tool tests may omit it.
 	 */
 	requestAiIntent?: (intent: AiToolIntent) => void;
+	/**
+	 * Container isolation stack (C-09, FR-055). Always supplied by
+	 * `<CanvasStudio>`; optional so lightweight tool tests may omit it — the
+	 * select tool then scopes to the page's top level.
+	 */
+	isolationStore?: IsolationStoreApi;
 }
 
 export interface ToolPointerEvent {
