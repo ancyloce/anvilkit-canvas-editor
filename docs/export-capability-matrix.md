@@ -19,6 +19,20 @@ one color matrix and effects resolve through one resolver, both in core,
 consumed by both paths. Where Konva lacks infrastructure the live/raster side
 *approximates*; the table is explicit about each case.
 
+**All six formats are built in (FR-151 / AC-010).** `DEFAULT_CANVAS_EXPORTERS`
+ships PNG, JPEG, WebP, SVG (core `serializePageToSvg`), PDF (multi-page
+raster-embed via `rasterizePage` + core `serializeDocumentToPdf`), and JSON —
+no host serializer injection required. Hosts may still override any format via
+`createCanvasExportPlugin({ exporters })`. SVG/PDF weight is code-split behind
+a dynamic `import()` so the eager editor bundle is unaffected.
+
+**Page scope (FR-152).** The dialog exports the current page, all pages, or the
+current selection (FR-031 "Export selection" synthesizes a page framed to the
+selection AABB). Whole-document formats (PDF/JSON) receive a scoped IR so the
+chosen scope applies uniformly; per-page formats (PNG/JPEG/WebP/SVG) emit one
+file per page. Custom width/height with an aspect-ratio lock and a
+transparent/include-background toggle (FR-153) drive the raster path.
+
 ## Formats
 
 | Format | Path | Nature | Fidelity notes |
@@ -46,6 +60,7 @@ consumed by both paths. Where Konva lacks infrastructure the live/raster side
 | Rich text (two-tier model) | ✅ | ✅ | ✅ one `<tspan>` per styled run; wrapping needs the host measurer |
 | `svg` node kind | ⚠ rendered as `<image>` | ⚠ same | ⚠ same + `SVG_INLINE_UNSUPPORTED` (no inline vector) |
 | `video` / `audio` / `ai-placeholder` | poster/placeholder chrome | poster or nothing | poster or nothing + typed warning |
+| Missing/failed `image` / `svg` asset (FR-095) | selectable placeholder chrome | never exported (renders nothing) | never exported + `ASSET_UNRESOLVED` warning |
 | Rulers/guides/margins/bleed/safe-area, isolation dimming, selection chrome | editor-only | never exported | never exported |
 
 \* PDF inherits the raster column by construction (it embeds the Konva

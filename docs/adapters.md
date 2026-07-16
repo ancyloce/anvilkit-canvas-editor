@@ -61,6 +61,21 @@ filter, skeleton/error/load-more states, and persisted recents. A static
 always speaks one protocol — implementing the provider is only needed for
 remote catalogs.
 
+### Open as new document (FR-132) — `onCreateDocument`
+
+```ts
+onCreateDocument?: (document: CanvasIR) => void;
+```
+
+`<CanvasStudio>` owns exactly one live document, so "open as a new document"
+is a host action. Wire `onCreateDocument` and the Templates panel adds an
+**Open as new document** choice: the template is instantiated into a
+standalone `CanvasIR` and handed to your callback (open a new tab/route/
+window). The current document is untouched. Omit the callback and the choice
+is hidden; **Replace** and **Add as new pages** still work. Replace is guarded
+by an unsaved-changes confirmation whenever the document is dirty
+(`canLeave()` is false).
+
 ## Recovery — `CanvasRecoveryAdapter`
 
 ```ts
