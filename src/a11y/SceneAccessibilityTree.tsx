@@ -74,8 +74,19 @@ export function SceneAccessibilityTree(): React.JSX.Element {
 	const selectedSet = new Set(selectedIds);
 
 	const labelFor = (node: CanvasNode): string => {
-		if (node.name && node.name.length > 0) return node.name;
-		return ctx.kindInspectors?.[node.type]?.label ?? node.type;
+		const base =
+			node.name && node.name.length > 0
+				? node.name
+				: (ctx.kindInspectors?.[node.type]?.label ?? node.type);
+		// FR-095 accessible description: a broken asset reference must be
+		// perceivable without sight of the canvas placeholder chrome.
+		if (
+			(node.type === "image" || node.type === "svg") &&
+			ctx.ir.assets[node.assetId] === undefined
+		) {
+			return `${base} — ${t("canvas.a11y.missingAsset", "missing asset")}`;
+		}
+		return base;
 	};
 
 	const onItemKeyDown = (
