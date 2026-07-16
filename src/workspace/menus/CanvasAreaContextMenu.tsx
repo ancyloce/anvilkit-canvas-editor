@@ -108,6 +108,14 @@ export function CanvasAreaContextMenu({
 	};
 
 	const gridEnabled = ctx.viewportStore.getState().gridEnabled;
+	// Ruler/guide chrome (C-02, FR-030). Values are read at render like
+	// `gridEnabled` — the menu re-renders on every open, so this stays fresh.
+	const rulerGuides = ctx.rulerGuideStore;
+	const activeGuides = ctx.ir.pages.find((p) => p.id === ctx.activePageId)
+		?.layoutAids?.guides;
+	const hasGuides =
+		(activeGuides?.horizontal.length ?? 0) > 0 ||
+		(activeGuides?.vertical.length ?? 0) > 0;
 
 	return (
 		<ContextMenu>
@@ -223,6 +231,79 @@ export function CanvasAreaContextMenu({
 								? t("canvas.menu.hideGrid", "Hide grid")
 								: t("canvas.menu.showGrid", "Show grid")}
 						</ContextMenuItem>
+						{rulerGuides ? (
+							<>
+								<ContextMenuItem
+									data-testid="ctx-toggle-rulers"
+									onClick={() =>
+										rulerGuides
+											.getState()
+											.setRulersVisible(!rulerGuides.getState().rulersVisible)
+									}
+								>
+									{rulerGuides.getState().rulersVisible
+										? t("canvas.menu.hideRulers", "Hide rulers")
+										: t("canvas.menu.showRulers", "Show rulers")}
+								</ContextMenuItem>
+								<ContextMenuSeparator />
+								<ContextMenuItem
+									data-testid="ctx-add-guide-horizontal"
+									onClick={() => {
+										const page = ctx
+											.getIR()
+											.pages.find((p) => p.id === ctx.activePageId);
+										if (page)
+											actions.addGuide("horizontal", page.size.height / 2);
+									}}
+								>
+									{t("canvas.menu.addHorizontalGuide", "Add horizontal guide")}
+								</ContextMenuItem>
+								<ContextMenuItem
+									data-testid="ctx-add-guide-vertical"
+									onClick={() => {
+										const page = ctx
+											.getIR()
+											.pages.find((p) => p.id === ctx.activePageId);
+										if (page) actions.addGuide("vertical", page.size.width / 2);
+									}}
+								>
+									{t("canvas.menu.addVerticalGuide", "Add vertical guide")}
+								</ContextMenuItem>
+								<ContextMenuItem
+									data-testid="ctx-toggle-guides"
+									disabled={!hasGuides}
+									onClick={() =>
+										rulerGuides
+											.getState()
+											.setGuidesVisible(!rulerGuides.getState().guidesVisible)
+									}
+								>
+									{rulerGuides.getState().guidesVisible
+										? t("canvas.menu.hideGuides", "Hide guides")
+										: t("canvas.menu.showGuides", "Show guides")}
+								</ContextMenuItem>
+								<ContextMenuItem
+									data-testid="ctx-lock-guides"
+									disabled={!hasGuides}
+									onClick={() =>
+										rulerGuides
+											.getState()
+											.setGuidesLocked(!rulerGuides.getState().guidesLocked)
+									}
+								>
+									{rulerGuides.getState().guidesLocked
+										? t("canvas.menu.unlockGuides", "Unlock guides")
+										: t("canvas.menu.lockGuides", "Lock guides")}
+								</ContextMenuItem>
+								<ContextMenuItem
+									data-testid="ctx-clear-guides"
+									disabled={!hasGuides}
+									onClick={() => actions.clearGuides()}
+								>
+									{t("canvas.menu.clearGuides", "Clear guides")}
+								</ContextMenuItem>
+							</>
+						) : null}
 					</>
 				)}
 			</ContextMenuContent>
