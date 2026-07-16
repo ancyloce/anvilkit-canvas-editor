@@ -214,7 +214,6 @@ function WorkspaceBody({
 					<WorkspaceFooter className="absolute inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur" />
 					{overlay && panelOpen ? (
 						<>
-							{/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss mirrors dialog scrims; the panel itself stays keyboard-reachable via the dock. */}
 							<div
 								data-testid="panel-overlay-backdrop"
 								className="absolute inset-0 z-30 bg-black/20"
