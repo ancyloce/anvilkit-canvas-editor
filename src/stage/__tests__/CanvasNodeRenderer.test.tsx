@@ -704,6 +704,10 @@ describe("CanvasNodeRenderer — frame image well (placeholder)", () => {
 	});
 
 	it("drops the affordance and the fallback once the well is filled", () => {
+		// Loaded image: with FR-095 a still-loading child would legitimately show
+		// its own loading chrome, which is not what this test is about.
+		const fakeImg = { src: "data:image/png;base64,AA=" } as HTMLImageElement;
+		useImageMock.mockReturnValue([fakeImg, "loaded"]);
 		const filled = wellFixture({
 			placeholder: { kind: "image", assetId: "a1" },
 			children: [
@@ -725,6 +729,7 @@ describe("CanvasNodeRenderer — frame image well (placeholder)", () => {
 				</CanvasAssetsContext.Provider>
 			</CanvasStudioContext.Provider>,
 		);
+		useImageMock.mockReturnValue([null, "loading"]);
 		expect(callsOfType("Rect").some((c) => c.props.fill === "#e2e8f0")).toBe(
 			false,
 		);
@@ -1039,5 +1044,100 @@ describe("effects → Konva shadow props (C-03)", () => {
 		(rect as { effects?: unknown }).effects = [];
 		render(<CanvasNodeRenderer node={rect} />);
 		expect(callsOfType("Rect")[0]?.props.shadowColor).toBeUndefined();
+	});
+});
+
+describe("CanvasNodeRenderer — FR-095 asset placeholders", () => {
+	beforeEachReset();
+
+	const interactive = (
+		node: Parameters<typeof CanvasNodeRenderer>[0]["node"],
+	) =>
+		render(
+			<CanvasStudioContext.Provider
+				value={{} as unknown as CanvasStudioContextValue}
+			>
+				<CanvasNodeRenderer node={node} />
+			</CanvasStudioContext.Provider>,
+		);
+
+	const textLabels = () =>
+		callsOfType("Text").map((c) => c.props.text as string);
+
+	it("image with a missing asset shows selectable 'Missing image' chrome in the editor", () => {
+		const image = createImage({
+			id: "i-missing",
+			bounds: { width: 100, height: 80 },
+			assetId: "nope",
+		});
+		interactive(image);
+		expect(textLabels()).toContain("Missing image");
+		// The wrapping Group carries the node id, keeping it hit-testable.
+		expect(callsOfType("Group").some((c) => c.props.id === "i-missing")).toBe(
+			true,
+		);
+	});
+
+	it("image whose load failed shows 'Image failed to load' chrome in the editor", () => {
+		useImageMock.mockReturnValueOnce([null, "failed"]);
+		const image = createImage({
+			id: "i-err",
+			bounds: { width: 100, height: 80 },
+			assetId: "a1",
+		});
+		render(
+			<CanvasStudioContext.Provider
+				value={{} as unknown as CanvasStudioContextValue}
+			>
+				<CanvasAssetsContext.Provider
+					value={{ a1: { id: "a1", uri: "https://example.com/broken.png" } }}
+				>
+					<CanvasNodeRenderer node={image} />
+				</CanvasAssetsContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+		expect(textLabels()).toContain("Image failed to load");
+	});
+
+	it("image still loading shows the loading chrome in the editor", () => {
+		useImageMock.mockReturnValueOnce([null, "loading"]);
+		const image = createImage({
+			id: "i-loading",
+			bounds: { width: 100, height: 80 },
+			assetId: "a1",
+		});
+		render(
+			<CanvasStudioContext.Provider
+				value={{} as unknown as CanvasStudioContextValue}
+			>
+				<CanvasAssetsContext.Provider
+					value={{ a1: { id: "a1", uri: "data:image/png;base64,XXX" } }}
+				>
+					<CanvasNodeRenderer node={image} />
+				</CanvasAssetsContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+		expect(textLabels()).toContain("Loading image…");
+	});
+
+	it("svg with a missing asset shows 'Missing graphic' chrome in the editor", () => {
+		const svg = createSvg({
+			id: "s-missing",
+			bounds: { width: 60, height: 60 },
+			assetId: "nope",
+		});
+		interactive(svg);
+		expect(textLabels()).toContain("Missing graphic");
+	});
+
+	it("missing-asset chrome never renders outside the editor (export path)", () => {
+		const image = createImage({
+			id: "i-export",
+			bounds: { width: 100, height: 80 },
+			assetId: "nope",
+		});
+		render(<CanvasNodeRenderer node={image} />);
+		expect(callsOfType("Text")).toHaveLength(0);
+		expect(callsOfType("Rect")).toHaveLength(0);
 	});
 });

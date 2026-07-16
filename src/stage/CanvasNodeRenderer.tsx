@@ -706,10 +706,38 @@ function AdjustedKonvaImage({
 }
 
 function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
+	const isInteractive = use(CanvasStudioContext) !== null;
+	const t = useCanvasT();
 	const asset = useCanvasAsset(node.assetId);
 	const [image, status] = useImage(asset?.uri ?? "");
-	if (!asset) return null;
-	if (status !== "loaded" || !image) return null;
+	// FR-095: a missing asset or failed load must never disappear silently.
+	// The live editor shows selectable placeholder chrome; export/rasterize
+	// passes (isInteractive false) still emit nothing, matching core's SVG
+	// serializer (ASSET_UNRESOLVED warning + skip).
+	if (!asset || status === "failed") {
+		if (!isInteractive) return null;
+		return (
+			<AssetPlaceholder
+				node={node}
+				state={asset ? "error" : "missing"}
+				label={
+					asset
+						? t("canvas.image.loadError", "Image failed to load")
+						: t("canvas.image.missingAsset", "Missing image")
+				}
+			/>
+		);
+	}
+	if (status !== "loaded" || !image) {
+		if (!isInteractive) return null;
+		return (
+			<AssetPlaceholder
+				node={node}
+				state="loading"
+				label={t("canvas.image.loading", "Loading image…")}
+			/>
+		);
+	}
 	const { width, height } = node.bounds;
 	// FR-094 fit modes (B-02/B-12). An explicit `crop` keeps the legacy
 	// stretch+crop path (the editor does not compose crop with fit modes —
@@ -780,10 +808,36 @@ function centerCoverCrop(
 }
 
 function CanvasSvgNodeRenderer({ node }: { node: CanvasSvgNode }) {
+	const isInteractive = use(CanvasStudioContext) !== null;
+	const t = useCanvasT();
 	const asset = useCanvasAsset(node.assetId);
 	const [image, status] = useImage(asset?.uri ?? "");
-	if (!asset) return null;
-	if (status !== "loaded" || !image) return null;
+	// FR-095: same missing/error/loading treatment as image nodes — editor-only
+	// chrome, never emitted by export/rasterize passes.
+	if (!asset || status === "failed") {
+		if (!isInteractive) return null;
+		return (
+			<AssetPlaceholder
+				node={node}
+				state={asset ? "error" : "missing"}
+				label={
+					asset
+						? t("canvas.svg.loadError", "Graphic failed to load")
+						: t("canvas.svg.missingAsset", "Missing graphic")
+				}
+			/>
+		);
+	}
+	if (status !== "loaded" || !image) {
+		if (!isInteractive) return null;
+		return (
+			<AssetPlaceholder
+				node={node}
+				state="loading"
+				label={t("canvas.svg.loading", "Loading graphic…")}
+			/>
+		);
+	}
 	return (
 		<KonvaImage
 			{...commonProps(node)}
@@ -817,10 +871,16 @@ function MediaPlaceholderChrome({
 	width,
 	height,
 	label,
+	fill = MEDIA_PLACEHOLDER_FILL,
+	stroke = MEDIA_PLACEHOLDER_STROKE,
+	labelColor = MEDIA_PLACEHOLDER_LABEL_COLOR,
 }: {
 	width: number;
 	height: number;
 	label: string;
+	fill?: string;
+	stroke?: string;
+	labelColor?: string;
 }) {
 	return (
 		<Group listening={false}>
@@ -829,8 +889,8 @@ function MediaPlaceholderChrome({
 				y={0}
 				width={width}
 				height={height}
-				fill={MEDIA_PLACEHOLDER_FILL}
-				stroke={MEDIA_PLACEHOLDER_STROKE}
+				fill={fill}
+				stroke={stroke}
 				strokeWidth={1}
 				dash={[6, 4]}
 			/>
@@ -843,8 +903,68 @@ function MediaPlaceholderChrome({
 				verticalAlign="middle"
 				fontSize={12}
 				fontFamily="Inter"
-				fill={MEDIA_PLACEHOLDER_LABEL_COLOR}
+				fill={labelColor}
 				text={label}
+			/>
+		</Group>
+	);
+}
+
+/**
+ * FR-095 image/svg asset states. `missing`/`error` use a destructive tint so
+ * a broken reference reads as a problem, not content; `loading` is a quiet
+ * neutral shimmer-less box (it usually lives for a frame or two).
+ */
+const ASSET_PLACEHOLDER_STYLE = {
+	missing: {
+		fill: "rgba(220, 38, 38, 0.06)",
+		stroke: "#dc2626",
+		labelColor: "#b91c1c",
+	},
+	error: {
+		fill: "rgba(220, 38, 38, 0.06)",
+		stroke: "#dc2626",
+		labelColor: "#b91c1c",
+	},
+	loading: {
+		fill: "rgba(120, 120, 120, 0.06)",
+		stroke: "#9ca3af",
+		labelColor: "#6b7280",
+	},
+} as const;
+
+/**
+ * Selectable editor-chrome placeholder for an image/svg node whose asset is
+ * missing, failed to load, or is still loading (FR-095). Rendered ONLY on the
+ * live editor stage (`isInteractive`); export/rasterize passes emit nothing,
+ * matching core's SVG serializer (`ASSET_UNRESOLVED` warning + skip). The
+ * invisible hit `Rect` keeps the node selectable while the chrome itself
+ * stays `listening={false}`.
+ */
+function AssetPlaceholder({
+	node,
+	state,
+	label,
+}: {
+	node: CanvasNodeBase & {
+		id: string;
+		bounds: { width: number; height: number };
+	};
+	state: keyof typeof ASSET_PLACEHOLDER_STYLE;
+	label: string;
+}) {
+	const style = ASSET_PLACEHOLDER_STYLE[state];
+	const { width, height } = node.bounds;
+	return (
+		<Group {...commonProps(node)}>
+			<Rect x={0} y={0} width={width} height={height} fill="transparent" />
+			<MediaPlaceholderChrome
+				width={width}
+				height={height}
+				label={label}
+				fill={style.fill}
+				stroke={style.stroke}
+				labelColor={style.labelColor}
 			/>
 		</Group>
 	);
