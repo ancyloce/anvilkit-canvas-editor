@@ -55,6 +55,7 @@
 	},
 	"files": [
 		"dist",
+		"docs",
 		"i18n"
 	],
 	"license": "MIT",
@@ -117,6 +118,7 @@
 		"check:api-snapshot": "node ./scripts/check-api-snapshot.mjs",
 		"check:all": "pnpm check:publint && pnpm check:circular && pnpm check:layering && pnpm check:peer-deps && pnpm check:bundle-budget && pnpm check:api-snapshot",
 		"update:api-snapshot": "node ./scripts/check-api-snapshot.mjs --update",
+		"docs:shortcuts": "node ./scripts/generate-shortcut-reference.mjs",
 		"size": "size-limit"
 	},
 	"devDependencies": {
