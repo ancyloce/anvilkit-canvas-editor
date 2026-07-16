@@ -194,6 +194,8 @@
 	"canvas.templates.cancel": "キャンセル",
 	"canvas.templates.searchPlaceholder": "テンプレートを検索…",
 	"canvas.templates.categoryAll": "すべてのカテゴリー",
+	"canvas.templates.categoryFilterLabel": "カテゴリーで絞り込み",
+	"canvas.templates.sizeFilterLabel": "サイズで絞り込み",
 	"canvas.templates.insertNew": "新規として挿入",
 	"canvas.templates.noResults": "検索に一致するテンプレートがありません。",
 	"canvas.templates.warningRequiredMissing": "必須の値が空欄のままでした。",

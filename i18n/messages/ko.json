@@ -194,6 +194,8 @@
 	"canvas.templates.cancel": "취소",
 	"canvas.templates.searchPlaceholder": "템플릿 검색…",
 	"canvas.templates.categoryAll": "모든 카테고리",
+	"canvas.templates.categoryFilterLabel": "카테고리로 필터링",
+	"canvas.templates.sizeFilterLabel": "크기로 필터링",
 	"canvas.templates.insertNew": "새로 삽입",
 	"canvas.templates.noResults": "검색과 일치하는 템플릿이 없습니다.",
 	"canvas.templates.warningRequiredMissing": "필수 값이 비어 있습니다.",

@@ -194,6 +194,8 @@
 	"canvas.templates.cancel": "取消",
 	"canvas.templates.searchPlaceholder": "搜索模板…",
 	"canvas.templates.categoryAll": "所有分类",
+	"canvas.templates.categoryFilterLabel": "按分类筛选",
+	"canvas.templates.sizeFilterLabel": "按尺寸筛选",
 	"canvas.templates.insertNew": "作为新页面插入",
 	"canvas.templates.noResults": "没有匹配的模板。",
 	"canvas.templates.warningRequiredMissing": "必填项未填写。",

@@ -194,6 +194,8 @@
 	"canvas.templates.cancel": "Cancel",
 	"canvas.templates.searchPlaceholder": "Search templates…",
 	"canvas.templates.categoryAll": "All categories",
+	"canvas.templates.categoryFilterLabel": "Filter by category",
+	"canvas.templates.sizeFilterLabel": "Filter by size",
 	"canvas.templates.insertNew": "Insert as new",
 	"canvas.templates.noResults": "No templates match your search.",
 	"canvas.templates.warningRequiredMissing": "A required value was left blank.",
