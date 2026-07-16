@@ -146,6 +146,28 @@ describe("createCanvasEditorActions — delegation", () => {
 		actions.distributeSelection("x");
 		expect(h.commits).toHaveLength(0);
 	});
+
+	it("toggleVisibilitySelection hides visible nodes as one batch (FR-031)", () => {
+		const { h, actions } = makeActionsHarness();
+		h.studioCtx.selectionStore.getState().setSelection(["a", "b"]);
+		const next = actions.toggleVisibilitySelection();
+		expect(next).toBe(false);
+		expect(h.studioCtx.commitBatch).toHaveBeenCalledTimes(1);
+		expect(
+			h.commits.every(
+				(c) => (c as { patch: { visible?: boolean } }).patch.visible === false,
+			),
+		).toBe(true);
+	});
+
+	it("toggleVisibilitySelection skips locked nodes (FR-024)", () => {
+		const { h, actions } = makeActionsHarness();
+		// c is locked → excluded; only a remains → plain commit shows/hides it.
+		h.studioCtx.selectionStore.getState().setSelection(["c"]);
+		const next = actions.toggleVisibilitySelection();
+		expect(next).toBeNull();
+		expect(h.commits).toHaveLength(0);
+	});
 });
 
 describe("useCanvasActions", () => {

@@ -105,6 +105,14 @@ export interface CanvasEditorActions {
 	 * new lock state, or null for an empty selection.
 	 */
 	toggleLockSelection(): boolean | null;
+	/**
+	 * Toggle the visibility of the whole selection as ONE undo entry
+	 * (FR-031 Show/Hide, FR-054): hides when any selected node is visible,
+	 * shows when all are hidden. Locked nodes are skipped (a locked hidden
+	 * node stays hidden). Returns the new visible state, or null for an empty
+	 * selection.
+	 */
+	toggleVisibilitySelection(): boolean | null;
 	/** FR-020 copy — internal clipboard + system clipboard when available. */
 	copySelection(): Promise<number>;
 	/** FR-022 cut — copy, then a single-undo-entry delete. */
@@ -226,6 +234,47 @@ function toggleLockSelectionImpl(
 	return nextLocked;
 }
 
+function toggleVisibilitySelectionImpl(
+	ctx: CanvasStudioContextValue,
+	toaster: CanvasToaster = NOOP_CANVAS_TOASTER,
+): boolean | null {
+	const ir = ctx.getIR();
+	const selectedIds = ctx.selectionStore.getState().selectedIds;
+	const nodes = selectedIds
+		.map((id) => findNode(ir, id)?.node)
+		.filter((n): n is NonNullable<typeof n> => Boolean(n));
+	// FR-024 lock enforcement: a locked node cannot be hidden/shown either.
+	const editable = nodes.filter((n) => n.locked !== true);
+	if (editable.length === 0) {
+		if (nodes.length > 0) {
+			toaster.add({
+				type: "warning",
+				title: (ctx.t ?? ((_k, f) => f ?? ""))(
+					"canvas.toast.lockedNotEdited",
+					"Locked layers weren't changed",
+				),
+			});
+		}
+		return null;
+	}
+	// Hide when any editable node is currently visible; otherwise show.
+	const anyVisible = editable.some((n) => n.visible !== false);
+	const nextVisible = !anyVisible;
+	const cmds = editable.map(
+		(n) =>
+			({
+				type: "node.update",
+				nodeId: n.id,
+				kind: n.type,
+				patch: { visible: nextVisible },
+			}) as CanvasAnyNodeUpdateCommand,
+	);
+	const first = cmds[0];
+	if (cmds.length === 1 && first) ctx.commit(first);
+	else ctx.commitBatch(cmds, nextVisible ? "Show" : "Hide");
+	return nextVisible;
+}
+
 /**
  * Build a {@link CanvasEditorActions} facade over a studio context. For
  * non-React callers and tests; components should prefer
@@ -251,6 +300,8 @@ export function createCanvasEditorActions(
 		distributeSelection: (axis) => distributeSelectionFn(ctx, axis),
 		tidyUpSelection: () => tidyUpSelectionFn(ctx),
 		toggleLockSelection: () => toggleLockSelectionImpl(ctx),
+		toggleVisibilitySelection: () =>
+			toggleVisibilitySelectionImpl(ctx, toaster),
 		copySelection: () => copySelectionImpl(ctx),
 		cutSelection: () =>
 			cutSelectionImpl(ctx, () => deleteSelectionImpl(ctx, toaster)),
@@ -299,6 +350,8 @@ export function useCanvasActions(): CanvasEditorActions {
 			distributeSelection: (axis) => distributeSelectionFn(liveCtx(), axis),
 			tidyUpSelection: () => tidyUpSelectionFn(liveCtx()),
 			toggleLockSelection: () => toggleLockSelectionImpl(liveCtx()),
+			toggleVisibilitySelection: () =>
+				toggleVisibilitySelectionImpl(liveCtx(), toaster),
 			copySelection: () => copySelectionImpl(liveCtx()),
 			cutSelection: () => {
 				const ctx = liveCtx();
