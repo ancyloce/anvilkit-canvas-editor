@@ -32,6 +32,7 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
+import { useCanvasDialogs } from "../context/dialog-context.js";
 import { useRecentTemplates } from "../context/recent-templates-context.js";
 import type { CanvasTemplateEntry } from "../templates/template-entry.js";
 import {
@@ -39,6 +40,7 @@ import {
 	createStaticTemplateProvider,
 } from "../templates/template-provider.js";
 import {
+	createDocumentFromTemplate,
 	insertTemplateAsNewPages,
 	loadTemplate,
 	type TemplateActionResult,
@@ -146,6 +148,7 @@ interface TemplateSearchState {
 export function TemplatesPanel(): React.JSX.Element {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
+	const dialogs = useCanvasDialogs();
 	const recentTemplates = useRecentTemplates();
 	const [pendingId, setPendingId] = useState<string | null>(null);
 	const [category, setCategory] = useState<string>(ALL_CATEGORIES);
@@ -289,6 +292,35 @@ export function TemplatesPanel(): React.JSX.Element {
 		}
 	}
 
+	/**
+	 * FR-132 destructive-replace guard: when the document has unsaved changes
+	 * (`canLeave()` is false), confirm before replacing every page. Auto-confirm
+	 * hosts (headless embeds) preserve the pre-dialog behavior.
+	 */
+	function replaceWithTemplate(entry: CanvasTemplateEntry): void {
+		const dirty = ctx.canLeave ? !ctx.canLeave() : false;
+		if (!dirty) {
+			runAction(entry, loadTemplate);
+			return;
+		}
+		void dialogs
+			.confirm({
+				title: t(
+					"canvas.templates.unsavedTitle",
+					"Replace with unsaved changes?",
+				),
+				description: t(
+					"canvas.templates.unsavedBody",
+					"Loading this template replaces every page. Your unsaved changes will be lost.",
+				),
+				confirmLabel: t("canvas.templates.replace", "Replace"),
+				destructive: true,
+			})
+			.then((ok) => {
+				if (ok) runAction(entry, loadTemplate);
+			});
+	}
+
 	function renderCard(
 		entry: CanvasTemplateEntry,
 		keyPrefix = "",
@@ -350,7 +382,7 @@ export function TemplatesPanel(): React.JSX.Element {
 							<Button
 								size="sm"
 								data-testid={`template-load-${entry.id}`}
-								onClick={() => runAction(entry, loadTemplate)}
+								onClick={() => replaceWithTemplate(entry)}
 							>
 								{t("canvas.templates.replace", "Replace")}
 							</Button>
@@ -362,6 +394,19 @@ export function TemplatesPanel(): React.JSX.Element {
 							>
 								{t("canvas.templates.insertNew", "Insert as new")}
 							</Button>
+							{ctx.onCreateDocument ? (
+								<Button
+									size="sm"
+									variant="outline"
+									data-testid={`template-open-new-doc-${entry.id}`}
+									onClick={() => runAction(entry, createDocumentFromTemplate)}
+								>
+									{t(
+										"canvas.templates.openAsNewDocument",
+										"Open as new document",
+									)}
+								</Button>
+							) : null}
 							<Button
 								size="sm"
 								variant="outline"

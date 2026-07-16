@@ -87,3 +87,27 @@ export function insertTemplateAsNewPages(
 	if (firstPage) switchToPage(ctx, firstPage.id);
 	return { ok: true, warnings: result.warnings };
 }
+
+/**
+ * FR-132 "Open as a new document": instantiate the template into a standalone
+ * `CanvasIR` and hand it to the host's `onCreateDocument`. Non-destructive to
+ * the current document — the host owns where the new document opens (a new
+ * tab, route, or window). A no-op (with an `ok:false` message) when no host
+ * seam is wired, so callers can gate the UI on `ctx.onCreateDocument`.
+ */
+export function createDocumentFromTemplate(
+	ctx: CanvasStudioContextValue,
+	entry: CanvasTemplateEntry,
+): TemplateActionResult {
+	if (!ctx.onCreateDocument) {
+		return {
+			ok: false,
+			message: "No onCreateDocument handler is wired.",
+		};
+	}
+	const result = runInstantiation(entry);
+	if ("message" in result) return { ok: false, message: result.message };
+
+	ctx.onCreateDocument(result.document);
+	return { ok: true, warnings: result.warnings };
+}

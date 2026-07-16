@@ -254,6 +254,22 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 		}
 	}, [firstSelectedId]);
 
+	// FR-031 "Rename layer" from the node context menu: consume a rename
+	// request posted by the menu, reveal the row, and enter inline rename.
+	const layerRenameStore = ctx.layerRenameStore;
+	useEffect(() => {
+		if (!layerRenameStore) return;
+		return layerRenameStore.subscribe(() => {
+			const id = layerRenameStore.getState().consume();
+			if (!id) return;
+			setRenamingId(id);
+			const el = document.querySelector(`[data-testid="layer-row-${id}"]`);
+			if (el && typeof (el as HTMLElement).scrollIntoView === "function") {
+				(el as HTMLElement).scrollIntoView({ block: "nearest" });
+			}
+		});
+	}, [layerRenameStore]);
+
 	const commitRename = useCallback(
 		(node: CanvasNode, name: string) => {
 			setRenamingId(null);

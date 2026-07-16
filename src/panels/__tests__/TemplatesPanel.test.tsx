@@ -17,7 +17,11 @@ import type {
 } from "@/templates/template-provider.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { TemplatesPanel } from "../TemplatesPanel.js";
-import { insertTemplateAsNewPages, loadTemplate } from "../template-actions.js";
+import {
+	createDocumentFromTemplate,
+	insertTemplateAsNewPages,
+	loadTemplate,
+} from "../template-actions.js";
 
 const FIXED_TS = "2026-07-09T00:00:00.000Z";
 
@@ -206,6 +210,31 @@ describe("insertTemplateAsNewPages", () => {
 		const result = insertTemplateAsNewPages(h.studioCtx, tpl);
 		expect(result.ok).toBe(false);
 		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+	});
+});
+
+describe("createDocumentFromTemplate (FR-132)", () => {
+	it("hands the instantiated document to the host and never mutates the current one", () => {
+		const h = makeHarness();
+		const onCreateDocument = vi.fn();
+		const tpl = entry();
+		const result = createDocumentFromTemplate(
+			{ ...h.studioCtx, onCreateDocument },
+			tpl,
+		);
+		expect(result.ok).toBe(true);
+		expect(onCreateDocument).toHaveBeenCalledTimes(1);
+		const doc = onCreateDocument.mock.calls[0]?.[0];
+		expect(doc.pages.length).toBeGreaterThan(0);
+		// Non-destructive: the live document is untouched.
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.commitBatch).not.toHaveBeenCalled();
+	});
+
+	it("is an ok:false no-op when the host wired no handler", () => {
+		const h = makeHarness();
+		const result = createDocumentFromTemplate(h.studioCtx, entry());
+		expect(result.ok).toBe(false);
 	});
 });
 
