@@ -1,6 +1,7 @@
 import {
 	CANVAS_CLIPBOARD_VERSION,
 	type CanvasAssetRef,
+	CanvasClipboardError,
 	type CanvasClipboardPayload,
 	type CanvasCommand,
 	type CanvasNode,
@@ -168,8 +169,23 @@ export async function pasteImpl(
 	if (text) {
 		try {
 			payload = parseClipboardPayload(text);
-		} catch {
-			// Foreign or invalid clipboard content — not an error (§5 scope).
+		} catch (err) {
+			// AC-002 / §9.2: a decodable-but-rejected AnvilKit payload (oversized,
+			// too many nodes, too deep, unsupported version) is a real failure —
+			// surface it and DO NOT silently paste stale internal content.
+			// Only genuinely foreign content (`invalid-json`) degrades silently to
+			// the internal store (§5 external-clipboard scope).
+			if (err instanceof CanvasClipboardError && err.code !== "invalid-json") {
+				toaster.add({
+					type: "error",
+					title: resolveT(ctx)(
+						"canvas.toast.clipboardRejected",
+						"Clipboard content couldn't be pasted",
+					),
+				});
+				return [];
+			}
+			// Foreign / non-AnvilKit content — fall through to the internal store.
 		}
 	}
 	if (!payload) payload = internalClipboardStore.getState().payload;

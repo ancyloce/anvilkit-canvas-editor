@@ -164,6 +164,26 @@ describe("pasteImpl", () => {
 		expect(newIds).toHaveLength(1);
 		expect(h.commits.some((c) => c.type === "node.create")).toBe(true);
 	});
+
+	it("an unsupported-version AnvilKit payload surfaces an error toast and does NOT paste stale internal content (AC-002)", async () => {
+		const { h, toasts } = setup();
+		// Prime the internal store with a valid payload.
+		h.studioCtx.selectionStore.getState().setSelection(["a"]);
+		await copySelectionImpl(h.studioCtx);
+		// The system clipboard holds a decodable AnvilKit payload with a bad
+		// version → core rejects with a typed non-invalid-json error.
+		vi.stubGlobal("navigator", {
+			clipboard: {
+				readText: async () => JSON.stringify({ version: 999, nodes: [] }),
+			},
+		});
+		const result = await pasteImpl(h.studioCtx, {
+			add: (input) => toasts.push(input),
+		});
+		expect(result).toEqual([]);
+		expect(h.commits).toHaveLength(0);
+		expect(toasts.some((t) => t.type === "error")).toBe(true);
+	});
 });
 
 describe("cutSelectionImpl", () => {

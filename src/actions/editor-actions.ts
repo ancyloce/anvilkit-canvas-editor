@@ -151,6 +151,19 @@ export interface CanvasEditorActions {
 	copyStyle(): boolean;
 	pasteStyle(): string[];
 	hasCopiedStyle(): boolean;
+	/**
+	 * FR-160 save — delegates to the host `persistenceAdapter` wiring. Resolves
+	 * `false` when no adapter is configured (nothing to persist).
+	 */
+	save(): Promise<boolean>;
+	/**
+	 * FR-152/§11.2 export — open the export dialog preselected to a page scope
+	 * (`"current"` default, `"all"`, or `"selection"`). The export UI (mounted
+	 * via `createCanvasExportPlugin`) performs the render + download; this is the
+	 * stable host trigger that doesn't require reaching into stores. A no-op when
+	 * no export UI is mounted.
+	 */
+	requestExport(scope?: "current" | "all" | "selection"): void;
 }
 
 function hasSelectedAncestor(
@@ -322,6 +335,9 @@ export function createCanvasEditorActions(
 		copyStyle: () => copyStyleImpl(ctx),
 		pasteStyle: () => pasteStyleImpl(ctx, toaster),
 		hasCopiedStyle: () => hasCopiedStyle(),
+		save: () => ctx.save?.() ?? Promise.resolve(false),
+		requestExport: (scope = "current") =>
+			ctx.exportRequestStore?.getState().request({ scope }),
 	};
 }
 
@@ -375,6 +391,9 @@ export function useCanvasActions(): CanvasEditorActions {
 			copyStyle: () => copyStyleImpl(liveCtx()),
 			pasteStyle: () => pasteStyleImpl(liveCtx(), toaster),
 			hasCopiedStyle: () => hasCopiedStyle(),
+			save: () => liveCtx().save?.() ?? Promise.resolve(false),
+			requestExport: (scope = "current") =>
+				liveCtx().exportRequestStore?.getState().request({ scope }),
 		};
 	}, [stores, toaster]);
 }
