@@ -57,6 +57,7 @@ import {
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
 import { measureGlyphWidth } from "../text/canvas-glyph-measurer.js";
+import { useFontStatus } from "../text/font-status.js";
 import { getCachedLayout } from "../text/layout-cache.js";
 import { layoutRichText } from "../text/rich-text-layout.js";
 import {
@@ -65,6 +66,10 @@ import {
 } from "../text/rich-text-style.js";
 import { useCanvasAsset } from "./CanvasAssetsContext.js";
 import { useCanvasBrandKit } from "./CanvasBrandKitContext.js";
+import {
+	ISOLATION_DIM_OPACITY,
+	IsolationRenderContext,
+} from "./isolation-render-context.js";
 import { nodeRenderOffset } from "./node-render-offset.js";
 
 export interface CanvasNodeRendererProps {
@@ -522,6 +527,9 @@ function CanvasTextNodeRenderer({ node }: { node: CanvasTextNode }) {
 		node.fontFamily,
 		brandKit,
 	).value;
+	// FR-083 (C-11): re-render when the family finishes loading so Konva
+	// re-draws with the real font instead of staying on fallback metrics.
+	useFontStatus(fontFamily);
 	return (
 		<Text
 			{...commonProps(node)}
@@ -576,6 +584,17 @@ function richTextClipProps(
 function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 	const wrap = node.wrap ?? "word";
 	const brandKit = useCanvasBrandKit();
+	// FR-083 (C-11): track the block's leading family so a late-loading font
+	// re-renders the block. Per-span families ride along on the same signal.
+	useFontStatus(
+		resolveFontFamilyForDisplay(
+			resolveSpanStyle(
+				node.paragraphs[0]?.spans[0] ?? { text: "" },
+				DEFAULT_RICH_TEXT_STYLE,
+			).fontFamily,
+			brandKit,
+		).value,
+	);
 	const measured = getCachedLayout(node.paragraphs, node.width, wrap, () =>
 		layoutRichText(
 			{
@@ -1055,6 +1074,25 @@ export function CanvasNodeRenderer({
 	node: irNode,
 }: CanvasNodeRendererProps): React.JSX.Element | null {
 	const node = useFieldPreviewMerge(irNode);
+	// C-09 (FR-055): exterior content dims and stops hit-testing while a
+	// container is isolated. Opacity/listening cascade through the wrapper
+	// Group, so a dimmed container dims its whole subtree.
+	const dimmedIds = use(IsolationRenderContext);
+	if (dimmedIds?.has(node.id)) {
+		return (
+			<Group
+				name={`isolation-dim-${node.id}`}
+				opacity={ISOLATION_DIM_OPACITY}
+				listening={false}
+			>
+				{renderNodeByKind(node)}
+			</Group>
+		);
+	}
+	return renderNodeByKind(node);
+}
+
+function renderNodeByKind(node: CanvasNode): React.JSX.Element | null {
 	switch (node.type) {
 		case "group":
 			return <CanvasGroupNodeRenderer node={node} />;
