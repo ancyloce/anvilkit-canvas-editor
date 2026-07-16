@@ -27,6 +27,7 @@ import type { PagesStoreApi } from "../stores/pages-store.js";
 import type { PathEditStoreApi } from "../stores/path-edit-store.js";
 import type { PenStoreApi } from "../stores/pen-store.js";
 import type { DocumentSnapshotSource } from "../stores/replace-document.js";
+import type { RulerGuideStoreApi } from "../stores/ruler-guide-store.js";
 import type { SaveStatusStoreApi } from "../stores/save-status-store.js";
 import type { SceneStoreApi } from "../stores/scene-store.js";
 import type { SelectionStoreApi } from "../stores/selection-store.js";
@@ -182,6 +183,12 @@ export interface CanvasStudioContextValue {
 	assetUploader?: CanvasAssetUploader;
 	/** Upload task registry (B-10). Provided by `<CanvasStudio>`. */
 	uploadStore?: UploadStoreApi;
+	/**
+	 * Ruler/guide chrome state (C-02, FR-110/111/113). Always provided by
+	 * `<CanvasStudio>`; optional in the type only for partial test contexts —
+	 * ruler/guide surfaces render nothing without it.
+	 */
+	rulerGuideStore?: RulerGuideStoreApi;
 	/** Konva.Stage instance — null until <CanvasStage>'s onReady fires. */
 	stage: Konva.Stage | null;
 	/**
