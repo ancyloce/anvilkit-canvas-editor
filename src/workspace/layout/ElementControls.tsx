@@ -42,10 +42,9 @@ export type ReorderDirection = "front" | "forward" | "backward" | "back";
 
 /**
  * Optional host-supplied action OVERRIDES (backward compatibility) — they
- * take precedence when set. Duplicate, align, distribute, reorder, group and
- * ungroup are all built in via the unified action layer (M0-02/B-13).
- * Copy/paste style still have no backing IR command (`node.applyStyle` lands
- * in Phase 2, C-05) and stay disabled until then unless the host wires them.
+ * take precedence when set. Duplicate, align, distribute, reorder, group,
+ * ungroup, and copy/paste style (C-05, via `node.applyStyle`) are all built
+ * in via the unified action layer (M0-02/B-13/C-05).
  */
 export interface ElementActions {
 	onDuplicate?: (ids: readonly string[]) => void;
@@ -342,15 +341,22 @@ export function ElementControls({
 				<DropdownMenuContent align="center">
 					<DropdownMenuItem
 						data-testid="more-copy-style"
-						disabled={!actions?.onCopyStyle}
-						onClick={() => actions?.onCopyStyle?.(primary.id)}
+						onClick={() =>
+							actions?.onCopyStyle
+								? actions.onCopyStyle(primary.id)
+								: editorActions.copyStyle()
+						}
 					>
 						{t("canvas.element.copyStyle", "Copy style")}
 					</DropdownMenuItem>
 					<DropdownMenuItem
 						data-testid="more-paste-style"
-						disabled={!actions?.onPasteStyle}
-						onClick={() => actions?.onPasteStyle?.(selectedIds)}
+						disabled={!actions?.onPasteStyle && !editorActions.hasCopiedStyle()}
+						onClick={() =>
+							actions?.onPasteStyle
+								? actions.onPasteStyle(selectedIds)
+								: editorActions.pasteStyle()
+						}
 					>
 						{t("canvas.element.pasteStyle", "Paste style")}
 					</DropdownMenuItem>
@@ -406,6 +412,12 @@ export function ElementControls({
 									{t(o.labelKey, o.label)}
 								</DropdownMenuItem>
 							))}
+							<DropdownMenuItem
+								data-testid="more-tidy-up"
+								onClick={() => editorActions.tidyUpSelection()}
+							>
+								{t("canvas.element.tidyUp", "Tidy up")}
+							</DropdownMenuItem>
 						</DropdownMenuSubContent>
 					</DropdownMenuSub>
 					<DropdownMenuSub>

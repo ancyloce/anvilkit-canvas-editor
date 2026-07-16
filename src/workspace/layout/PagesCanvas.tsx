@@ -39,6 +39,7 @@ import {
 import { usePageThumbnails } from "@/perf/page-thumbnails.js";
 import { CanvasRulers } from "./CanvasRulers.js";
 import { type ElementActions, ElementControls } from "./ElementControls.js";
+import { IsolationBreadcrumb } from "./IsolationBreadcrumb.js";
 
 /** Dialog-class UI is code-split (PRD 0012 constraint 20.15). */
 const PageSettingsDialog = lazy(
@@ -205,6 +206,7 @@ export function PagesCanvas({
 				</div>
 			</div>
 			<CanvasRulers scrollRef={scrollRef} />
+			<IsolationBreadcrumb />
 		</div>
 	);
 }

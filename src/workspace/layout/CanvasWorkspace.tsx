@@ -31,7 +31,10 @@ import {
 	OVERLAY_PANEL_QUERY,
 	useMediaQuery,
 } from "../state/use-media-query.js";
-import { WorkspaceUiStoreProvider } from "../state/WorkspaceUiStoreProvider.js";
+import {
+	RecentTemplatesBridge,
+	WorkspaceUiStoreProvider,
+} from "../state/WorkspaceUiStoreProvider.js";
 import {
 	PANEL_WIDTH_DEFAULT,
 	PANEL_WIDTH_MAX,
@@ -122,41 +125,43 @@ export function CanvasWorkspace({
 			{...studioProps}
 			renderShell={(stage) => (
 				<WorkspaceUiStoreProvider storeId={storeId}>
-					<CanvasToastHost>
-						<CanvasDialogHost>
-							<div
-								ref={rootRef}
-								data-ak-canvas-editor=""
-								data-testid="canvas-workspace-root"
-								className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background text-foreground"
-							>
-								{shortcuts !== false ? (
-									<WorkspaceShortcutLayer
-										rootRef={rootRef}
-										options={shortcuts === true ? undefined : shortcuts}
+					<RecentTemplatesBridge>
+						<CanvasToastHost>
+							<CanvasDialogHost>
+								<div
+									ref={rootRef}
+									data-ak-canvas-editor=""
+									data-testid="canvas-workspace-root"
+									className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background text-foreground"
+								>
+									{shortcuts !== false ? (
+										<WorkspaceShortcutLayer
+											rootRef={rootRef}
+											options={shortcuts === true ? undefined : shortcuts}
+										/>
+									) : null}
+									<ToolAnnouncer />
+									<WorkspaceHeader
+										onBack={onBack}
+										title={title}
+										onTitleChange={onTitleChange}
+										avatarsSlot={avatarsSlot}
+										shortcuts={shortcuts}
+										plugins={headerPlugins}
+										shareSlot={shareSlot}
 									/>
-								) : null}
-								<ToolAnnouncer />
-								<WorkspaceHeader
-									onBack={onBack}
-									title={title}
-									onTitleChange={onTitleChange}
-									avatarsSlot={avatarsSlot}
-									shortcuts={shortcuts}
-									plugins={headerPlugins}
-									shareSlot={shareSlot}
-								/>
-								<WorkspaceBody
-									stage={stage}
-									dockItems={dockItems}
-									registry={registry}
-									inspector={inspector}
-									toolStrip={toolStrip}
-									elementActions={elementActions}
-								/>
-							</div>
-						</CanvasDialogHost>
-					</CanvasToastHost>
+									<WorkspaceBody
+										stage={stage}
+										dockItems={dockItems}
+										registry={registry}
+										inspector={inspector}
+										toolStrip={toolStrip}
+										elementActions={elementActions}
+									/>
+								</div>
+							</CanvasDialogHost>
+						</CanvasToastHost>
+					</RecentTemplatesBridge>
 				</WorkspaceUiStoreProvider>
 			)}
 		/>
