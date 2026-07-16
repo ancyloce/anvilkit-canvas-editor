@@ -54,7 +54,8 @@ as a published npm dependency (`pnpm add`, above) is unaffected.
 - **Brand kit** — pass shared colors + fonts via `brandKit`, read them with
   `useBrandKit`.
 - **i18n seam** — host-injected `canvas.*` message catalog (`messages` prop);
-  bundled English + Chinese catalogs ship under `./i18n`.
+  bundled English, Chinese, Japanese, and Korean catalogs ship under `./i18n`
+  (four-locale parity is CI-enforced).
 - **Collaboration (alpha prototype)** — optional Yjs binding and remote
   cursor / selection presence via the `./collab` entry. **Consistency model:
   whole-document, last-writer-wins** — the entire `CanvasIR` is one JSON blob
@@ -65,9 +66,11 @@ as a published npm dependency (`pnpm add`, above) is unaffected.
   setting. `CanvasCollabAdapter` is a transport-agnostic interface a future
   fine-grained (per-node CRDT / command-log) adapter can implement as a
   drop-in replacement.
-- **Export** — built-in PNG + JSON exporters, a pluggable export menu
-  (`createCanvasExportPlugin`), and stage-raster bridges (`exportStageContentDataURL`,
-  `rasterizePage`).
+- **Export** — the FR-150 export dialog (`createCanvasExportPlugin`) covering
+  `svg`/`png`/`jpeg`/`webp`/`pdf`/`pdf-print`/`json` with page selection,
+  scale presets, and progress; stage-raster bridges
+  (`exportStageContentDataURL`, `rasterizePage`). Per-format fidelity:
+  [docs/export-capability-matrix.md](./docs/export-capability-matrix.md).
 - **Accessibility** — roving keyboard focus ring, an off-screen scene tree, and
   a live tool announcer.
 - **Extensible** — register custom node kinds (renderers + inspectors) and
@@ -102,12 +105,34 @@ omitted as a column below.
 | `audio` | editor-chrome-only placeholder box (P1-1 fix — previously invisible) | nothing, `AUDIO_UNSUPPORTED` warning (no visual representation at all) | same placeholder-in-editor / nothing-in-export split as `video` |
 
 ¹ PDF is raster-embed over the SAME rendering path as `rasterizePage` (no
-studio context), so PDF fidelity mirrors the SVG/no-context Konva column, not
-the interactive-editor column.
+studio context), so PDF fidelity mirrors the raster/Konva path — including
+its documented approximations (shadow `spread` widened into blur, no
+standalone blur on vector shapes) — not the SVG column. Per-feature detail:
+[docs/export-capability-matrix.md](./docs/export-capability-matrix.md).
 
 Inspector field coverage and the accessibility scene tree (`SceneAccessibilityTree`)
 were not re-audited kind-by-kind in this pass — treat that as a follow-up if a
 gap is suspected there.
+
+## Documentation
+
+Integration guides live in [`docs/`](./docs):
+
+- [Workspace composition](./docs/workspace-composition.md) — shell anatomy,
+  headless vs `<CanvasWorkspace>`, every composition seam and opt-out.
+- [Adapter integration](./docs/adapters.md) — persistence, asset picker,
+  uploader, template provider, recovery.
+- [Persistence](./docs/persistence.md) — save states, checkpoint/revision
+  semantics, auto-save tuning, leave protection, local recovery.
+- [Assets](./docs/assets.md) — asset model, entry paths, upload lifecycle,
+  fit modes and adjustments.
+- [Export capability matrix](./docs/export-capability-matrix.md) —
+  per-format fidelity, incl. the PDF raster-embed disclosure.
+- [Keyboard shortcut reference](./docs/shortcut-reference.md) — **generated
+  from the registry** (`pnpm docs:shortcuts`); regenerate after changing
+  `shortcut-registry.ts`.
+- [Migration guide](./docs/migration.md) — PRD 0012 behavior changes and
+  opt-outs, host E2E impacts.
 
 ## Core Architecture
 
