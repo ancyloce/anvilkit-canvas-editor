@@ -8,6 +8,7 @@ import {
 	commandToChange,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
+import * as React from "react";
 import {
 	useCallback,
 	useEffect,
@@ -76,6 +77,7 @@ import { createAiJobStore } from "./stores/ai-job-store.js";
 import { createCropStore } from "./stores/crop-store.js";
 import { createDraftStore } from "./stores/draft-store.js";
 import { createEditingStore } from "./stores/editing-store.js";
+import { createExportRequestStore } from "./stores/export-request-store.js";
 import { createFieldPreviewStore } from "./stores/field-preview-store.js";
 import { createFocusStore } from "./stores/focus-store.js";
 import { createGuidesStore } from "./stores/guides-store.js";
@@ -84,6 +86,7 @@ import {
 	createHistoryStore,
 } from "./stores/history-store.js";
 import { createIsolationStore } from "./stores/isolation-store.js";
+import { createLayerRenameStore } from "./stores/layer-rename-store.js";
 import { createPagesStore } from "./stores/pages-store.js";
 import { createPathEditStore } from "./stores/path-edit-store.js";
 import { createPenStore } from "./stores/pen-store.js";
@@ -228,6 +231,14 @@ export interface CanvasStudioProps {
 	 */
 	templateProvider?: CanvasTemplateProvider;
 	/**
+	 * FR-132 "Open as a new document": `<CanvasStudio>` owns one live document,
+	 * so creating a brand-new document is a HOST action. When wired, the
+	 * Templates panel surfaces an "Open as new document" choice and hands the
+	 * host the instantiated `CanvasIR` (e.g. to open a new tab/route). Omit it
+	 * and the choice is hidden — Replace / Add-as-new-pages still work.
+	 */
+	onCreateDocument?: (document: CanvasIR) => void;
+	/**
 	 * Host-injected i18n catalog (P7). A flat `canvas.*` → string map for the
 	 * active locale; the editor resolves chrome strings via {@link useCanvasT}
 	 * (host override wins, else the inline English fallback). Omit to render
@@ -320,6 +331,8 @@ function useEditorStores({
 	const [fieldPreviewStore] = useState(() => createFieldPreviewStore());
 	const [rulerGuideStore] = useState(() => createRulerGuideStore());
 	const [isolationStore] = useState(() => createIsolationStore());
+	const [exportRequestStore] = useState(() => createExportRequestStore());
+	const [layerRenameStore] = useState(() => createLayerRenameStore());
 	return {
 		sceneStore,
 		historyStore,
@@ -338,6 +351,8 @@ function useEditorStores({
 		fieldPreviewStore,
 		rulerGuideStore,
 		isolationStore,
+		exportRequestStore,
+		layerRenameStore,
 	};
 }
 
@@ -610,6 +625,7 @@ export function CanvasStudio({
 	brandKit,
 	templates,
 	templateProvider,
+	onCreateDocument,
 	messages,
 	extensions,
 	runtime,
@@ -641,6 +657,8 @@ export function CanvasStudio({
 		fieldPreviewStore,
 		rulerGuideStore,
 		isolationStore,
+		exportRequestStore,
+		layerRenameStore,
 	} = useEditorStores({ initialIR, initialActivePageId, initialTool, runtime });
 	const ir = useSyncExternalStore(
 		sceneStore.subscribe,
@@ -900,12 +918,15 @@ export function CanvasStudio({
 			fieldPreviewStore,
 			rulerGuideStore,
 			isolationStore,
+			exportRequestStore,
+			layerRenameStore,
 			replaceDocument,
 			pickAsset,
 			requestAiIntent,
 			brandKit,
 			templates,
 			templateProvider,
+			...(onCreateDocument ? { onCreateDocument } : {}),
 			t,
 			kindRenderers,
 			kindInspectors,
@@ -942,12 +963,15 @@ export function CanvasStudio({
 			fieldPreviewStore,
 			rulerGuideStore,
 			isolationStore,
+			exportRequestStore,
+			layerRenameStore,
 			replaceDocument,
 			pickAsset,
 			requestAiIntent,
 			brandKit,
 			templates,
 			templateProvider,
+			onCreateDocument,
 			t,
 			kindRenderers,
 			kindInspectors,
@@ -982,18 +1006,13 @@ export function CanvasStudio({
 		return page ? computeDimmedIds(page, isolationPath) : null;
 	}, [isolationPath, ir, activePageId]);
 
-	const activePage = ir.pages.find((p) => p.id === activePageId);
-	if (!activePage) {
-		return (
-			<div data-testid="canvas-empty">
-				No page with id "{activePageId}" found
-			</div>
-		);
-	}
 	// FR-172 recovery actions (B-15). Reload rebuilds every store around the
 	// CURRENT IR via `replaceDocument` — the document survives; wedged
 	// transient state (selection, drafts, history) is discarded. Export
 	// downloads the live IR as JSON so nothing is lost even mid-crash.
+	// Declared ABOVE the missing-page early return below: hooks after a
+	// conditional return crash React ("Rendered fewer hooks than expected")
+	// the moment `activePageId` points at a page the IR no longer has.
 	const reloadDocument = useCallback(() => {
 		replaceDocument(getIR(), "recovery");
 	}, [replaceDocument, getIR]);
@@ -1009,6 +1028,15 @@ export function CanvasStudio({
 		a.click();
 		URL.revokeObjectURL(url);
 	}, [getIR]);
+
+	const activePage = ir.pages.find((p) => p.id === activePageId);
+	if (!activePage) {
+		return (
+			<div data-testid="canvas-empty">
+				No page with id "{activePageId}" found
+			</div>
+		);
+	}
 
 	// The Konva stage + its overlays. Computed once so it can be slotted either
 	// into the legacy bare layout or anywhere a `renderShell` decides to place

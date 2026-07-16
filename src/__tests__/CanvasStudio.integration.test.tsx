@@ -664,6 +664,33 @@ describe("CanvasStudio integration", () => {
 		expect(getByTestId("canvas-empty")).toBeTruthy();
 	});
 
+	it("switching to a missing activePageId AFTER mount renders the fallback instead of crashing", () => {
+		// Regression: the FR-172 recovery useCallbacks used to sit BELOW the
+		// missing-page early return, so a mounted studio re-rendering into the
+		// fallback path dropped two hooks and React threw "Rendered fewer hooks
+		// than expected". Mount-time fallback (test above) never caught it —
+		// the first render has no prior hook list to mismatch.
+		let setActivePageId: ((id: string) => void) | null = null;
+		function CapturePagesStore(): null {
+			const ctx = useCanvasStudio();
+			setActivePageId = (id) => ctx.pagesStore.getState().setActivePageId(id);
+			return null;
+		}
+		const ir = createCanvasIR({
+			pages: [createPage({ id: "p1" })],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		const { getByTestId } = render(
+			<CanvasStudio initialIR={ir} initialActivePageId="p1">
+				<CapturePagesStore />
+			</CanvasStudio>,
+		);
+		act(() => {
+			setActivePageId?.("missing");
+		});
+		expect(getByTestId("canvas-empty")).toBeTruthy();
+	});
+
 	it("does not manually destroy the stage on unmount (react-konva owns it)", () => {
 		// react-konva's <Stage> destroys its own Konva.Stage on unmount.
 		// CanvasStage must not call destroy() itself — the manual call also fired
