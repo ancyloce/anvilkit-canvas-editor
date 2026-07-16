@@ -10,9 +10,11 @@ import {
 	resolveNodeEffects,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
+import { useSyncExternalStore } from "react";
 import { resolveFillForDisplay } from "../brand/resolve-brand-token.js";
 import { useBrandKit } from "../brand/use-brand-kit.js";
 import type { CanvasT } from "../context/canvas-studio-context.js";
+import { recentColorsStore } from "../stores/recent-colors-store.js";
 import {
 	ColorField,
 	type CommitPatch,
@@ -21,7 +23,26 @@ import {
 } from "./fields.js";
 import { TokenAwareColorField } from "./token-aware-fields.js";
 
-type FillKind = "solid" | "linear" | "radial";
+type FillKind = "none" | "solid" | "linear" | "radial";
+
+/** Split a `#rrggbb` / `#rrggbbaa` color into its base hex and 0–1 alpha. */
+function splitAlpha(color: string): { base: string; alpha: number } {
+	if (/^#[0-9a-fA-F]{8}$/.test(color)) {
+		const alpha = Number.parseInt(color.slice(7, 9), 16) / 255;
+		return { base: color.slice(0, 7), alpha };
+	}
+	return { base: color, alpha: 1 };
+}
+
+/** Compose a base `#rrggbb` with a 0–1 alpha into `#rrggbb` (α=1) or `#rrggbbaa`. */
+function withAlpha(base: string, alpha: number): string {
+	const clamped = Math.max(0, Math.min(1, alpha));
+	if (clamped >= 1 || !/^#[0-9a-fA-F]{6}$/.test(base)) return base;
+	const hex = Math.round(clamped * 255)
+		.toString(16)
+		.padStart(2, "0");
+	return `${base}${hex}`;
+}
 
 /** Takes an ALREADY-RESOLVED value (see `resolveFillForDisplay`) — never a
  * `BrandTokenRef`, so `typeof === "object"` unambiguously means a gradient. */
@@ -91,12 +112,19 @@ export function FillAndShadowFields({
 	// `BrandTokenRef`. A solid fill gets the full token-aware picker
 	// (canvas-m2-007); an unresolved token shows a visible badge there.
 	const brandKit = useBrandKit();
+	const recentColors = useSyncExternalStore(
+		recentColorsStore.subscribe,
+		() => recentColorsStore.getState().colors,
+		() => recentColorsStore.getState().colors,
+	);
 	const fillDisplay = resolveFillForDisplay(fill, brandKit);
 	const resolvedFill = fillDisplay.value;
 	const grad = asGradient(resolvedFill);
-	const kind: FillKind = grad?.kind ?? "solid";
+	// FR-074 no-fill: an absent fill (and no unresolved token) reads as "none".
+	const kind: FillKind = grad?.kind ?? (fill === undefined ? "none" : "solid");
 	const solidColor =
 		typeof resolvedFill === "string" ? resolvedFill : "#000000";
+	const { base: solidBase, alpha: solidAlpha } = splitAlpha(solidColor);
 
 	const fillPatch = (next: CanvasFill): Record<string, unknown> => ({
 		[fillKey]: next,
@@ -139,7 +167,10 @@ export function FillAndShadowFields({
 					value={kind}
 					onChange={(e) => {
 						const next = e.currentTarget.value as FillKind;
-						if (next === "solid") {
+						if (next === "none") {
+							// FR-074 no-fill: clear the fill entirely.
+							commitPatch(node, { [fillKey]: undefined });
+						} else if (next === "solid") {
 							commitFill(grad?.stops[0]?.color ?? solidColor);
 						} else if (grad) {
 							commitFill({ ...grad, kind: next });
@@ -148,6 +179,7 @@ export function FillAndShadowFields({
 						}
 					}}
 				>
+					<option value="none">{t("canvas.inspector.fillNone", "None")}</option>
 					<option value="solid">
 						{t("canvas.inspector.fillSolid", "Solid")}
 					</option>
@@ -233,20 +265,66 @@ export function FillAndShadowFields({
 						{t("canvas.inspector.gradientAddStop", "Add stop")}
 					</Button>
 				</>
-			) : (
-				<TokenAwareColorField
-					label={t("canvas.inspector.fill", "Fill")}
-					rawValue={fill}
-					resolvedValue={
-						typeof resolvedFill === "string" ? resolvedFill : undefined
-					}
-					unresolved={fillDisplay.unresolved}
-					colors={brandKit.colors}
-					dataTestId="prop-fill"
-					onCommit={commitFill}
-					contract={{ nodes: [node], buildPatch: (_n, v) => fillPatch(v) }}
-					t={t}
-				/>
+			) : kind === "none" ? null : (
+				<>
+					<TokenAwareColorField
+						label={t("canvas.inspector.fill", "Fill")}
+						rawValue={fill}
+						resolvedValue={
+							typeof resolvedFill === "string" ? resolvedFill : undefined
+						}
+						unresolved={fillDisplay.unresolved}
+						colors={brandKit.colors}
+						dataTestId="prop-fill"
+						onCommit={(v) => {
+							if (typeof v === "string") recentColorsStore.getState().add(v);
+							commitFill(v);
+						}}
+						contract={{
+							nodes: [node],
+							buildPatch: (_n, v) => {
+								if (typeof v === "string") recentColorsStore.getState().add(v);
+								return fillPatch(v);
+							},
+						}}
+						t={t}
+					/>
+					{/* FR-074 alpha channel — composes the base color into #rrggbbaa. */}
+					<NumberField
+						label={t("canvas.inspector.fillAlpha", "Fill alpha")}
+						value={solidAlpha}
+						min={0}
+						max={1}
+						step={0.05}
+						dataTestId="prop-fill-alpha"
+						contract={{
+							nodes: [node],
+							buildPatch: (_n, v) => fillPatch(withAlpha(solidBase, v)),
+						}}
+					/>
+					{/* FR-074 recent colors. */}
+					{recentColors.length > 0 ? (
+						<FieldRow label={t("canvas.inspector.recentColors", "Recent")}>
+							<div
+								className="flex flex-wrap gap-1"
+								data-testid="prop-recent-colors"
+							>
+								{recentColors.map((c) => (
+									<button
+										key={c}
+										type="button"
+										data-testid={`prop-recent-color-${c}`}
+										aria-label={c}
+										title={c}
+										className="size-5 rounded border border-border"
+										style={{ backgroundColor: c }}
+										onClick={() => commitFill(c)}
+									/>
+								))}
+							</div>
+						</FieldRow>
+					) : null}
+				</>
 			)}
 			{showShadow ? (
 				<ColorField

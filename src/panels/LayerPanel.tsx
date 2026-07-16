@@ -31,6 +31,7 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { useCanvasActions } from "../actions/editor-actions.js";
 import {
 	type CanvasT,
 	useCanvasStudio,
@@ -162,6 +163,7 @@ export interface LayerPanelProps {
 
 export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
+	const actions = useCanvasActions();
 	const t = useCanvasT();
 	const selectedIds = useSyncExternalStore(
 		ctx.selectionStore.subscribe,
@@ -471,13 +473,14 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 				if (prev) ctx.selectionStore.getState().setSelection([prev.node.id]);
 			} else if (event.key === "Delete" || event.key === "Backspace") {
 				event.preventDefault();
-				for (const targetId of selectedIds) {
-					ctx.commit({ type: "node.delete", nodeId: targetId });
-				}
-				ctx.selectionStore.getState().clearSelection();
+				// FR-024/AC-005: route through the action layer so a multi-selection
+				// deletes as ONE undo entry, locked nodes are protected (with a
+				// toast), and ancestor+descendant selections are de-duplicated —
+				// the raw per-node commit loop did none of these.
+				actions.deleteSelection();
 			}
 		},
-		[ctx, rows, selectedIds, renamingId],
+		[actions, rows, selectedIds, renamingId, ctx],
 	);
 
 	// Stable row renderer for `Windowed` (W5). Identity changes on selection so

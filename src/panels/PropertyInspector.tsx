@@ -16,6 +16,7 @@ import {
 import { AppearanceSection } from "./inspector/appearance-section.js";
 import { BrandComplianceWarnings } from "./inspector/brand-warnings.js";
 import { summarizeSelection } from "./inspector/selection-summary.js";
+import { TransformSection } from "./inspector/transform-section.js";
 import { renderTypeSpecificFields } from "./inspector/type-sections.js";
 
 export interface PropertyInspectorProps {
@@ -80,11 +81,6 @@ export function PropertyInspector({
 
 	const multi = summary.mode === "multi";
 	const opacity = shared(nodes, (n) => n.opacity ?? 1);
-	const x = shared(nodes, (n) => n.transform.x);
-	const y = shared(nodes, (n) => n.transform.y);
-	const width = shared(nodes, (n) => n.bounds.width);
-	const height = shared(nodes, (n) => n.bounds.height);
-	const rotation = shared(nodes, (n) => n.transform.rotation);
 
 	return (
 		<section
@@ -138,63 +134,7 @@ export function PropertyInspector({
 						contract={{ nodes, buildPatch: (_n, v) => ({ opacity: v }) }}
 					/>
 				</Section>
-				<Section title={t("canvas.inspector.transform", "Transform")}>
-					<NumberField
-						label={t("canvas.inspector.x", "X")}
-						value={x.value}
-						mixed={x.mixed}
-						dataTestId="prop-x"
-						contract={{
-							nodes,
-							buildPatch: (n, v) => ({ transform: { ...n.transform, x: v } }),
-						}}
-					/>
-					<NumberField
-						label={t("canvas.inspector.y", "Y")}
-						value={y.value}
-						mixed={y.mixed}
-						dataTestId="prop-y"
-						contract={{
-							nodes,
-							buildPatch: (n, v) => ({ transform: { ...n.transform, y: v } }),
-						}}
-					/>
-					<NumberField
-						label={t("canvas.inspector.width", "Width")}
-						value={width.value}
-						mixed={width.mixed}
-						min={0}
-						dataTestId="prop-width"
-						contract={{
-							nodes,
-							buildPatch: (n, v) => ({ bounds: { ...n.bounds, width: v } }),
-						}}
-					/>
-					<NumberField
-						label={t("canvas.inspector.height", "Height")}
-						value={height.value}
-						mixed={height.mixed}
-						min={0}
-						dataTestId="prop-height"
-						contract={{
-							nodes,
-							buildPatch: (n, v) => ({ bounds: { ...n.bounds, height: v } }),
-						}}
-					/>
-					<NumberField
-						label={t("canvas.inspector.rotation", "Rotation")}
-						value={rotation.value}
-						mixed={rotation.mixed}
-						step={1}
-						dataTestId="prop-rotation"
-						contract={{
-							nodes,
-							buildPatch: (n, v) => ({
-								transform: { ...n.transform, rotation: v },
-							}),
-						}}
-					/>
-				</Section>
+				<TransformSection nodes={nodes} />
 				<AppearanceSection nodes={nodes} t={t} />
 				{multi ? null : renderTypeSpecificFields(node, commitPatch, ctx, t)}
 			</div>

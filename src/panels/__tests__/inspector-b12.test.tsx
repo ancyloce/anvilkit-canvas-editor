@@ -230,3 +230,83 @@ describe("parseDashPattern", () => {
 		expect(formatDashPattern(undefined)).toBe("");
 	});
 });
+
+describe("Transform section (FR-071)", () => {
+	it("exposes scale, aspect-lock, reset-rotation and flip controls", () => {
+		mount(twoRectIR(), ["r1"]);
+		expect(screen.getByTestId("prop-scale")).toBeTruthy();
+		expect(screen.getByTestId("prop-aspect-lock")).toBeTruthy();
+		expect(screen.getByTestId("prop-reset-rotation")).toBeTruthy();
+		expect(screen.getByTestId("prop-flip-h")).toBeTruthy();
+		expect(screen.getByTestId("prop-flip-v")).toBeTruthy();
+	});
+
+	it("flip horizontal negates scaleX as one batch across the selection", () => {
+		const h = mount(twoRectIR(), ["r1", "r2"]);
+		fireEvent.click(screen.getByTestId("prop-flip-h"));
+		// One batch → makeHarness flattens into `commits`; both nodes patched.
+		expect(h.commits).toHaveLength(2);
+		expect(
+			h.commits.every(
+				(c) =>
+					(c as { patch: { transform?: { scaleX?: number } } }).patch.transform
+						?.scaleX === -1,
+			),
+		).toBe(true);
+	});
+
+	it("reset rotation sets rotation to 0", () => {
+		const ir = twoRectIR();
+		const r1 = ir.pages[0]?.root.children[0];
+		if (r1) r1.transform.rotation = 45;
+		const h = mount(ir, ["r1"]);
+		fireEvent.click(screen.getByTestId("prop-reset-rotation"));
+		expect(
+			(h.commits[0] as { patch: { transform: { rotation: number } } }).patch
+				.transform.rotation,
+		).toBe(0);
+	});
+});
+
+describe("Fill controls (FR-074)", () => {
+	function filledRectIR(): CanvasIR {
+		const ir = createCanvasIR({
+			id: "ir-f",
+			pages: [createPage({ id: "p1" })],
+			now: () => NOW,
+		});
+		const page = ir.pages[0];
+		if (!page) throw new Error("no page");
+		page.root.children = [
+			createRect({
+				id: "rf",
+				bounds: { width: 50, height: 60 },
+				fill: "#3366cc",
+				now: () => NOW,
+			}),
+		];
+		return ir;
+	}
+
+	it("switching fill type to None clears the fill", () => {
+		const h = mount(filledRectIR(), ["rf"]);
+		fireEvent.change(screen.getByTestId("prop-fill-type"), {
+			target: { value: "none" },
+		});
+		expect(
+			(h.commits[0] as { patch: Record<string, unknown> }).patch,
+		).toHaveProperty("fill", undefined);
+	});
+
+	it("exposes a fill-alpha field for a solid fill", () => {
+		mount(filledRectIR(), ["rf"]);
+		expect(screen.getByTestId("prop-fill-alpha")).toBeTruthy();
+	});
+
+	it("no-fill node shows the None fill type", () => {
+		mount(twoRectIR(), ["r1"]);
+		expect(
+			(screen.getByTestId("prop-fill-type") as HTMLSelectElement).value,
+		).toBe("none");
+	});
+});

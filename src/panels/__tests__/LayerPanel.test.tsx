@@ -331,3 +331,37 @@ describe("LayerPanel — group / ungroup", () => {
 		);
 	});
 });
+
+describe("LayerPanel — delete routes through the action layer (FR-024/AC-005)", () => {
+	it("multi-select Delete commits ONE batch (one undo entry), not N commits", () => {
+		const h = makeHarness({ ir: withNodesIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a", "text-b"]);
+		const { container } = mount(h.studioCtx);
+		const panel = container.querySelector(
+			'[data-testid="layer-panel"]',
+		) as HTMLElement;
+		fireEvent.keyDown(panel, { key: "Delete" });
+		// One undo entry: a single commitBatch, no per-node commits.
+		expect(h.studioCtx.commitBatch).toHaveBeenCalledTimes(1);
+		expect(h.commits.map((c) => c.type)).toEqual([
+			"node.delete",
+			"node.delete",
+		]);
+		expect(h.studioCtx.selectionStore.getState().selectedIds).toHaveLength(0);
+	});
+
+	it("does not delete a locked node from the panel", () => {
+		const ir = withNodesIR();
+		const rect = ir.pages[0]?.root.children.find((n) => n.id === "rect-a");
+		if (rect) (rect as { locked?: boolean }).locked = true;
+		const h = makeHarness({ ir });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		const panel = container.querySelector(
+			'[data-testid="layer-panel"]',
+		) as HTMLElement;
+		fireEvent.keyDown(panel, { key: "Backspace" });
+		// The locked node is skipped by the action layer → no delete commit.
+		expect(h.commits.some((c) => c.type === "node.delete")).toBe(false);
+	});
+});
