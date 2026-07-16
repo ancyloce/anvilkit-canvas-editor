@@ -20,6 +20,10 @@ import {
 	canGroupSelection,
 	canUngroupSelection,
 } from "../../selection/group-actions.js";
+import {
+	enterIsolationImpl,
+	progressiveSelectAllImpl,
+} from "../../selection/isolation.js";
 
 export interface CanvasAreaContextMenuProps {
 	children: ReactNode;
@@ -99,13 +103,19 @@ export function CanvasAreaContextMenu({
 		}
 	};
 
-	const selectAll = (): void => {
-		const page = ctx.getIR().pages.find((p) => p.id === ctx.activePageId);
-		if (!page) return;
-		ctx.selectionStore
-			.getState()
-			.setSelection(page.root.children.map((c) => c.id));
-	};
+	// FR-190 progressive select-all (C-09): scope-aware, expands outward when
+	// the current scope is already fully selected.
+	const selectAll = (): void => progressiveSelectAllImpl(ctx);
+	const isolationActive = (ctx.isolationStore?.getState().path.length ?? 0) > 0;
+	const primaryIsContainer = (() => {
+		const id = selectedIds[0];
+		if (!id) return false;
+		const found = findNode(ctx.ir, id);
+		return (
+			found !== null &&
+			(found.node.type === "group" || found.node.type === "frame")
+		);
+	})();
 
 	const gridEnabled = ctx.viewportStore.getState().gridEnabled;
 	// Ruler/guide chrome (C-02, FR-030). Values are read at render like
@@ -152,6 +162,19 @@ export function CanvasAreaContextMenu({
 							onClick={() => actions.duplicateSelection()}
 						>
 							{t("canvas.menu.duplicate", "Duplicate")}
+						</ContextMenuItem>
+						<ContextMenuItem
+							data-testid="ctx-copy-style"
+							onClick={() => actions.copyStyle()}
+						>
+							{t("canvas.menu.copyStyle", "Copy style")}
+						</ContextMenuItem>
+						<ContextMenuItem
+							data-testid="ctx-paste-style"
+							disabled={!actions.hasCopiedStyle()}
+							onClick={() => actions.pasteStyle()}
+						>
+							{t("canvas.menu.pasteStyle", "Paste style")}
 						</ContextMenuItem>
 						<ContextMenuItem
 							data-testid="ctx-delete"
@@ -208,6 +231,16 @@ export function CanvasAreaContextMenu({
 								? t("canvas.menu.unlock", "Unlock")
 								: t("canvas.menu.lock", "Lock")}
 						</ContextMenuItem>
+						<ContextMenuItem
+							data-testid="ctx-isolate"
+							disabled={!primaryIsContainer}
+							onClick={() => {
+								const id = ctx.selectionStore.getState().selectedIds[0];
+								if (id) enterIsolationImpl(ctx, id);
+							}}
+						>
+							{t("canvas.menu.isolate", "Edit contents")}
+						</ContextMenuItem>
 					</>
 				) : (
 					<>
@@ -220,6 +253,14 @@ export function CanvasAreaContextMenu({
 						<ContextMenuItem data-testid="ctx-select-all" onClick={selectAll}>
 							{t("canvas.menu.selectAll", "Select all")}
 						</ContextMenuItem>
+						{isolationActive ? (
+							<ContextMenuItem
+								data-testid="ctx-exit-isolation"
+								onClick={() => ctx.isolationStore?.getState().exitOne()}
+							>
+								{t("canvas.menu.exitIsolation", "Exit isolation")}
+							</ContextMenuItem>
+						) : null}
 						<ContextMenuSeparator />
 						<ContextMenuItem
 							data-testid="ctx-toggle-grid"
