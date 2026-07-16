@@ -66,10 +66,14 @@ as a published npm dependency (`pnpm add`, above) is unaffected.
   setting. `CanvasCollabAdapter` is a transport-agnostic interface a future
   fine-grained (per-node CRDT / command-log) adapter can implement as a
   drop-in replacement.
-- **Export** — the FR-150 export dialog (`createCanvasExportPlugin`) covering
-  `svg`/`png`/`jpeg`/`webp`/`pdf`/`pdf-print`/`json` with page selection,
-  scale presets, and progress; stage-raster bridges
-  (`exportStageContentDataURL`, `rasterizePage`). Per-format fidelity:
+- **Export** — the FR-150 export dialog (`createCanvasExportPlugin`) with all
+  six formats built in (`png`/`jpeg`/`webp`/`svg`/`pdf`/`json` — no host
+  serializer injection needed; SVG/PDF code-split). Page scope covers current
+  page, all pages, and the current selection (FR-031/052); options include
+  scale presets, custom width/height with aspect lock, quality, transparent /
+  include background, a sanitized file name, and FR-154 progress with
+  cancellation. Node-menu "Export selection" and page-menu "Export page" open
+  it preselected. Per-format fidelity:
   [docs/export-capability-matrix.md](./docs/export-capability-matrix.md).
 - **Accessibility** — roving keyboard focus ring, an off-screen scene tree, and
   a live tool announcer.

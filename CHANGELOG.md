@@ -6,6 +6,32 @@ The PRD 0012 delivery (Phases 1a "editing loop", 1b "product chrome", 2
 "professional editing"). Behavior changes and opt-outs are catalogued in
 [docs/migration.md](./docs/migration.md); this is the feature summary.
 
+### Gap-closure follow-up
+
+- **Export completeness (FR-151/152/153, §14.5)**: all six formats
+  (PNG/JPEG/WebP/SVG/PDF/JSON) are now built into `DEFAULT_CANVAS_EXPORTERS`
+  — SVG via core `serializePageToSvg`, multi-page PDF via `rasterizePage` +
+  core `serializeDocumentToPdf` (code-split). The export dialog gains a
+  selection scope, per-page scope for whole-document formats, custom
+  width/height with aspect lock, a quality slider, a transparent/include-
+  background toggle, and a sanitized file-name field. File names are
+  sanitized (`sanitizeExportFilename`).
+- **Export entry points (FR-031/032)**: node-menu "Export selection" and
+  page-menu "Export page" open the export dialog preselected via a new
+  `exportRequestStore` channel.
+- **Context menus (FR-030/031/032)**: added Zoom to fit / Actual size / Page
+  settings (canvas), Show-Hide / Rename layer / Export selection (node), and
+  Export page (page). New `toggleVisibilitySelection()` action (locked-safe,
+  one undo entry).
+- **Missing-asset placeholders (FR-095)**: missing/failed/loading `image` and
+  `svg` assets render selectable editor placeholder chrome with an accessible
+  description instead of silently disappearing; never included in exports.
+- **Header page size (FR-003)**: the active page's dimensions show in the
+  header, unit-aware and `Intl`-formatted.
+- **Open as new document (FR-132)**: `onCreateDocument` prop + Templates-panel
+  choice; destructive template replace now confirms when the document is
+  dirty.
+
 ### Editing loop (Phase 1a)
 
 - Unified `CanvasEditorActions` layer — every mutation (menus, shortcuts,
