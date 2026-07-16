@@ -9358,7 +9358,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "FR-090 asset picker adapter (B-10). When present it supersedes\r\n"
+										"text": "FR-090 asset picker adapter (B-10). When present it supersedes\n"
 									},
 									{
 										"kind": "code",
@@ -9366,7 +9366,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " for tools (single pick) and powers multi-select flows;\r\nthe legacy "
+										"text": " for tools (single pick) and powers multi-select flows;\nthe legacy "
 									},
 									{
 										"kind": "code",
@@ -9468,7 +9468,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Shared brand colors + fonts (I3-4). Hosts map their Studio config to a\r\n"
+										"text": "Shared brand colors + fonts (I3-4). Hosts map their Studio config to a\n"
 									},
 									{
 										"kind": "inline-tag",
@@ -9478,7 +9478,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " and pass it here; the editor surfaces it via\r\n"
+										"text": " and pass it here; the editor surfaces it via\n"
 									},
 									{
 										"kind": "inline-tag",
@@ -9511,7 +9511,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Optional host UI rendered *inside* the editor's context provider, so it\r\ncan call "
+										"text": "Optional host UI rendered *inside* the editor's context provider, so it\ncan call "
 									},
 									{
 										"kind": "inline-tag",
@@ -9521,7 +9521,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " to drive tool selection, read the live\r\nselection/IR, or mount the exported "
+										"text": " to drive tool selection, read the live\nselection/IR, or mount the exported "
 									},
 									{
 										"kind": "code",
@@ -9537,7 +9537,7 @@
 									},
 									{
 										"kind": "text",
-										"text": "\r\nagainst this instance's stores. The editor ships no toolbar of its own\r\n(tool selection is host-driven, PRD §3.4); this slot is how a host wires\r\none without recomposing the stage. Rendered as a sibling of the stage\r\nroot so the host owns its own layout."
+										"text": "\nagainst this instance's stores. The editor ships no toolbar of its own\n(tool selection is host-driven, PRD §3.4); this slot is how a host wires\none without recomposing the stage. Rendered as a sibling of the stage\nroot so the host owns its own layout."
 									}
 								]
 							},
@@ -9565,7 +9565,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "FR-012 (A-10): keep the creation tool active after it commits an element\r\n(continuous creation). Default false — the editor returns to Select."
+										"text": "FR-012 (A-10): keep the creation tool active after it commits an element\n(continuous creation). Default false — the editor returns to Select."
 									}
 								]
 							},
@@ -9586,7 +9586,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Domain extensions (Area 1). Each may contribute renderers/inspectors for\r\ncustom node kinds; they are threaded to "
+										"text": "Domain extensions (Area 1). Each may contribute renderers/inspectors for\ncustom node kinds; they are threaded to "
 									},
 									{
 										"kind": "code",
@@ -9594,7 +9594,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " and the\r\ninspector via context. Pair with canvas-core's "
+										"text": " and the\ninspector via context. Pair with canvas-core's "
 									},
 									{
 										"kind": "code",
@@ -9602,7 +9602,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " for the\r\nmatching schema/command/serializer extensions."
+										"text": " for the\nmatching schema/command/serializer extensions."
 									}
 								]
 							},
@@ -9682,7 +9682,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ". Uncontrolled\r\n— after mount the "
+										"text": ". Uncontrolled\n— after mount the "
 									},
 									{
 										"kind": "code",
@@ -9690,7 +9690,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " owns the active id; switch pages via the\r\n"
+										"text": " owns the active id; switch pages via the\n"
 									},
 									{
 										"kind": "code",
@@ -9725,7 +9725,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Initial IR. Uncontrolled — subsequent prop updates do not replace the\r\ninternal IR. Use "
+										"text": "Initial IR. Uncontrolled — subsequent prop updates do not replace the\ninternal IR. Use "
 									},
 									{
 										"kind": "code",
@@ -9784,7 +9784,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " → string map for the\r\nactive locale; the editor resolves chrome strings via "
+										"text": " → string map for the\nactive locale; the editor resolves chrome strings via "
 									},
 									{
 										"kind": "inline-tag",
@@ -9794,7 +9794,7 @@
 									},
 									{
 										"kind": "text",
-										"text": "\r\n(host override wins, else the inline English fallback). Omit to render\r\nthe bundled English defaults. canvas-editor stays standalone — the host\r\n(e.g. plugin-canvas-studio) selects the catalog by locale and passes it."
+										"text": "\n(host override wins, else the inline English fallback). Omit to render\nthe bundled English defaults. canvas-editor stays standalone — the host\n(e.g. plugin-canvas-studio) selects the catalog by locale and passes it."
 									}
 								]
 							},
@@ -9843,7 +9843,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Fires whenever the active page (artboard) changes, with the new\r\npage id. Used by hosts that want to mirror the active artboard\r\nout (e.g. preview-export bridges that need to tag exports with\r\nthe artboard id)."
+										"text": "Fires whenever the active page (artboard) changes, with the new\npage id. Used by hosts that want to mirror the active artboard\nout (e.g. preview-export bridges that need to tag exports with\nthe artboard id)."
 									}
 								]
 							},
@@ -9912,7 +9912,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ", I1-7) captures a gesture.\r\nHosts wire this to the AI panel / job client. Omit it to leave the AI\r\ntools as inert gesture-capture (the marquee/selection still render)."
+										"text": ", I1-7) captures a gesture.\nHosts wire this to the AI panel / job client. Omit it to leave the AI\ntools as inert gesture-capture (the marquee/selection still render)."
 									}
 								]
 							},
@@ -10040,7 +10040,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Fires after every commit with the granular change records + the new IR.\r\nComplements "
+										"text": "Fires after every commit with the granular change records + the new IR.\nComplements "
 									},
 									{
 										"kind": "inline-tag",
@@ -10050,7 +10050,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " for autosave / dirty-tracking / collab that\r\nwants deltas rather than the whole command. A batch commit reports the\r\nflattened per-command changes."
+										"text": " for autosave / dirty-tracking / collab that\nwants deltas rather than the whole command. A batch commit reports the\nflattened per-command changes."
 									}
 								]
 							},
@@ -10134,7 +10134,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "FR-172 host error callback (B-15): fires when the canvas subtree throws\r\nduring render and the error boundary catches it. Wire to telemetry."
+										"text": "FR-172 host error callback (B-15): fires when the canvas subtree throws\nduring render and the error boundary catches it. Wire to telemetry."
 									}
 								]
 							},
@@ -10326,7 +10326,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " has constructed the Konva.Stage, and\r\nagain with "
+										"text": " has constructed the Konva.Stage, and\nagain with "
 									},
 									{
 										"kind": "code",
@@ -10334,7 +10334,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " when the stage tears down. Hosts use this to drive\r\nexport pipelines (e.g. "
+										"text": " when the stage tears down. Hosts use this to drive\nexport pipelines (e.g. "
 									},
 									{
 										"kind": "code",
@@ -10342,7 +10342,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ") without reaching into the\r\neditor's internals."
+										"text": ") without reaching into the\neditor's internals."
 									}
 								]
 							},
@@ -10410,7 +10410,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "FR-160 host persistence (B-08). When present, edits mark the document\r\ndirty, auto-save runs per "
+										"text": "FR-160 host persistence (B-08). When present, edits mark the document\ndirty, auto-save runs per "
 									},
 									{
 										"kind": "code",
@@ -10418,7 +10418,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " (default on), a beforeunload guard\r\nwarns while unsaved (FR-163), and pending changes flush on unmount."
+										"text": " (default on), a beforeunload guard\nwarns while unsaved (FR-163), and pending changes flush on unmount."
 									}
 								]
 							},
@@ -10441,7 +10441,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "FR-164 local recovery (C-10). When present, the editor mirrors the\r\ndocument into this adapter (debounced after each commit), clears it on\r\na successful save, and offers to restore a newer snapshot on mount.\r\n"
+										"text": "FR-164 local recovery (C-10). When present, the editor mirrors the\ndocument into this adapter (debounced after each commit), clears it on\na successful save, and offers to restore a newer snapshot on mount.\n"
 									},
 									{
 										"kind": "code",
@@ -10480,7 +10480,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " renders\r\n"
+										"text": " renders\n"
 									},
 									{
 										"kind": "code",
@@ -10488,7 +10488,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " *inside* its context provider instead of the bare\r\nstacked layout — so any rail/panel/inspector returned by the shell is a\r\nprovider child and can call "
+										"text": " *inside* its context provider instead of the bare\nstacked layout — so any rail/panel/inspector returned by the shell is a\nprovider child and can call "
 									},
 									{
 										"kind": "inline-tag",
@@ -10498,7 +10498,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ". The callback is a\r\npure composition seam (no hooks) that receives the ready-to-mount Konva\r\nstage node and decides where to place it (e.g. the centre column of a\r\ngrid). Omit it to keep the bare-stage layout. "
+										"text": ". The callback is a\npure composition seam (no hooks) that receives the ready-to-mount Konva\nstage node and decides where to place it (e.g. the centre column of a\ngrid). Omit it to keep the bare-stage layout. "
 									},
 									{
 										"kind": "code",
@@ -10506,7 +10506,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " wraps\r\nthis with the full editor shell."
+										"text": " wraps\nthis with the full editor shell."
 									}
 								]
 							},
@@ -10573,7 +10573,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Injected Core runtime (P0-7). When supplied, the commit/history pipeline\r\n("
+										"text": "Injected Core runtime (P0-7). When supplied, the commit/history pipeline\n("
 									},
 									{
 										"kind": "code",
@@ -10605,7 +10605,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ") dispatches through\r\n"
+										"text": ") dispatches through\n"
 									},
 									{
 										"kind": "code",
@@ -10621,7 +10621,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ", so custom\r\ncommands registered on this runtime participate in undo/redo exactly like\r\nbuilt-ins. Pair it with a matching "
+										"text": ", so custom\ncommands registered on this runtime participate in undo/redo exactly like\nbuilt-ins. Pair it with a matching "
 									},
 									{
 										"kind": "code",
@@ -10629,7 +10629,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " on the\r\n"
+										"text": " on the\n"
 									},
 									{
 										"kind": "code",
@@ -10637,7 +10637,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " prop's renderer/inspector side and with the SAME runtime at\r\ndecode/serialize time ("
+										"text": " prop's renderer/inspector side and with the SAME runtime at\ndecode/serialize time ("
 									},
 									{
 										"kind": "code",
@@ -10645,7 +10645,7 @@
 									},
 									{
 										"kind": "text",
-										"text": "'s\r\n"
+										"text": "'s\n"
 									},
 									{
 										"kind": "code",
@@ -10661,7 +10661,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ") — a runtime is a single\r\nper-document config, not one-per-concern. Omit to use the default\r\nbuilt-in-only runtime (unchanged from before this prop existed)."
+										"text": ") — a runtime is a single\nper-document config, not one-per-concern. Omit to use the default\nbuilt-in-only runtime (unchanged from before this prop existed)."
 									}
 								]
 							},
@@ -10688,7 +10688,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Provider-backed template source (C-06, FR-131) for remote/paginated\r\ncatalogs. Takes precedence over "
+										"text": "Provider-backed template source (C-06, FR-131) for remote/paginated\ncatalogs. Takes precedence over "
 									},
 									{
 										"kind": "code",
@@ -10696,7 +10696,7 @@
 									},
 									{
 										"kind": "text",
-										"text": "; the static array keeps\r\nworking without it."
+										"text": "; the static array keeps\nworking without it."
 									}
 								]
 							},
@@ -10719,7 +10719,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Host-supplied template catalog (canvas-m0-009). Plain data consumed by the\r\nTemplates dock panel; structurally compatible with\r\n"
+										"text": "Host-supplied template catalog (canvas-m0-009). Plain data consumed by the\nTemplates dock panel; structurally compatible with\n"
 									},
 									{
 										"kind": "code",
@@ -10727,7 +10727,7 @@
 									},
 									{
 										"kind": "text",
-										"text": "' catalog values. Omit to show the panel's\r\nempty state."
+										"text": "' catalog values. Omit to show the panel's\nempty state."
 									}
 								]
 							},
@@ -11781,7 +11781,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "FR-090 asset picker adapter (B-10). When present it supersedes\r\n"
+										"text": "FR-090 asset picker adapter (B-10). When present it supersedes\n"
 									},
 									{
 										"kind": "code",
@@ -11789,7 +11789,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " for tools (single pick) and powers multi-select flows;\r\nthe legacy "
+										"text": " for tools (single pick) and powers multi-select flows;\nthe legacy "
 									},
 									{
 										"kind": "code",
@@ -11943,7 +11943,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Shared brand colors + fonts (I3-4). Hosts map their Studio config to a\r\n"
+										"text": "Shared brand colors + fonts (I3-4). Hosts map their Studio config to a\n"
 									},
 									{
 										"kind": "inline-tag",
@@ -11953,7 +11953,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " and pass it here; the editor surfaces it via\r\n"
+										"text": " and pass it here; the editor surfaces it via\n"
 									},
 									{
 										"kind": "inline-tag",
@@ -11994,7 +11994,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Optional host UI rendered *inside* the editor's context provider, so it\r\ncan call "
+										"text": "Optional host UI rendered *inside* the editor's context provider, so it\ncan call "
 									},
 									{
 										"kind": "inline-tag",
@@ -12004,7 +12004,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " to drive tool selection, read the live\r\nselection/IR, or mount the exported "
+										"text": " to drive tool selection, read the live\nselection/IR, or mount the exported "
 									},
 									{
 										"kind": "code",
@@ -12020,7 +12020,7 @@
 									},
 									{
 										"kind": "text",
-										"text": "\r\nagainst this instance's stores. The editor ships no toolbar of its own\r\n(tool selection is host-driven, PRD §3.4); this slot is how a host wires\r\none without recomposing the stage. Rendered as a sibling of the stage\r\nroot so the host owns its own layout."
+										"text": "\nagainst this instance's stores. The editor ships no toolbar of its own\n(tool selection is host-driven, PRD §3.4); this slot is how a host wires\none without recomposing the stage. Rendered as a sibling of the stage\nroot so the host owns its own layout."
 									}
 								]
 							},
@@ -12056,7 +12056,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "FR-012 (A-10): keep the creation tool active after it commits an element\r\n(continuous creation). Default false — the editor returns to Select."
+										"text": "FR-012 (A-10): keep the creation tool active after it commits an element\n(continuous creation). Default false — the editor returns to Select."
 									}
 								]
 							},
@@ -12148,7 +12148,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Domain extensions (Area 1). Each may contribute renderers/inspectors for\r\ncustom node kinds; they are threaded to "
+										"text": "Domain extensions (Area 1). Each may contribute renderers/inspectors for\ncustom node kinds; they are threaded to "
 									},
 									{
 										"kind": "code",
@@ -12156,7 +12156,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " and the\r\ninspector via context. Pair with canvas-core's "
+										"text": " and the\ninspector via context. Pair with canvas-core's "
 									},
 									{
 										"kind": "code",
@@ -12164,7 +12164,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " for the\r\nmatching schema/command/serializer extensions."
+										"text": " for the\nmatching schema/command/serializer extensions."
 									}
 								]
 							},
@@ -12308,7 +12308,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ". Uncontrolled\r\n— after mount the "
+										"text": ". Uncontrolled\n— after mount the "
 									},
 									{
 										"kind": "code",
@@ -12316,7 +12316,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " owns the active id; switch pages via the\r\n"
+										"text": " owns the active id; switch pages via the\n"
 									},
 									{
 										"kind": "code",
@@ -12360,7 +12360,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Initial IR. Uncontrolled — subsequent prop updates do not replace the\r\ninternal IR. Use "
+										"text": "Initial IR. Uncontrolled — subsequent prop updates do not replace the\ninternal IR. Use "
 									},
 									{
 										"kind": "code",
@@ -12472,7 +12472,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " → string map for the\r\nactive locale; the editor resolves chrome strings via "
+										"text": " → string map for the\nactive locale; the editor resolves chrome strings via "
 									},
 									{
 										"kind": "inline-tag",
@@ -12482,7 +12482,7 @@
 									},
 									{
 										"kind": "text",
-										"text": "\r\n(host override wins, else the inline English fallback). Omit to render\r\nthe bundled English defaults. canvas-editor stays standalone — the host\r\n(e.g. plugin-canvas-studio) selects the catalog by locale and passes it."
+										"text": "\n(host override wins, else the inline English fallback). Omit to render\nthe bundled English defaults. canvas-editor stays standalone — the host\n(e.g. plugin-canvas-studio) selects the catalog by locale and passes it."
 									}
 								]
 							},
@@ -12539,7 +12539,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Fires whenever the active page (artboard) changes, with the new\r\npage id. Used by hosts that want to mirror the active artboard\r\nout (e.g. preview-export bridges that need to tag exports with\r\nthe artboard id)."
+										"text": "Fires whenever the active page (artboard) changes, with the new\npage id. Used by hosts that want to mirror the active artboard\nout (e.g. preview-export bridges that need to tag exports with\nthe artboard id)."
 									}
 								]
 							},
@@ -12616,7 +12616,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ", I1-7) captures a gesture.\r\nHosts wire this to the AI panel / job client. Omit it to leave the AI\r\ntools as inert gesture-capture (the marquee/selection still render)."
+										"text": ", I1-7) captures a gesture.\nHosts wire this to the AI panel / job client. Omit it to leave the AI\ntools as inert gesture-capture (the marquee/selection still render)."
 									}
 								]
 							},
@@ -12800,7 +12800,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Fires after every commit with the granular change records + the new IR.\r\nComplements "
+										"text": "Fires after every commit with the granular change records + the new IR.\nComplements "
 									},
 									{
 										"kind": "inline-tag",
@@ -12810,7 +12810,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " for autosave / dirty-tracking / collab that\r\nwants deltas rather than the whole command. A batch commit reports the\r\nflattened per-command changes."
+										"text": " for autosave / dirty-tracking / collab that\nwants deltas rather than the whole command. A batch commit reports the\nflattened per-command changes."
 									}
 								]
 							},
@@ -12902,7 +12902,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "FR-172 host error callback (B-15): fires when the canvas subtree throws\r\nduring render and the error boundary catches it. Wire to telemetry."
+										"text": "FR-172 host error callback (B-15): fires when the canvas subtree throws\nduring render and the error boundary catches it. Wire to telemetry."
 									}
 								]
 							},
@@ -13118,7 +13118,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " has constructed the Konva.Stage, and\r\nagain with "
+										"text": " has constructed the Konva.Stage, and\nagain with "
 									},
 									{
 										"kind": "code",
@@ -13126,7 +13126,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " when the stage tears down. Hosts use this to drive\r\nexport pipelines (e.g. "
+										"text": " when the stage tears down. Hosts use this to drive\nexport pipelines (e.g. "
 									},
 									{
 										"kind": "code",
@@ -13134,7 +13134,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ") without reaching into the\r\neditor's internals."
+										"text": ") without reaching into the\neditor's internals."
 									}
 								]
 							},
@@ -13343,7 +13343,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "FR-160 host persistence (B-08). When present, edits mark the document\r\ndirty, auto-save runs per "
+										"text": "FR-160 host persistence (B-08). When present, edits mark the document\ndirty, auto-save runs per "
 									},
 									{
 										"kind": "code",
@@ -13351,7 +13351,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " (default on), a beforeunload guard\r\nwarns while unsaved (FR-163), and pending changes flush on unmount."
+										"text": " (default on), a beforeunload guard\nwarns while unsaved (FR-163), and pending changes flush on unmount."
 									}
 								]
 							},
@@ -13382,7 +13382,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "FR-164 local recovery (C-10). When present, the editor mirrors the\r\ndocument into this adapter (debounced after each commit), clears it on\r\na successful save, and offers to restore a newer snapshot on mount.\r\n"
+										"text": "FR-164 local recovery (C-10). When present, the editor mirrors the\ndocument into this adapter (debounced after each commit), clears it on\na successful save, and offers to restore a newer snapshot on mount.\n"
 									},
 									{
 										"kind": "code",
@@ -13421,7 +13421,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Injected Core runtime (P0-7). When supplied, the commit/history pipeline\r\n("
+										"text": "Injected Core runtime (P0-7). When supplied, the commit/history pipeline\n("
 									},
 									{
 										"kind": "code",
@@ -13453,7 +13453,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ") dispatches through\r\n"
+										"text": ") dispatches through\n"
 									},
 									{
 										"kind": "code",
@@ -13469,7 +13469,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ", so custom\r\ncommands registered on this runtime participate in undo/redo exactly like\r\nbuilt-ins. Pair it with a matching "
+										"text": ", so custom\ncommands registered on this runtime participate in undo/redo exactly like\nbuilt-ins. Pair it with a matching "
 									},
 									{
 										"kind": "code",
@@ -13477,7 +13477,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " on the\r\n"
+										"text": " on the\n"
 									},
 									{
 										"kind": "code",
@@ -13485,7 +13485,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " prop's renderer/inspector side and with the SAME runtime at\r\ndecode/serialize time ("
+										"text": " prop's renderer/inspector side and with the SAME runtime at\ndecode/serialize time ("
 									},
 									{
 										"kind": "code",
@@ -13493,7 +13493,7 @@
 									},
 									{
 										"kind": "text",
-										"text": "'s\r\n"
+										"text": "'s\n"
 									},
 									{
 										"kind": "code",
@@ -13509,7 +13509,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ") — a runtime is a single\r\nper-document config, not one-per-concern. Omit to use the default\r\nbuilt-in-only runtime (unchanged from before this prop existed)."
+										"text": ") — a runtime is a single\nper-document config, not one-per-concern. Omit to use the default\nbuilt-in-only runtime (unchanged from before this prop existed)."
 									}
 								]
 							},
@@ -13649,7 +13649,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Provider-backed template source (C-06, FR-131) for remote/paginated\r\ncatalogs. Takes precedence over "
+										"text": "Provider-backed template source (C-06, FR-131) for remote/paginated\ncatalogs. Takes precedence over "
 									},
 									{
 										"kind": "code",
@@ -13657,7 +13657,7 @@
 									},
 									{
 										"kind": "text",
-										"text": "; the static array keeps\r\nworking without it."
+										"text": "; the static array keeps\nworking without it."
 									}
 								]
 							},
@@ -13688,7 +13688,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Host-supplied template catalog (canvas-m0-009). Plain data consumed by the\r\nTemplates dock panel; structurally compatible with\r\n"
+										"text": "Host-supplied template catalog (canvas-m0-009). Plain data consumed by the\nTemplates dock panel; structurally compatible with\n"
 									},
 									{
 										"kind": "code",
@@ -13696,7 +13696,7 @@
 									},
 									{
 										"kind": "text",
-										"text": "' catalog values. Omit to show the panel's\r\nempty state."
+										"text": "' catalog values. Omit to show the panel's\nempty state."
 									}
 								]
 							},
@@ -21418,7 +21418,7 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Serialize a live editor stage to a data URL with the editor-only chrome\r\nlayers hidden, so the exported preview shows only design content — not the\r\nselection transformer, smart guides, or remote-presence overlays the user\r\nhappened to have on screen at export time.\r\n\r\nKonva's "
+										"text": "Serialize a live editor stage to a data URL with the editor-only chrome\nlayers hidden, so the exported preview shows only design content — not the\nselection transformer, smart guides, or remote-presence overlays the user\nhappened to have on screen at export time.\n\nKonva's "
 									},
 									{
 										"kind": "code",
@@ -21426,7 +21426,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " composes only visible layers, so we flip the chrome\r\nlayers invisible for the duration of the serialize and restore them in a\r\n"
+										"text": " composes only visible layers, so we flip the chrome\nlayers invisible for the duration of the serialize and restore them in a\n"
 									},
 									{
 										"kind": "code",
@@ -21434,7 +21434,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " (the stage is normally about to unmount, but we never leave it in\r\na mutated visual state). Stages that don't expose "
+										"text": " (the stage is normally about to unmount, but we never leave it in\na mutated visual state). Stages that don't expose "
 									},
 									{
 										"kind": "code",
@@ -21442,7 +21442,7 @@
 									},
 									{
 										"kind": "text",
-										"text": " (e.g. unit-test\r\nfakes) fall through to a plain "
+										"text": " (e.g. unit-test\nfakes) fall through to a plain "
 									},
 									{
 										"kind": "code",
@@ -34504,7 +34504,7 @@
 							},
 							{
 								"kind": "text",
-								"text": " are only used by the detached rasterize/export\r\nstages (2 physical layers there, well under Konva's recommended max).\r\nThe live "
+								"text": " are only used by the detached rasterize/export\nstages (2 physical layers there, well under Konva's recommended max).\nThe live "
 							},
 							{
 								"kind": "code",
@@ -34520,7 +34520,7 @@
 							},
 							{
 								"kind": "text",
-								"text": " (background + objects),\r\n"
+								"text": " (background + objects),\n"
 							},
 							{
 								"kind": "code",
@@ -34544,7 +34544,7 @@
 							},
 							{
 								"kind": "text",
-								"text": " — 4\r\nphysical layers grouped via named "
+								"text": " — 4\nphysical layers grouped via named "
 							},
 							{
 								"kind": "code",
@@ -34552,7 +34552,7 @@
 							},
 							{
 								"kind": "text",
-								"text": "s so the stage stays inside\r\nKonva's recommended 3-5 layer range instead of the 6 separate layers\r\nthis used to mount."
+								"text": "s so the stage stays inside\nKonva's recommended 3-5 layer range instead of the 6 separate layers\nthis used to mount."
 							}
 						]
 					},
