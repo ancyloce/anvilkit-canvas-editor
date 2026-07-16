@@ -293,7 +293,6 @@ describe("§10 field-input contract (B-12)", () => {
 		const node = nodeFixture();
 		const h = makeHarness();
 		const ctx = { ...h.studioCtx };
-		// biome-ignore lint/performance/noDelete: building the degraded test context
 		delete (ctx as Record<string, unknown>).commitCoalesced;
 		render(
 			<CanvasStudioContext.Provider value={ctx}>

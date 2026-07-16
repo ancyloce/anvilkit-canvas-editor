@@ -395,6 +395,10 @@ export function TemplatesPanel(): React.JSX.Element {
 				>
 					<SelectTrigger
 						data-testid="templates-category-filter"
+						aria-label={t(
+							"canvas.templates.categoryFilterLabel",
+							"Filter by category",
+						)}
 						className="w-32"
 					>
 						<SelectValue />
@@ -412,7 +416,11 @@ export function TemplatesPanel(): React.JSX.Element {
 				</Select>
 			</div>
 			<Select value={sizeId} onValueChange={(next) => next && setSizeId(next)}>
-				<SelectTrigger data-testid="templates-size-filter" className="w-full">
+				<SelectTrigger
+					data-testid="templates-size-filter"
+					aria-label={t("canvas.templates.sizeFilterLabel", "Filter by size")}
+					className="w-full"
+				>
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
