@@ -241,6 +241,8 @@ function PageRow({
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [renaming, setRenaming] = useState(false);
 	const [dropTarget, setDropTarget] = useState(false);
+	// FR-032 Export page disables when no export UI is mounted.
+	const exportAvailable = ctx.exportRequestStore?.getState().available ?? false;
 	const confirmDelete = (): void => {
 		void dialogs
 			.confirm({
@@ -331,6 +333,19 @@ function PageRow({
 						onClick={() => reorderPage(ctx, page.id, index + 1)}
 					>
 						{t("canvas.pages.moveDown", "Move page down")}
+					</ContextMenuItem>
+					<ContextMenuSeparator />
+					<ContextMenuItem
+						data-testid={`page-menu-export-${page.id}`}
+						disabled={!exportAvailable}
+						onClick={() => {
+							// FR-032 Export page: switch to the page and open the export
+							// dialog scoped to the current page.
+							switchToPage(ctx, page.id);
+							ctx.exportRequestStore?.getState().request({ scope: "current" });
+						}}
+					>
+						{t("canvas.pages.exportPage", "Export page")}
 					</ContextMenuItem>
 					<ContextMenuSeparator />
 					<ContextMenuItem

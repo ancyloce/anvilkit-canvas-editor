@@ -67,6 +67,15 @@ describe("WorkspaceHeader save status + zoom (B-07)", () => {
 		setup();
 		expect(screen.getByTestId("workspace-more-menu")).toBeTruthy();
 	});
+
+	it("shows the active page size (FR-003)", () => {
+		setup();
+		const label = screen.getByTestId("workspace-header-page-size");
+		// Default page is 1080 × 1080 px.
+		expect(label.textContent).toContain("1,080");
+		expect(label.textContent).toContain("×");
+		expect(label.textContent).toContain("px");
+	});
 });
 
 describe("WorkspaceHeader undo/redo empty states (B-15, FR-173)", () => {

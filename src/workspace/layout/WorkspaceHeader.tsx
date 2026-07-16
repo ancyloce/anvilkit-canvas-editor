@@ -39,6 +39,17 @@ const ShortcutHelpDialog = lazy(
 	() => import("../dialogs/ShortcutHelpDialog.js"),
 );
 
+/**
+ * Format a page dimension for the header (§8.7): locale-grouped, integers shown
+ * without decimals, fractional units (in/cm/mm) kept to two places. `Intl`
+ * handles the locale separators.
+ */
+function formatDimension(value: number): string {
+	return new Intl.NumberFormat(undefined, {
+		maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
+	}).format(value);
+}
+
 export interface WorkspaceHeaderProps {
 	/** Host back action. When omitted, the Back button is hidden. */
 	onBack?: () => void;
@@ -124,6 +135,15 @@ export function WorkspaceHeader({
 		() => ctx.viewportStore.getState().zoom,
 		() => ctx.viewportStore.getState().zoom,
 	);
+	// FR-003 page-size display: the active page's dimensions, unit-aware and
+	// locale-formatted. Reads live `ir`/`activePageId` off the context.
+	const activePage =
+		ctx.ir.pages.find((p) => p.id === ctx.activePageId) ?? ctx.ir.pages[0];
+	const pageSizeLabel = activePage
+		? `${formatDimension(activePage.size.width)} × ${formatDimension(
+				activePage.size.height,
+			)} ${activePage.size.unit ?? "px"}`
+		: null;
 	const SAVE_LABELS: Record<string, [string, string]> = {
 		clean: ["canvas.save.clean", "All changes saved"],
 		dirty: ["canvas.save.dirty", "Unsaved changes"],
@@ -264,6 +284,16 @@ export function WorkspaceHeader({
 			) : null}
 
 			<div className="flex-1" />
+
+			{pageSizeLabel ? (
+				<span
+					data-testid="workspace-header-page-size"
+					className="mr-2 hidden tabular-nums text-xs text-muted-foreground sm:inline"
+					title={t("canvas.header.pageSize", "Page size")}
+				>
+					{pageSizeLabel}
+				</span>
+			) : null}
 
 			<div
 				data-testid="workspace-header-zoom"
