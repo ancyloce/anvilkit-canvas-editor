@@ -23,6 +23,7 @@ import type {
 	AnyCanvasCommand,
 	HistoryStoreApi,
 } from "../stores/history-store.js";
+import type { IsolationStoreApi } from "../stores/isolation-store.js";
 import type { PagesStoreApi } from "../stores/pages-store.js";
 import type { PathEditStoreApi } from "../stores/path-edit-store.js";
 import type { PenStoreApi } from "../stores/pen-store.js";
@@ -35,6 +36,7 @@ import type { ToolStoreApi } from "../stores/tool-store.js";
 import type { UploadStoreApi } from "../stores/upload-store.js";
 import type { ViewportStoreApi } from "../stores/viewport-store.js";
 import type { CanvasTemplateEntry } from "../templates/template-entry.js";
+import type { CanvasTemplateProvider } from "../templates/template-provider.js";
 import type { AiToolIntent } from "../tools/ai-intent.js";
 
 export type CanvasIRGetter = () => CanvasIR;
@@ -146,6 +148,13 @@ export interface CanvasStudioContextValue {
 	 */
 	templates?: readonly CanvasTemplateEntry[];
 	/**
+	 * Provider-backed template source (C-06, FR-131). Takes precedence over
+	 * `templates` when both are set; a plain `templates` array is wrapped in
+	 * `createStaticTemplateProvider` by the panel, so hosts never need this
+	 * unless their catalog is remote/paginated.
+	 */
+	templateProvider?: CanvasTemplateProvider;
+	/**
 	 * Renderers for custom (extension) node kinds, keyed by kind. Consulted by
 	 * `<CanvasNodeRenderer>` for any node whose `type` is not a built-in kind.
 	 */
@@ -189,6 +198,12 @@ export interface CanvasStudioContextValue {
 	 * ruler/guide surfaces render nothing without it.
 	 */
 	rulerGuideStore?: RulerGuideStoreApi;
+	/**
+	 * Container isolation stack (C-09, FR-055). UI state only — never enters
+	 * IR. Always provided by `<CanvasStudio>`; optional for partial test
+	 * contexts, where isolation features simply stay off.
+	 */
+	isolationStore?: IsolationStoreApi;
 	/** Konva.Stage instance — null until <CanvasStage>'s onReady fires. */
 	stage: Konva.Stage | null;
 	/**
