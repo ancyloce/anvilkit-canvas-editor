@@ -16,6 +16,7 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { Group } from "react-konva";
 import { CanvasFocusRing } from "./a11y/CanvasFocusRing.js";
 import { SceneAccessibilityTree } from "./a11y/SceneAccessibilityTree.js";
 import { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
@@ -525,19 +526,29 @@ function EditorStage({
 							panY={panY}
 							onReady={onStageReady}
 						>
-							<RenderLayer name="background" listening={false}>
-								<DesignBackground />
-								<Grid />
-							</RenderLayer>
-							<RenderLayer name="objects">
-								{activePage.root.children.flatMap((node) =>
-									draggedIds.has(node.id)
-										? []
-										: [<CanvasNodeRenderer key={node.id} node={node} />],
-								)}
+							{/* Konva warns above 5 physical layers ("recommended maximum
+					    number of layers is 3-5"); this stage used to mount 6 (one per
+					    RenderLayer). Semantically distinct chrome that doesn't need its
+					    own redraw isolation is now grouped into fewer physical layers
+					    via named <Group>s — paint order is unchanged, only the layer
+					    boundaries moved. */}
+							<RenderLayer name="content">
+								<Group name="background" listening={false}>
+									<DesignBackground />
+									<Grid />
+								</Group>
+								<Group name="objects">
+									{activePage.root.children.flatMap((node) =>
+										draggedIds.has(node.id)
+											? []
+											: [<CanvasNodeRenderer key={node.id} node={node} />],
+									)}
+								</Group>
 							</RenderLayer>
 							{/* I2-5: dragged nodes float on their own layer so only it
-					    redraws during a drag; the (cached) objects layer stays put. */}
+					    redraws during a drag; the (cached) content layer stays put.
+					    Kept as its own physical layer — the one redraw isolation this
+					    consolidation must not give up. */}
 							<RenderLayer name="drag">
 								{activePage.root.children.flatMap((node) =>
 									draggedIds.has(node.id)
@@ -545,18 +556,24 @@ function EditorStage({
 										: [],
 								)}
 							</RenderLayer>
-							{/* C-02: persistent guides + layout aids. Own layer so guide
-					    drags never redraw objects; above objects, below selection. */}
-							<RenderLayer name="guides">
-								<GuideLayoutOverlay />
-							</RenderLayer>
-							<RenderLayer name="selection">
-								<DraftRenderer />
-								<SmartGuideOverlay />
-								<PenPreview />
-								<PathEditOverlay />
-								<CanvasTransformer />
-								<CanvasFocusRing />
+							{/* C-02: persistent guides + layout aids, merged with the
+					    selection chrome below into one "overlay" layer. Both only
+					    redraw during active interaction and both are editor-only
+					    chrome excluded from export (see CHROME_LAYER_NAMES in
+					    export-stage.ts) — sharing a layer costs nothing there. Guides
+					    stay below selection in paint order. */}
+							<RenderLayer name="overlay">
+								<Group name="guides">
+									<GuideLayoutOverlay />
+								</Group>
+								<Group name="selection">
+									<DraftRenderer />
+									<SmartGuideOverlay />
+									<PenPreview />
+									<PathEditOverlay />
+									<CanvasTransformer />
+									<CanvasFocusRing />
+								</Group>
 							</RenderLayer>
 							<RenderLayer name="presence" listening={false}>
 								<RemoteCursors />

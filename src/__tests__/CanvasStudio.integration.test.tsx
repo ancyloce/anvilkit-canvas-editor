@@ -115,40 +115,61 @@ function layerCalls() {
 	return calls.filter((c) => c.type === "Layer");
 }
 
+function groupCalls() {
+	return calls.filter((c) => c.type === "Group");
+}
+
+/** Dedupe by name: CanvasStudio re-renders once when CanvasStage's onReady
+ * captures the stage into context state. Structure assertions should be
+ * render-count-tolerant. */
+function dedupeByName(items: ElementCall[]) {
+	const byName = new Map<string, ElementCall>();
+	for (const item of items) {
+		const name = item.props.name as string;
+		if (!byName.has(name)) byName.set(name, item);
+	}
+	return byName;
+}
+
 describe("CanvasStudio integration", () => {
 	beforeEach(() => {
 		calls.length = 0;
 		destroyMock.mockClear();
 	});
 
-	it("renders six layers in canonical z-order with correct listening flags", () => {
+	it("renders four physical layers in canonical z-order with correct listening flags", () => {
+		// Konva warns above 5 physical layers ("recommended maximum number of
+		// layers is 3-5"); this stage used to mount 6 (one per RenderLayer) —
+		// it now groups chrome that doesn't need its own redraw isolation into
+		// 4 physical layers via named <Group>s, so the warning never fires.
 		const ir = createCanvasIR({
 			pages: [createPage({ id: "p1" })],
 			now: () => "2026-01-01T00:00:00.000Z",
 		});
 		render(<CanvasStudio initialIR={ir} initialActivePageId="p1" />);
-		// Dedupe by name: CanvasStudio re-renders once when CanvasStage's
-		// onReady captures the stage into context state. Structure assertion
-		// should be render-count-tolerant.
-		const layersByName = new Map<string, ElementCall>();
-		for (const l of layerCalls()) {
-			const name = l.props.name as string;
-			if (!layersByName.has(name)) layersByName.set(name, l);
-		}
+		const layersByName = dedupeByName(layerCalls());
 		expect(Array.from(layersByName.keys())).toEqual([
-			"background",
-			"objects",
+			"content",
 			"drag",
-			"guides",
-			"selection",
+			"overlay",
 			"presence",
 		]);
-		expect(layersByName.get("background")?.props.listening).toBe(false);
-		expect(layersByName.get("objects")?.props.listening).toBe(true);
+		expect(layersByName.get("content")?.props.listening).toBe(true);
 		expect(layersByName.get("drag")?.props.listening).toBe(true);
-		expect(layersByName.get("guides")?.props.listening).toBe(true);
-		expect(layersByName.get("selection")?.props.listening).toBe(true);
+		expect(layersByName.get("overlay")?.props.listening).toBe(true);
 		expect(layersByName.get("presence")?.props.listening).toBe(false);
+
+		// The merged layers still expose their former sub-sections as named
+		// Groups, in the same paint order, so the pre-consolidation isolation
+		// (background under objects; guides under selection) is preserved.
+		const groupsByName = dedupeByName(groupCalls());
+		expect(Array.from(groupsByName.keys())).toEqual([
+			"background",
+			"objects",
+			"guides",
+			"selection",
+		]);
+		expect(groupsByName.get("background")?.props.listening).toBe(false);
 	});
 
 	it("routes a dragged node into the drag layer, leaving the rest in objects (I2-5)", () => {
