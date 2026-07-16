@@ -60,6 +60,7 @@ import { CanvasNodeRenderer } from "./stage/CanvasNodeRenderer.js";
 import { CanvasStage } from "./stage/CanvasStage.js";
 import { DesignBackground } from "./stage/DesignBackground.js";
 import { Grid } from "./stage/Grid.js";
+import { GuideLayoutOverlay } from "./stage/GuideLayoutOverlay.js";
 import { RemoteCursors } from "./stage/RemoteCursors.js";
 import { RemoteSelections } from "./stage/RemoteSelections.js";
 import { RenderLayer } from "./stage/RenderLayer.js";
@@ -82,6 +83,7 @@ import {
 	type DocumentStores,
 	replaceDocumentSnapshot,
 } from "./stores/replace-document.js";
+import { createRulerGuideStore } from "./stores/ruler-guide-store.js";
 import type { CanvasSaveState } from "./stores/save-status-store.js";
 import { createSaveStatusStore } from "./stores/save-status-store.js";
 import { createSceneStore } from "./stores/scene-store.js";
@@ -292,6 +294,7 @@ function useEditorStores({
 	const [penStore] = useState(() => createPenStore());
 	const [pathEditStore] = useState(() => createPathEditStore());
 	const [fieldPreviewStore] = useState(() => createFieldPreviewStore());
+	const [rulerGuideStore] = useState(() => createRulerGuideStore());
 	return {
 		sceneStore,
 		historyStore,
@@ -308,6 +311,7 @@ function useEditorStores({
 		penStore,
 		pathEditStore,
 		fieldPreviewStore,
+		rulerGuideStore,
 	};
 }
 
@@ -510,6 +514,11 @@ function EditorStage({
 									: [],
 							)}
 						</RenderLayer>
+						{/* C-02: persistent guides + layout aids. Own layer so guide
+					    drags never redraw objects; above objects, below selection. */}
+						<RenderLayer name="guides">
+							<GuideLayoutOverlay />
+						</RenderLayer>
 						<RenderLayer name="selection">
 							<DraftRenderer />
 							<SmartGuideOverlay />
@@ -578,6 +587,7 @@ export function CanvasStudio({
 		penStore,
 		pathEditStore,
 		fieldPreviewStore,
+		rulerGuideStore,
 	} = useEditorStores({ initialIR, initialActivePageId, initialTool, runtime });
 	const ir = useSyncExternalStore(
 		sceneStore.subscribe,
@@ -811,6 +821,7 @@ export function CanvasStudio({
 			commitCoalesced,
 			commitBatch,
 			fieldPreviewStore,
+			rulerGuideStore,
 			replaceDocument,
 			pickAsset,
 			requestAiIntent,
@@ -850,6 +861,7 @@ export function CanvasStudio({
 			commitCoalesced,
 			commitBatch,
 			fieldPreviewStore,
+			rulerGuideStore,
 			replaceDocument,
 			pickAsset,
 			requestAiIntent,

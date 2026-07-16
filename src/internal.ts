@@ -149,6 +149,14 @@ export type {
 } from "./stores/replace-document.js";
 export { replaceDocumentSnapshot } from "./stores/replace-document.js";
 export type {
+	CanvasGuideAxis,
+	CreateRulerGuideStoreOptions,
+	PendingGuide,
+	RulerGuideState,
+	RulerGuideStoreApi,
+} from "./stores/ruler-guide-store.js";
+export { createRulerGuideStore } from "./stores/ruler-guide-store.js";
+export type {
 	SelectionState,
 	SelectionStoreApi,
 } from "./stores/selection-store.js";

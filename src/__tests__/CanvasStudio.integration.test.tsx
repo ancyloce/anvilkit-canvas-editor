@@ -121,7 +121,7 @@ describe("CanvasStudio integration", () => {
 		destroyMock.mockClear();
 	});
 
-	it("renders five layers in canonical z-order with correct listening flags", () => {
+	it("renders six layers in canonical z-order with correct listening flags", () => {
 		const ir = createCanvasIR({
 			pages: [createPage({ id: "p1" })],
 			now: () => "2026-01-01T00:00:00.000Z",
@@ -139,12 +139,14 @@ describe("CanvasStudio integration", () => {
 			"background",
 			"objects",
 			"drag",
+			"guides",
 			"selection",
 			"presence",
 		]);
 		expect(layersByName.get("background")?.props.listening).toBe(false);
 		expect(layersByName.get("objects")?.props.listening).toBe(true);
 		expect(layersByName.get("drag")?.props.listening).toBe(true);
+		expect(layersByName.get("guides")?.props.listening).toBe(true);
 		expect(layersByName.get("selection")?.props.listening).toBe(true);
 		expect(layersByName.get("presence")?.props.listening).toBe(false);
 	});
