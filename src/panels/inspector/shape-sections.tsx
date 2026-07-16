@@ -30,7 +30,6 @@ export function renderRectFields(
 			<FillAndShadowFields
 				node={node}
 				fill={node.fill}
-				shadow={node.shadow}
 				commitPatch={commitPatch}
 				t={t}
 			/>
@@ -61,7 +60,6 @@ export function renderEllipseFields(
 			<FillAndShadowFields
 				node={node}
 				fill={node.fill}
-				shadow={node.shadow}
 				commitPatch={commitPatch}
 				t={t}
 			/>
@@ -91,7 +89,6 @@ export function renderPolygonFields(
 			<FillAndShadowFields
 				node={node}
 				fill={node.fill}
-				shadow={node.shadow}
 				commitPatch={commitPatch}
 				t={t}
 			/>
@@ -133,7 +130,6 @@ export function renderStarFields(
 			<FillAndShadowFields
 				node={node}
 				fill={node.fill}
-				shadow={node.shadow}
 				commitPatch={commitPatch}
 				t={t}
 			/>

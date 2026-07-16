@@ -1,9 +1,12 @@
 "use client";
 
-import type {
-	CanvasFrameNode,
-	CanvasImageFitMode,
-	CanvasImageNode,
+import {
+	CANVAS_IMAGE_ADJUSTMENT_PRESETS,
+	type CanvasFrameNode,
+	type CanvasImageAdjustmentPresetId,
+	type CanvasImageAdjustments,
+	type CanvasImageFitMode,
+	type CanvasImageNode,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { Switch } from "@anvilkit/ui/components/animate-ui/components/base/switch";
@@ -168,7 +171,179 @@ export function renderImageFields(
 					</Button>
 				) : null}
 			</Section>
+			{renderAdjustmentFields(node, commitPatch, t)}
 		</>
+	);
+}
+
+/** The 9 FR-100 adjustments, in pipeline order, with their UI ranges. */
+const ADJUSTMENT_FIELDS: ReadonlyArray<{
+	key: keyof CanvasImageAdjustments;
+	labelKey: string;
+	fallback: string;
+	min: number;
+	max: number;
+	step: number;
+}> = [
+	{
+		key: "exposure",
+		labelKey: "canvas.inspector.adjustExposure",
+		fallback: "Exposure",
+		min: -1,
+		max: 1,
+		step: 0.05,
+	},
+	{
+		key: "brightness",
+		labelKey: "canvas.inspector.adjustBrightness",
+		fallback: "Brightness",
+		min: -1,
+		max: 1,
+		step: 0.05,
+	},
+	{
+		key: "contrast",
+		labelKey: "canvas.inspector.adjustContrast",
+		fallback: "Contrast",
+		min: -1,
+		max: 1,
+		step: 0.05,
+	},
+	{
+		key: "saturation",
+		labelKey: "canvas.inspector.adjustSaturation",
+		fallback: "Saturation",
+		min: -1,
+		max: 1,
+		step: 0.05,
+	},
+	{
+		key: "temperature",
+		labelKey: "canvas.inspector.adjustTemperature",
+		fallback: "Temperature",
+		min: -1,
+		max: 1,
+		step: 0.05,
+	},
+	{
+		key: "tint",
+		labelKey: "canvas.inspector.adjustTint",
+		fallback: "Tint",
+		min: -1,
+		max: 1,
+		step: 0.05,
+	},
+	{
+		key: "grayscale",
+		labelKey: "canvas.inspector.adjustGrayscale",
+		fallback: "Grayscale",
+		min: 0,
+		max: 1,
+		step: 0.05,
+	},
+	{
+		key: "sepia",
+		labelKey: "canvas.inspector.adjustSepia",
+		fallback: "Sepia",
+		min: 0,
+		max: 1,
+		step: 0.05,
+	},
+	{
+		key: "blur",
+		labelKey: "canvas.inspector.adjustBlur",
+		fallback: "Blur",
+		min: 0,
+		max: 100,
+		step: 1,
+	},
+];
+
+/** Neutral entries are stripped so "all zeros" round-trips to no field at all. */
+function normalizeAdjustments(
+	adjustments: CanvasImageAdjustments,
+): CanvasImageAdjustments | undefined {
+	const entries = Object.entries(adjustments).filter(
+		([, v]) => typeof v === "number" && v !== 0,
+	);
+	return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+/**
+ * FR-100/101 adjustments section (C-04): preset picker (plain adjustment
+ * values, replace-on-apply) + one field per adjustment through the §10 field
+ * contract. Non-destructive — only `node.adjustments` ever changes.
+ */
+function renderAdjustmentFields(
+	node: CanvasImageNode,
+	commitPatch: CommitPatch,
+	t: CanvasT,
+): React.JSX.Element {
+	const adjustments = node.adjustments ?? {};
+	const presetIds = Object.keys(
+		CANVAS_IMAGE_ADJUSTMENT_PRESETS,
+	) as CanvasImageAdjustmentPresetId[];
+	const activePreset = presetIds.find((id) => {
+		const preset = CANVAS_IMAGE_ADJUSTMENT_PRESETS[id];
+		const a = normalizeAdjustments(adjustments);
+		const p = normalizeAdjustments(preset);
+		return JSON.stringify(a ?? {}) === JSON.stringify(p ?? {});
+	});
+	return (
+		<Section title={t("canvas.inspector.adjustments", "Adjustments")}>
+			<FieldRow label={t("canvas.inspector.adjustPreset", "Preset")}>
+				<Select
+					items={presetIds.map((id) => ({ value: id, label: id }))}
+					value={activePreset ?? ""}
+					onValueChange={(next) => {
+						if (!next) return;
+						const preset =
+							CANVAS_IMAGE_ADJUSTMENT_PRESETS[
+								next as CanvasImageAdjustmentPresetId
+							];
+						commitPatch(node, {
+							adjustments: normalizeAdjustments(preset),
+						});
+					}}
+				>
+					<SelectTrigger
+						data-testid="prop-adjust-preset"
+						className="h-7.5 flex-1"
+					>
+						<SelectValue
+							placeholder={t("canvas.inspector.adjustCustom", "Custom")}
+						/>
+					</SelectTrigger>
+					<SelectContent>
+						{presetIds.map((id) => (
+							<SelectItem key={id} value={id}>
+								{id}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</FieldRow>
+			{ADJUSTMENT_FIELDS.map((field) => (
+				<NumberField
+					key={field.key}
+					label={t(field.labelKey, field.fallback)}
+					value={adjustments[field.key] ?? 0}
+					min={field.min}
+					max={field.max}
+					step={field.step}
+					dataTestId={`prop-adjust-${field.key}`}
+					contract={{
+						nodes: [node],
+						buildPatch: (_n, v) => ({
+							adjustments: normalizeAdjustments({
+								...adjustments,
+								[field.key]: v,
+							}),
+						}),
+					}}
+				/>
+			))}
+		</Section>
 	);
 }
 
@@ -308,7 +483,6 @@ export function renderFrameFields(
 				fill={node.background}
 				fillKey="background"
 				showShadow={false}
-				shadow={undefined}
 				commitPatch={commitPatch}
 				t={t}
 			/>

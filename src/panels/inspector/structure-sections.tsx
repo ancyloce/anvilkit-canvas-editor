@@ -27,7 +27,6 @@ export function renderPathFields(
 			<FillAndShadowFields
 				node={node}
 				fill={node.fill}
-				shadow={node.shadow}
 				commitPatch={commitPatch}
 				t={t}
 			/>

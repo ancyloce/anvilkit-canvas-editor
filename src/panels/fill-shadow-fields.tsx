@@ -1,9 +1,13 @@
-import type {
-	CanvasFill,
-	CanvasGradientFill,
-	CanvasGradientStop,
-	CanvasNode,
-	CanvasShadow,
+import {
+	type CanvasDropShadowEffect,
+	type CanvasEffect,
+	type CanvasFill,
+	type CanvasGradientFill,
+	type CanvasGradientStop,
+	type CanvasNode,
+	type CanvasShadow,
+	firstDropShadow,
+	resolveNodeEffects,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { resolveFillForDisplay } from "../brand/resolve-brand-token.js";
@@ -42,7 +46,13 @@ function defaultGradient(
 	};
 }
 
-const DEFAULT_SHADOW = { color: "#000000", blur: 4, offsetX: 2, offsetY: 2 };
+const DEFAULT_DROP_SHADOW: CanvasDropShadowEffect = {
+	type: "drop-shadow",
+	color: "#000000",
+	blur: 4,
+	offsetX: 2,
+	offsetY: 2,
+};
 
 /**
  * Fill (solid / linear / radial gradient) + drop-shadow editing controls, shared
@@ -50,14 +60,18 @@ const DEFAULT_SHADOW = { color: "#000000", blur: 4, offsetX: 2, offsetY: 2 };
  * (each an editable color + position, add/remove, min 2); direction defaults to
  * the box diagonal (from 0,0 to 1,1).
  *
+ * The shadow half reads through core's effect resolver (C-03 §9.4 precedence)
+ * and WRITES the `effects` model: any edit upgrades the node — the patch
+ * carries the full effect list and clears the legacy `shadow` field — so
+ * documents migrate per node as they are touched, undoably.
+ *
  * Most kinds store their fill under `fill` and support a shadow. A frame is the
  * exception on both counts — its fill lives under `background` and it has no
- * `shadow` field at all — hence `fillKey` and `showShadow`.
+ * shadow — hence `fillKey` and `showShadow`.
  */
 export function FillAndShadowFields({
 	node,
 	fill,
-	shadow,
 	commitPatch,
 	t,
 	fillKey = "fill",
@@ -65,7 +79,6 @@ export function FillAndShadowFields({
 }: {
 	node: CanvasNode;
 	fill: CanvasFill | undefined;
-	shadow: CanvasShadow | undefined;
 	commitPatch: CommitPatch;
 	t: CanvasT;
 	/** Which node property the fill is written back to. Frames use `background`. */
@@ -90,6 +103,26 @@ export function FillAndShadowFields({
 	});
 	const commitFill = (next: CanvasFill): void => {
 		commitPatch(node, fillPatch(next));
+	};
+
+	// Shadow reads resolve through core's ONE resolver (effects > legacy
+	// `shadow`); writes replace the first drop shadow inside the full effect
+	// list (other effects ride along) and clear the legacy field. The cast
+	// widens the node union: kinds without these fields resolve to [].
+	const effects = resolveNodeEffects(
+		node as { effects?: CanvasEffect[]; shadow?: CanvasShadow },
+	);
+	const effShadow = firstDropShadow(effects);
+	const shadowPatch = (
+		next: CanvasDropShadowEffect | null,
+	): Record<string, unknown> => {
+		const nextEffects =
+			next === null
+				? effects.filter((e) => e !== effShadow)
+				: effShadow
+					? effects.map((e) => (e === effShadow ? next : e))
+					: [...effects, next];
+		return { effects: nextEffects, shadow: undefined };
 	};
 
 	const commitStops = (stops: CanvasGradientStop[]): void => {
@@ -218,46 +251,64 @@ export function FillAndShadowFields({
 			{showShadow ? (
 				<ColorField
 					label={t("canvas.inspector.shadow", "Shadow")}
-					value={shadow?.color}
+					value={effShadow?.color}
 					dataTestId="prop-shadow-color"
 					contract={{
 						nodes: [node],
-						buildPatch: (_n, v) => ({
-							shadow: { ...(shadow ?? DEFAULT_SHADOW), color: v },
-						}),
+						buildPatch: (_n, v) =>
+							shadowPatch({ ...(effShadow ?? DEFAULT_DROP_SHADOW), color: v }),
 					}}
 				/>
 			) : null}
-			{showShadow && shadow ? (
+			{showShadow && effShadow ? (
 				<>
 					<NumberField
 						label={t("canvas.inspector.shadowBlur", "Sh blur")}
-						value={shadow.blur}
+						value={effShadow.blur}
 						min={0}
 						dataTestId="prop-shadow-blur"
 						contract={{
 							nodes: [node],
-							buildPatch: (_n, v) => ({ shadow: { ...shadow, blur: v } }),
+							buildPatch: (_n, v) => shadowPatch({ ...effShadow, blur: v }),
 						}}
 					/>
 					<NumberField
 						label={t("canvas.inspector.shadowX", "Sh X")}
-						value={shadow.offsetX}
+						value={effShadow.offsetX}
 						dataTestId="prop-shadow-x"
 						contract={{
 							nodes: [node],
-							buildPatch: (_n, v) => ({ shadow: { ...shadow, offsetX: v } }),
+							buildPatch: (_n, v) => shadowPatch({ ...effShadow, offsetX: v }),
 						}}
 					/>
 					<NumberField
 						label={t("canvas.inspector.shadowY", "Sh Y")}
-						value={shadow.offsetY}
+						value={effShadow.offsetY}
 						dataTestId="prop-shadow-y"
 						contract={{
 							nodes: [node],
-							buildPatch: (_n, v) => ({ shadow: { ...shadow, offsetY: v } }),
+							buildPatch: (_n, v) => shadowPatch({ ...effShadow, offsetY: v }),
 						}}
 					/>
+					<NumberField
+						label={t("canvas.inspector.shadowSpread", "Sh spread")}
+						value={effShadow.spread ?? 0}
+						min={0}
+						dataTestId="prop-shadow-spread"
+						contract={{
+							nodes: [node],
+							buildPatch: (_n, v) => shadowPatch({ ...effShadow, spread: v }),
+						}}
+					/>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						data-testid="prop-shadow-remove"
+						onClick={() => commitPatch(node, shadowPatch(null))}
+					>
+						{t("canvas.inspector.shadowRemove", "Remove shadow")}
+					</Button>
 				</>
 			) : null}
 		</>

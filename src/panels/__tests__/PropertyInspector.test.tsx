@@ -223,7 +223,7 @@ describe("PropertyInspector — fill type", () => {
 		);
 	});
 
-	it("adds a shadow when a shadow color is set", () => {
+	it("adds a shadow when a shadow color is set — written as the effects model (C-03)", () => {
 		const h = makeHarness({ ir: withRectIR() });
 		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
 		const { container } = mount(h.studioCtx);
@@ -233,9 +233,57 @@ describe("PropertyInspector — fill type", () => {
 		shadow.value = "#123456";
 		fireEvent.blur(shadow);
 		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rect">;
-		expect((last.patch as { shadow?: { color?: string } }).shadow?.color).toBe(
-			"#123456",
-		);
+		const patch = last.patch as {
+			effects?: Array<{ type?: string; color?: string }>;
+			shadow?: unknown;
+		};
+		expect(patch.effects?.[0]).toMatchObject({
+			type: "drop-shadow",
+			color: "#123456",
+		});
+		// The same patch clears the legacy field — per-node upgrade on touch.
+		expect("shadow" in patch && patch.shadow === undefined).toBe(true);
+	});
+
+	it("a legacy-shadow rect shows the resolved shadow and spread edits write effects (C-03)", () => {
+		const ir = withRectIR();
+		const rect = ir.pages[0]?.root.children[0] as { shadow?: unknown };
+		rect.shadow = { color: "#001122", blur: 6, offsetX: 1, offsetY: 1 };
+		const h = makeHarness({ ir });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		const color = container.querySelector(
+			"[data-testid='prop-shadow-color']",
+		) as HTMLInputElement;
+		expect(color.value).toBe("#001122");
+		const spread = container.querySelector(
+			"[data-testid='prop-shadow-spread']",
+		) as HTMLInputElement;
+		fireEvent.change(spread, { target: { value: "5" } });
+		fireEvent.blur(spread);
+		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rect">;
+		const patch = last.patch as { effects?: Array<Record<string, unknown>> };
+		expect(patch.effects?.[0]).toMatchObject({
+			type: "drop-shadow",
+			color: "#001122",
+			blur: 6,
+			spread: 5,
+		});
+	});
+
+	it("Remove shadow commits effects: [] so the legacy shadow stays suppressed", () => {
+		const ir = withRectIR();
+		const rect = ir.pages[0]?.root.children[0] as { shadow?: unknown };
+		rect.shadow = { color: "#001122", blur: 6, offsetX: 1, offsetY: 1 };
+		const h = makeHarness({ ir });
+		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
+		const { container } = mount(h.studioCtx);
+		const remove = container.querySelector(
+			"[data-testid='prop-shadow-remove']",
+		) as HTMLButtonElement;
+		fireEvent.click(remove);
+		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rect">;
+		expect((last.patch as { effects?: unknown[] }).effects).toEqual([]);
 	});
 
 	it("renders one color field per gradient stop", () => {
@@ -833,6 +881,49 @@ describe("PropertyInspector — image crop", () => {
 		) as HTMLButtonElement;
 		fireEvent.click(btn);
 		expect(h.studioCtx.cropStore?.getState().cropNodeId).toBe("img-a");
+	});
+
+	it("adjustment fields commit normalized adjustments (C-04, FR-100)", () => {
+		const h = makeHarness({ ir: withImageIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["img-a"]);
+		const { container } = mount(h.studioCtx);
+		const brightness = container.querySelector(
+			"[data-testid='prop-adjust-brightness']",
+		) as HTMLInputElement;
+		fireEvent.change(brightness, { target: { value: "0.2" } });
+		fireEvent.blur(brightness);
+		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"image">;
+		expect((last.patch as { adjustments?: unknown }).adjustments).toEqual({
+			brightness: 0.2,
+		});
+	});
+
+	it("setting an adjustment back to 0 drops the field entirely", () => {
+		const ir = withImageIR();
+		const img = ir.pages[0]?.root.children[0] as { adjustments?: unknown };
+		img.adjustments = { brightness: 0.5 };
+		const h = makeHarness({ ir });
+		h.studioCtx.selectionStore.getState().setSelection(["img-a"]);
+		const { container } = mount(h.studioCtx);
+		const brightness = container.querySelector(
+			"[data-testid='prop-adjust-brightness']",
+		) as HTMLInputElement;
+		expect(brightness.value).toBe("0.5");
+		fireEvent.change(brightness, { target: { value: "0" } });
+		fireEvent.blur(brightness);
+		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"image">;
+		expect(
+			(last.patch as { adjustments?: unknown }).adjustments,
+		).toBeUndefined();
+	});
+
+	it("renders the preset picker with all six FR-101 presets", () => {
+		const h = makeHarness({ ir: withImageIR() });
+		h.studioCtx.selectionStore.getState().setSelection(["img-a"]);
+		const { container } = mount(h.studioCtx);
+		expect(
+			container.querySelector("[data-testid='prop-adjust-preset']"),
+		).not.toBeNull();
 	});
 });
 
