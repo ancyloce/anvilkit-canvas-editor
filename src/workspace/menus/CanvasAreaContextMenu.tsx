@@ -9,7 +9,7 @@ import {
 	ContextMenuTrigger,
 } from "@anvilkit/ui/context-menu";
 import type Konva from "konva";
-import { type ReactNode, useState } from "react";
+import { lazy, type ReactNode, Suspense, useState } from "react";
 import { useCanvasActions } from "../../actions/editor-actions.js";
 import {
 	type CanvasStudioContextValue,
@@ -24,6 +24,11 @@ import {
 	enterIsolationImpl,
 	progressiveSelectAllImpl,
 } from "../../selection/isolation.js";
+
+/** FR-030 "Page settings" — same code-split dialog the page navigator uses. */
+const PageSettingsDialog = lazy(
+	() => import("../dialogs/PageSettingsDialog.js"),
+);
 
 export interface CanvasAreaContextMenuProps {
 	children: ReactNode;
@@ -84,11 +89,18 @@ export function CanvasAreaContextMenu({
 	const actions = useCanvasActions();
 	const t = useCanvasT();
 	const [target, setTarget] = useState<"canvas" | "node">("canvas");
+	const [settingsOpen, setSettingsOpen] = useState(false);
 
 	const selectedIds = ctx.selectionStore.getState().selectedIds;
 	const allLocked =
 		selectedIds.length > 0 &&
 		selectedIds.every((id) => findNode(ctx.ir, id)?.node.locked === true);
+	const allHidden =
+		selectedIds.length > 0 &&
+		selectedIds.every((id) => findNode(ctx.ir, id)?.node.visible === false);
+	// FR-031/FR-032: export entries disable when no export UI is mounted.
+	const exportAvailable = ctx.exportRequestStore?.getState().available ?? false;
+	const activePage = ctx.ir.pages.find((p) => p.id === ctx.activePageId);
 
 	const onContextMenu = (e: React.MouseEvent<HTMLElement>): void => {
 		const hit = (resolveContextTarget ?? defaultResolveContextTarget)(e, ctx);
@@ -128,226 +140,291 @@ export function CanvasAreaContextMenu({
 		(activeGuides?.vertical.length ?? 0) > 0;
 
 	return (
-		<ContextMenu>
-			<ContextMenuTrigger
-				data-testid="canvas-context-surface"
-				className="flex min-h-0 min-w-0 flex-1 flex-col"
-				onContextMenu={onContextMenu}
-			>
-				{children}
-			</ContextMenuTrigger>
-			<ContextMenuContent data-testid="canvas-context-menu">
-				{target === "node" ? (
-					<>
-						<ContextMenuItem
-							data-testid="ctx-cut"
-							onClick={() => void actions.cutSelection()}
-						>
-							{t("canvas.menu.cut", "Cut")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-copy"
-							onClick={() => void actions.copySelection()}
-						>
-							{t("canvas.menu.copy", "Copy")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-paste"
-							onClick={() => void actions.paste()}
-						>
-							{t("canvas.menu.paste", "Paste")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-duplicate"
-							onClick={() => actions.duplicateSelection()}
-						>
-							{t("canvas.menu.duplicate", "Duplicate")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-copy-style"
-							onClick={() => actions.copyStyle()}
-						>
-							{t("canvas.menu.copyStyle", "Copy style")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-paste-style"
-							disabled={!actions.hasCopiedStyle()}
-							onClick={() => actions.pasteStyle()}
-						>
-							{t("canvas.menu.pasteStyle", "Paste style")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-delete"
-							variant="destructive"
-							onClick={() => actions.deleteSelection()}
-						>
-							{t("canvas.menu.delete", "Delete")}
-						</ContextMenuItem>
-						<ContextMenuSeparator />
-						<ContextMenuItem
-							data-testid="ctx-bring-forward"
-							onClick={() => actions.reorderSelection("forward")}
-						>
-							{t("canvas.menu.bringForward", "Bring forward")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-bring-front"
-							onClick={() => actions.reorderSelection("front")}
-						>
-							{t("canvas.menu.bringToFront", "Bring to front")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-send-backward"
-							onClick={() => actions.reorderSelection("backward")}
-						>
-							{t("canvas.menu.sendBackward", "Send backward")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-send-back"
-							onClick={() => actions.reorderSelection("back")}
-						>
-							{t("canvas.menu.sendToBack", "Send to back")}
-						</ContextMenuItem>
-						<ContextMenuSeparator />
-						<ContextMenuItem
-							data-testid="ctx-group"
-							disabled={!canGroupSelection(ctx.ir, selectedIds)}
-							onClick={() => actions.groupSelection()}
-						>
-							{t("canvas.menu.group", "Group")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-ungroup"
-							disabled={!canUngroupSelection(ctx.ir, selectedIds)}
-							onClick={() => actions.ungroupSelection()}
-						>
-							{t("canvas.menu.ungroup", "Ungroup")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-lock"
-							onClick={() => actions.toggleLockSelection()}
-						>
-							{allLocked
-								? t("canvas.menu.unlock", "Unlock")
-								: t("canvas.menu.lock", "Lock")}
-						</ContextMenuItem>
-						<ContextMenuItem
-							data-testid="ctx-isolate"
-							disabled={!primaryIsContainer}
-							onClick={() => {
-								const id = ctx.selectionStore.getState().selectedIds[0];
-								if (id) enterIsolationImpl(ctx, id);
-							}}
-						>
-							{t("canvas.menu.isolate", "Edit contents")}
-						</ContextMenuItem>
-					</>
-				) : (
-					<>
-						<ContextMenuItem
-							data-testid="ctx-paste"
-							onClick={() => void actions.paste()}
-						>
-							{t("canvas.menu.paste", "Paste")}
-						</ContextMenuItem>
-						<ContextMenuItem data-testid="ctx-select-all" onClick={selectAll}>
-							{t("canvas.menu.selectAll", "Select all")}
-						</ContextMenuItem>
-						{isolationActive ? (
+		<>
+			<ContextMenu>
+				<ContextMenuTrigger
+					data-testid="canvas-context-surface"
+					className="flex min-h-0 min-w-0 flex-1 flex-col"
+					onContextMenu={onContextMenu}
+				>
+					{children}
+				</ContextMenuTrigger>
+				<ContextMenuContent data-testid="canvas-context-menu">
+					{target === "node" ? (
+						<>
 							<ContextMenuItem
-								data-testid="ctx-exit-isolation"
-								onClick={() => ctx.isolationStore?.getState().exitOne()}
+								data-testid="ctx-cut"
+								onClick={() => void actions.cutSelection()}
 							>
-								{t("canvas.menu.exitIsolation", "Exit isolation")}
+								{t("canvas.menu.cut", "Cut")}
 							</ContextMenuItem>
-						) : null}
-						<ContextMenuSeparator />
-						<ContextMenuItem
-							data-testid="ctx-toggle-grid"
-							onClick={() =>
-								ctx.viewportStore.getState().setGridEnabled(!gridEnabled)
-							}
-						>
-							{gridEnabled
-								? t("canvas.menu.hideGrid", "Hide grid")
-								: t("canvas.menu.showGrid", "Show grid")}
-						</ContextMenuItem>
-						{rulerGuides ? (
-							<>
+							<ContextMenuItem
+								data-testid="ctx-copy"
+								onClick={() => void actions.copySelection()}
+							>
+								{t("canvas.menu.copy", "Copy")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-paste"
+								onClick={() => void actions.paste()}
+							>
+								{t("canvas.menu.paste", "Paste")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-duplicate"
+								onClick={() => actions.duplicateSelection()}
+							>
+								{t("canvas.menu.duplicate", "Duplicate")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-copy-style"
+								onClick={() => actions.copyStyle()}
+							>
+								{t("canvas.menu.copyStyle", "Copy style")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-paste-style"
+								disabled={!actions.hasCopiedStyle()}
+								onClick={() => actions.pasteStyle()}
+							>
+								{t("canvas.menu.pasteStyle", "Paste style")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-delete"
+								variant="destructive"
+								onClick={() => actions.deleteSelection()}
+							>
+								{t("canvas.menu.delete", "Delete")}
+							</ContextMenuItem>
+							<ContextMenuSeparator />
+							<ContextMenuItem
+								data-testid="ctx-bring-forward"
+								onClick={() => actions.reorderSelection("forward")}
+							>
+								{t("canvas.menu.bringForward", "Bring forward")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-bring-front"
+								onClick={() => actions.reorderSelection("front")}
+							>
+								{t("canvas.menu.bringToFront", "Bring to front")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-send-backward"
+								onClick={() => actions.reorderSelection("backward")}
+							>
+								{t("canvas.menu.sendBackward", "Send backward")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-send-back"
+								onClick={() => actions.reorderSelection("back")}
+							>
+								{t("canvas.menu.sendToBack", "Send to back")}
+							</ContextMenuItem>
+							<ContextMenuSeparator />
+							<ContextMenuItem
+								data-testid="ctx-group"
+								disabled={!canGroupSelection(ctx.ir, selectedIds)}
+								onClick={() => actions.groupSelection()}
+							>
+								{t("canvas.menu.group", "Group")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-ungroup"
+								disabled={!canUngroupSelection(ctx.ir, selectedIds)}
+								onClick={() => actions.ungroupSelection()}
+							>
+								{t("canvas.menu.ungroup", "Ungroup")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-lock"
+								onClick={() => actions.toggleLockSelection()}
+							>
+								{allLocked
+									? t("canvas.menu.unlock", "Unlock")
+									: t("canvas.menu.lock", "Lock")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-visibility"
+								onClick={() => actions.toggleVisibilitySelection()}
+							>
+								{allHidden
+									? t("canvas.menu.show", "Show")
+									: t("canvas.menu.hide", "Hide")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-rename"
+								disabled={selectedIds.length !== 1}
+								onClick={() => {
+									const id = ctx.selectionStore.getState().selectedIds[0];
+									if (id) ctx.layerRenameStore?.getState().request(id);
+								}}
+							>
+								{t("canvas.menu.renameLayer", "Rename layer")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-isolate"
+								disabled={!primaryIsContainer}
+								onClick={() => {
+									const id = ctx.selectionStore.getState().selectedIds[0];
+									if (id) enterIsolationImpl(ctx, id);
+								}}
+							>
+								{t("canvas.menu.isolate", "Edit contents")}
+							</ContextMenuItem>
+							<ContextMenuSeparator />
+							<ContextMenuItem
+								data-testid="ctx-export-selection"
+								disabled={!exportAvailable}
+								onClick={() =>
+									ctx.exportRequestStore
+										?.getState()
+										.request({ scope: "selection" })
+								}
+							>
+								{t("canvas.menu.exportSelection", "Export selection")}
+							</ContextMenuItem>
+						</>
+					) : (
+						<>
+							<ContextMenuItem
+								data-testid="ctx-paste"
+								onClick={() => void actions.paste()}
+							>
+								{t("canvas.menu.paste", "Paste")}
+							</ContextMenuItem>
+							<ContextMenuItem data-testid="ctx-select-all" onClick={selectAll}>
+								{t("canvas.menu.selectAll", "Select all")}
+							</ContextMenuItem>
+							{isolationActive ? (
 								<ContextMenuItem
-									data-testid="ctx-toggle-rulers"
-									onClick={() =>
-										rulerGuides
-											.getState()
-											.setRulersVisible(!rulerGuides.getState().rulersVisible)
-									}
+									data-testid="ctx-exit-isolation"
+									onClick={() => ctx.isolationStore?.getState().exitOne()}
 								>
-									{rulerGuides.getState().rulersVisible
-										? t("canvas.menu.hideRulers", "Hide rulers")
-										: t("canvas.menu.showRulers", "Show rulers")}
+									{t("canvas.menu.exitIsolation", "Exit isolation")}
 								</ContextMenuItem>
-								<ContextMenuSeparator />
-								<ContextMenuItem
-									data-testid="ctx-add-guide-horizontal"
-									onClick={() => {
-										const page = ctx
-											.getIR()
-											.pages.find((p) => p.id === ctx.activePageId);
-										if (page)
-											actions.addGuide("horizontal", page.size.height / 2);
-									}}
-								>
-									{t("canvas.menu.addHorizontalGuide", "Add horizontal guide")}
-								</ContextMenuItem>
-								<ContextMenuItem
-									data-testid="ctx-add-guide-vertical"
-									onClick={() => {
-										const page = ctx
-											.getIR()
-											.pages.find((p) => p.id === ctx.activePageId);
-										if (page) actions.addGuide("vertical", page.size.width / 2);
-									}}
-								>
-									{t("canvas.menu.addVerticalGuide", "Add vertical guide")}
-								</ContextMenuItem>
-								<ContextMenuItem
-									data-testid="ctx-toggle-guides"
-									disabled={!hasGuides}
-									onClick={() =>
-										rulerGuides
-											.getState()
-											.setGuidesVisible(!rulerGuides.getState().guidesVisible)
-									}
-								>
-									{rulerGuides.getState().guidesVisible
-										? t("canvas.menu.hideGuides", "Hide guides")
-										: t("canvas.menu.showGuides", "Show guides")}
-								</ContextMenuItem>
-								<ContextMenuItem
-									data-testid="ctx-lock-guides"
-									disabled={!hasGuides}
-									onClick={() =>
-										rulerGuides
-											.getState()
-											.setGuidesLocked(!rulerGuides.getState().guidesLocked)
-									}
-								>
-									{rulerGuides.getState().guidesLocked
-										? t("canvas.menu.unlockGuides", "Unlock guides")
-										: t("canvas.menu.lockGuides", "Lock guides")}
-								</ContextMenuItem>
-								<ContextMenuItem
-									data-testid="ctx-clear-guides"
-									disabled={!hasGuides}
-									onClick={() => actions.clearGuides()}
-								>
-									{t("canvas.menu.clearGuides", "Clear guides")}
-								</ContextMenuItem>
-							</>
-						) : null}
-					</>
-				)}
-			</ContextMenuContent>
-		</ContextMenu>
+							) : null}
+							<ContextMenuSeparator />
+							<ContextMenuItem
+								data-testid="ctx-zoom-fit"
+								onClick={() => actions.zoomToFit()}
+							>
+								{t("canvas.shortcut.zoomToFit", "Zoom to fit")}
+							</ContextMenuItem>
+							<ContextMenuItem
+								data-testid="ctx-actual-size"
+								onClick={() => actions.resetZoom()}
+							>
+								{t("canvas.shortcut.actualSize", "Actual size")}
+							</ContextMenuItem>
+							<ContextMenuSeparator />
+							<ContextMenuItem
+								data-testid="ctx-toggle-grid"
+								onClick={() =>
+									ctx.viewportStore.getState().setGridEnabled(!gridEnabled)
+								}
+							>
+								{gridEnabled
+									? t("canvas.menu.hideGrid", "Hide grid")
+									: t("canvas.menu.showGrid", "Show grid")}
+							</ContextMenuItem>
+							{rulerGuides ? (
+								<>
+									<ContextMenuItem
+										data-testid="ctx-toggle-rulers"
+										onClick={() =>
+											rulerGuides
+												.getState()
+												.setRulersVisible(!rulerGuides.getState().rulersVisible)
+										}
+									>
+										{rulerGuides.getState().rulersVisible
+											? t("canvas.menu.hideRulers", "Hide rulers")
+											: t("canvas.menu.showRulers", "Show rulers")}
+									</ContextMenuItem>
+									<ContextMenuSeparator />
+									<ContextMenuItem
+										data-testid="ctx-add-guide-horizontal"
+										onClick={() => {
+											const page = ctx
+												.getIR()
+												.pages.find((p) => p.id === ctx.activePageId);
+											if (page)
+												actions.addGuide("horizontal", page.size.height / 2);
+										}}
+									>
+										{t(
+											"canvas.menu.addHorizontalGuide",
+											"Add horizontal guide",
+										)}
+									</ContextMenuItem>
+									<ContextMenuItem
+										data-testid="ctx-add-guide-vertical"
+										onClick={() => {
+											const page = ctx
+												.getIR()
+												.pages.find((p) => p.id === ctx.activePageId);
+											if (page)
+												actions.addGuide("vertical", page.size.width / 2);
+										}}
+									>
+										{t("canvas.menu.addVerticalGuide", "Add vertical guide")}
+									</ContextMenuItem>
+									<ContextMenuItem
+										data-testid="ctx-toggle-guides"
+										disabled={!hasGuides}
+										onClick={() =>
+											rulerGuides
+												.getState()
+												.setGuidesVisible(!rulerGuides.getState().guidesVisible)
+										}
+									>
+										{rulerGuides.getState().guidesVisible
+											? t("canvas.menu.hideGuides", "Hide guides")
+											: t("canvas.menu.showGuides", "Show guides")}
+									</ContextMenuItem>
+									<ContextMenuItem
+										data-testid="ctx-lock-guides"
+										disabled={!hasGuides}
+										onClick={() =>
+											rulerGuides
+												.getState()
+												.setGuidesLocked(!rulerGuides.getState().guidesLocked)
+										}
+									>
+										{rulerGuides.getState().guidesLocked
+											? t("canvas.menu.unlockGuides", "Unlock guides")
+											: t("canvas.menu.lockGuides", "Lock guides")}
+									</ContextMenuItem>
+									<ContextMenuItem
+										data-testid="ctx-clear-guides"
+										disabled={!hasGuides}
+										onClick={() => actions.clearGuides()}
+									>
+										{t("canvas.menu.clearGuides", "Clear guides")}
+									</ContextMenuItem>
+								</>
+							) : null}
+							<ContextMenuSeparator />
+							<ContextMenuItem
+								data-testid="ctx-page-settings"
+								disabled={!activePage}
+								onClick={() => setSettingsOpen(true)}
+							>
+								{t("canvas.menu.pageSettings", "Page settings")}
+							</ContextMenuItem>
+						</>
+					)}
+				</ContextMenuContent>
+			</ContextMenu>
+			{settingsOpen && activePage ? (
+				<Suspense fallback={null}>
+					<PageSettingsDialog
+						page={activePage}
+						onClose={() => setSettingsOpen(false)}
+					/>
+				</Suspense>
+			) : null}
+		</>
 	);
 }

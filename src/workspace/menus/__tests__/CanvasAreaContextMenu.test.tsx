@@ -130,4 +130,40 @@ describe("CanvasAreaContextMenu (A-06)", () => {
 		expect(cmd.nodeId).toBe("a");
 		expect(cmd.toIndex).toBe(2);
 	});
+
+	it("node menu Hide routes a node.update visible:false (FR-031)", async () => {
+		const h = setup("a");
+		await openMenu();
+		fireEvent.click(screen.getByTestId("ctx-visibility"));
+		const cmd = h.commits[0] as {
+			type: string;
+			patch: { visible?: boolean };
+		};
+		expect(cmd.type).toBe("node.update");
+		expect(cmd.patch.visible).toBe(false);
+	});
+
+	it("canvas menu exposes Zoom to fit, Actual size and Page settings (FR-030)", async () => {
+		setup(null);
+		await openMenu();
+		expect(screen.queryByTestId("ctx-zoom-fit")).toBeTruthy();
+		expect(screen.queryByTestId("ctx-actual-size")).toBeTruthy();
+		expect(screen.queryByTestId("ctx-page-settings")).toBeTruthy();
+	});
+
+	it("canvas menu Page settings opens the settings dialog (FR-030)", async () => {
+		setup(null);
+		await openMenu();
+		fireEvent.click(screen.getByTestId("ctx-page-settings"));
+		await waitFor(() => {
+			expect(screen.getByTestId("page-settings-dialog")).toBeTruthy();
+		});
+	});
+
+	it("node menu exposes Rename layer and Export selection (FR-031)", async () => {
+		setup("a");
+		await openMenu();
+		expect(screen.queryByTestId("ctx-rename")).toBeTruthy();
+		expect(screen.queryByTestId("ctx-export-selection")).toBeTruthy();
+	});
 });
