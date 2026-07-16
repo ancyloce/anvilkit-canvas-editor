@@ -1,9 +1,15 @@
-import type { CanvasClipboardPayload } from "@anvilkit/canvas-core";
+import type {
+	CanvasClipboardPayload,
+	CanvasNodeStyle,
+} from "@anvilkit/canvas-core";
 import { createStore, type StoreApi } from "zustand/vanilla";
 
 export interface ClipboardState {
 	payload: CanvasClipboardPayload | null;
+	/** FR-120 copied style (C-05) — an independent slot; copying nodes does not clear it. */
+	style: CanvasNodeStyle | null;
 	setPayload: (payload: CanvasClipboardPayload | null) => void;
+	setStyle: (style: CanvasNodeStyle | null) => void;
 }
 
 export type ClipboardStoreApi = StoreApi<ClipboardState>;
@@ -11,8 +17,12 @@ export type ClipboardStoreApi = StoreApi<ClipboardState>;
 export function createClipboardStore(): ClipboardStoreApi {
 	return createStore<ClipboardState>()((set) => ({
 		payload: null,
+		style: null,
 		setPayload(payload) {
 			set({ payload });
+		},
+		setStyle(style) {
+			set({ style });
 		},
 	}));
 }
