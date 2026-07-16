@@ -5,7 +5,10 @@ export {
 	downloadCanvasArtifact,
 	jpegExporter,
 	jsonExporter,
+	pdfExporter,
 	pngExporter,
+	sanitizeExportFilename,
+	svgExporter,
 	webpExporter,
 } from "./exporters.js";
 export type {
