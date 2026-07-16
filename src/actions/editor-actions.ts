@@ -20,6 +20,7 @@ import {
 import {
 	alignSelection as alignSelectionFn,
 	distributeSelection as distributeSelectionFn,
+	tidyUpSelection as tidyUpSelectionFn,
 } from "../selection/align-actions.js";
 import {
 	groupSelection as groupSelectionFn,
@@ -43,6 +44,11 @@ import {
 	type CanvasReorderDirection,
 	reorderSelectionImpl,
 } from "./reorder-actions.js";
+import {
+	copyStyleImpl,
+	hasCopiedStyle,
+	pasteStyleImpl,
+} from "./style-actions.js";
 import {
 	resetZoomImpl,
 	zoomInImpl,
@@ -89,6 +95,8 @@ export interface CanvasEditorActions {
 	alignSelection(edge: AlignEdge): void;
 	/** Distribute the multi-selection along an axis, as one undo entry. */
 	distributeSelection(axis: CanvasDistributeAxis): void;
+	/** FR-072 Tidy Up (C-12): grid-arrange the multi-selection, one undo entry. */
+	tidyUpSelection(): void;
 	/**
 	 * Toggle the lock state of the whole selection as ONE undo entry
 	 * (FR-040 Lock / FR-054): locks when any selected node is unlocked,
@@ -125,6 +133,16 @@ export interface CanvasEditorActions {
 	moveGuide(axis: CanvasGuideAxis, index: number, position: number): void;
 	removeGuide(axis: CanvasGuideAxis, index: number): void;
 	clearGuides(): void;
+	/**
+	 * FR-120/121 copy/paste style (C-05). `copyStyle` captures the primary
+	 * selected node's portable style; `pasteStyle` applies it to every
+	 * selected unlocked node as ONE batch of `node.applyStyle` commands,
+	 * reporting ignored/incompatible fields via toast. `hasCopiedStyle`
+	 * drives menu enablement.
+	 */
+	copyStyle(): boolean;
+	pasteStyle(): string[];
+	hasCopiedStyle(): boolean;
 }
 
 function hasSelectedAncestor(
@@ -231,6 +249,7 @@ export function createCanvasEditorActions(
 		ungroupSelection: () => ungroupSelectionFn(ctx),
 		alignSelection: (edge) => alignSelectionFn(ctx, edge),
 		distributeSelection: (axis) => distributeSelectionFn(ctx, axis),
+		tidyUpSelection: () => tidyUpSelectionFn(ctx),
 		toggleLockSelection: () => toggleLockSelectionImpl(ctx),
 		copySelection: () => copySelectionImpl(ctx),
 		cutSelection: () =>
@@ -249,6 +268,9 @@ export function createCanvasEditorActions(
 			moveGuideImpl(ctx, axis, index, position),
 		removeGuide: (axis, index) => removeGuideImpl(ctx, axis, index),
 		clearGuides: () => clearGuidesImpl(ctx),
+		copyStyle: () => copyStyleImpl(ctx),
+		pasteStyle: () => pasteStyleImpl(ctx, toaster),
+		hasCopiedStyle: () => hasCopiedStyle(),
 	};
 }
 
@@ -275,6 +297,7 @@ export function useCanvasActions(): CanvasEditorActions {
 			ungroupSelection: () => ungroupSelectionFn(liveCtx()),
 			alignSelection: (edge) => alignSelectionFn(liveCtx(), edge),
 			distributeSelection: (axis) => distributeSelectionFn(liveCtx(), axis),
+			tidyUpSelection: () => tidyUpSelectionFn(liveCtx()),
 			toggleLockSelection: () => toggleLockSelectionImpl(liveCtx()),
 			copySelection: () => copySelectionImpl(liveCtx()),
 			cutSelection: () => {
@@ -296,6 +319,9 @@ export function useCanvasActions(): CanvasEditorActions {
 				moveGuideImpl(liveCtx(), axis, index, position),
 			removeGuide: (axis, index) => removeGuideImpl(liveCtx(), axis, index),
 			clearGuides: () => clearGuidesImpl(liveCtx()),
+			copyStyle: () => copyStyleImpl(liveCtx()),
+			pasteStyle: () => pasteStyleImpl(liveCtx(), toaster),
+			hasCopiedStyle: () => hasCopiedStyle(),
 		};
 	}, [stores, toaster]);
 }

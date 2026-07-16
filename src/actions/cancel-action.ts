@@ -6,6 +6,7 @@ export type CanvasCancelStep =
 	| "pen"
 	| "path-edit"
 	| "draft"
+	| "isolation"
 	| "tool"
 	| "selection"
 	| "none";
@@ -41,6 +42,11 @@ export function cancelImpl(ctx: CanvasStudioContextValue): CanvasCancelStep {
 	if (ctx.draftStore.getState().draft !== null) {
 		ctx.draftStore.getState().clearDraft();
 		return "draft";
+	}
+	// C-09 (FR-055): exit ONE isolation level before the tool/selection steps.
+	if (ctx.isolationStore && ctx.isolationStore.getState().path.length > 0) {
+		ctx.isolationStore.getState().exitOne();
+		return "isolation";
 	}
 	if (ctx.toolStore.getState().activeTool !== "select") {
 		ctx.toolStore.getState().setActiveTool("select");
