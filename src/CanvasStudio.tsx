@@ -42,6 +42,11 @@ import type {
 import { PageNavigator } from "./pages/PageNavigator.js";
 import { draggedIdsKey } from "./perf/active-nodes.js";
 import { useStaticGroupCache } from "./perf/static-cache.js";
+import { RecoverDraftPrompt } from "./persistence/RecoverDraftPrompt.js";
+import {
+	type CanvasRecoveryAdapter,
+	createRecoveryController,
+} from "./persistence/recovery.js";
 import {
 	createSaveController,
 	type SaveController,
@@ -52,6 +57,7 @@ import type {
 } from "./persistence/types.js";
 import { CanvasTransformer } from "./selection/CanvasTransformer.js";
 import { CropEditorOverlay } from "./selection/CropEditorOverlay.js";
+import { computeDimmedIds } from "./selection/isolation.js";
 import { PathEditOverlay } from "./selection/PathEditOverlay.js";
 import { SmartGuideOverlay } from "./snap/SmartGuideOverlay.js";
 import { CanvasAssetsContext } from "./stage/CanvasAssetsContext.js";
@@ -61,6 +67,7 @@ import { CanvasStage } from "./stage/CanvasStage.js";
 import { DesignBackground } from "./stage/DesignBackground.js";
 import { Grid } from "./stage/Grid.js";
 import { GuideLayoutOverlay } from "./stage/GuideLayoutOverlay.js";
+import { IsolationRenderContext } from "./stage/isolation-render-context.js";
 import { RemoteCursors } from "./stage/RemoteCursors.js";
 import { RemoteSelections } from "./stage/RemoteSelections.js";
 import { RenderLayer } from "./stage/RenderLayer.js";
@@ -75,6 +82,7 @@ import {
 	type AnyCanvasCommand,
 	createHistoryStore,
 } from "./stores/history-store.js";
+import { createIsolationStore } from "./stores/isolation-store.js";
 import { createPagesStore } from "./stores/pages-store.js";
 import { createPathEditStore } from "./stores/path-edit-store.js";
 import { createPenStore } from "./stores/pen-store.js";
@@ -92,10 +100,12 @@ import { createToolStore, type ToolId } from "./stores/tool-store.js";
 import { createUploadStore } from "./stores/upload-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
 import type { CanvasTemplateEntry } from "./templates/template-entry.js";
+import type { CanvasTemplateProvider } from "./templates/template-provider.js";
 import type { AiToolIntent } from "./tools/ai-intent.js";
 import { DraftRenderer } from "./tools/DraftRenderer.js";
 import { PenPreview } from "./tools/PenPreview.js";
 import { PenToolOverlay } from "./tools/PenToolOverlay.js";
+import { RichTextToolbar } from "./tools/RichTextToolbar.js";
 import { TextEditorOverlay } from "./tools/TextEditorOverlay.js";
 import { ToolInteractionLayer } from "./tools/ToolInteractionLayer.js";
 import { defaultToolRegistry } from "./tools/tool-registry.js";
@@ -178,6 +188,13 @@ export interface CanvasStudioProps {
 	 * warns while unsaved (FR-163), and pending changes flush on unmount.
 	 */
 	persistenceAdapter?: CanvasPersistenceAdapter;
+	/**
+	 * FR-164 local recovery (C-10). When present, the editor mirrors the
+	 * document into this adapter (debounced after each commit), clears it on
+	 * a successful save, and offers to restore a newer snapshot on mount.
+	 * `createIndexedDbRecoveryAdapter()` is the ready-made browser impl.
+	 */
+	recoveryAdapter?: CanvasRecoveryAdapter;
 	/** FR-162 auto-save tuning. `false` = manual saves only. Default on. */
 	autoSave?: boolean | CanvasAutoSaveOptions;
 	/** Save-state observer (PRD §11.1). */
@@ -203,6 +220,12 @@ export interface CanvasStudioProps {
 	 * empty state.
 	 */
 	templates?: readonly CanvasTemplateEntry[];
+	/**
+	 * Provider-backed template source (C-06, FR-131) for remote/paginated
+	 * catalogs. Takes precedence over `templates`; the static array keeps
+	 * working without it.
+	 */
+	templateProvider?: CanvasTemplateProvider;
 	/**
 	 * Host-injected i18n catalog (P7). A flat `canvas.*` → string map for the
 	 * active locale; the editor resolves chrome strings via {@link useCanvasT}
@@ -295,6 +318,7 @@ function useEditorStores({
 	const [pathEditStore] = useState(() => createPathEditStore());
 	const [fieldPreviewStore] = useState(() => createFieldPreviewStore());
 	const [rulerGuideStore] = useState(() => createRulerGuideStore());
+	const [isolationStore] = useState(() => createIsolationStore());
 	return {
 		sceneStore,
 		historyStore,
@@ -312,6 +336,7 @@ function useEditorStores({
 		pathEditStore,
 		fieldPreviewStore,
 		rulerGuideStore,
+		isolationStore,
 	};
 }
 
@@ -442,6 +467,7 @@ function EditorStage({
 	onExportRecovery,
 	onStageReady,
 	draggedIds,
+	dimmedIds,
 	toolRegistry,
 }: {
 	t: CanvasT;
@@ -459,6 +485,8 @@ function EditorStage({
 	onExportRecovery: () => void;
 	onStageReady: (stage: Konva.Stage | null) => void;
 	draggedIds: ReadonlySet<string>;
+	/** C-09 exterior-dim set while isolated; null = no isolation. */
+	dimmedIds: ReadonlySet<string> | null;
 	toolRegistry: ToolRegistry | undefined;
 }): React.JSX.Element {
 	// The stage box scales with zoom so the page grows/shrinks as a whole and
@@ -486,54 +514,59 @@ function EditorStage({
 		>
 			<CanvasAssetsContext.Provider value={assets}>
 				<CanvasBrandKitContext.Provider value={brandKit ?? EMPTY_BRAND_KIT}>
-					<CanvasStage
-						width={stageWidth}
-						height={stageHeight}
-						zoom={zoom}
-						panX={panX}
-						panY={panY}
-						onReady={onStageReady}
-					>
-						<RenderLayer name="background" listening={false}>
-							<DesignBackground />
-							<Grid />
-						</RenderLayer>
-						<RenderLayer name="objects">
-							{activePage.root.children.flatMap((node) =>
-								draggedIds.has(node.id)
-									? []
-									: [<CanvasNodeRenderer key={node.id} node={node} />],
-							)}
-						</RenderLayer>
-						{/* I2-5: dragged nodes float on their own layer so only it
+					{/* C-09 (FR-055): exterior-dim set for isolation mode. Only the
+				    LIVE stage provides it — rasterize/export paths never do. */}
+					<IsolationRenderContext.Provider value={dimmedIds}>
+						<CanvasStage
+							width={stageWidth}
+							height={stageHeight}
+							zoom={zoom}
+							panX={panX}
+							panY={panY}
+							onReady={onStageReady}
+						>
+							<RenderLayer name="background" listening={false}>
+								<DesignBackground />
+								<Grid />
+							</RenderLayer>
+							<RenderLayer name="objects">
+								{activePage.root.children.flatMap((node) =>
+									draggedIds.has(node.id)
+										? []
+										: [<CanvasNodeRenderer key={node.id} node={node} />],
+								)}
+							</RenderLayer>
+							{/* I2-5: dragged nodes float on their own layer so only it
 					    redraws during a drag; the (cached) objects layer stays put. */}
-						<RenderLayer name="drag">
-							{activePage.root.children.flatMap((node) =>
-								draggedIds.has(node.id)
-									? [<CanvasNodeRenderer key={node.id} node={node} />]
-									: [],
-							)}
-						</RenderLayer>
-						{/* C-02: persistent guides + layout aids. Own layer so guide
+							<RenderLayer name="drag">
+								{activePage.root.children.flatMap((node) =>
+									draggedIds.has(node.id)
+										? [<CanvasNodeRenderer key={node.id} node={node} />]
+										: [],
+								)}
+							</RenderLayer>
+							{/* C-02: persistent guides + layout aids. Own layer so guide
 					    drags never redraw objects; above objects, below selection. */}
-						<RenderLayer name="guides">
-							<GuideLayoutOverlay />
-						</RenderLayer>
-						<RenderLayer name="selection">
-							<DraftRenderer />
-							<SmartGuideOverlay />
-							<PenPreview />
-							<PathEditOverlay />
-							<CanvasTransformer />
-							<CanvasFocusRing />
-						</RenderLayer>
-						<RenderLayer name="presence" listening={false}>
-							<RemoteCursors />
-							<RemoteSelections />
-						</RenderLayer>
-					</CanvasStage>
+							<RenderLayer name="guides">
+								<GuideLayoutOverlay />
+							</RenderLayer>
+							<RenderLayer name="selection">
+								<DraftRenderer />
+								<SmartGuideOverlay />
+								<PenPreview />
+								<PathEditOverlay />
+								<CanvasTransformer />
+								<CanvasFocusRing />
+							</RenderLayer>
+							<RenderLayer name="presence" listening={false}>
+								<RemoteCursors />
+								<RemoteSelections />
+							</RenderLayer>
+						</CanvasStage>
+					</IsolationRenderContext.Provider>
 					<ToolInteractionLayer registry={toolRegistry} />
 					<TextEditorOverlay />
+					<RichTextToolbar />
 					<CropEditorOverlay />
 					<PenToolOverlay />
 				</CanvasBrandKitContext.Provider>
@@ -559,12 +592,14 @@ export function CanvasStudio({
 	hidePageNavigator,
 	brandKit,
 	templates,
+	templateProvider,
 	messages,
 	extensions,
 	runtime,
 	renderShell,
 	continuousCreation = false,
 	persistenceAdapter,
+	recoveryAdapter,
 	autoSave,
 	onSaveStateChange,
 	assetPicker,
@@ -588,6 +623,7 @@ export function CanvasStudio({
 		pathEditStore,
 		fieldPreviewStore,
 		rulerGuideStore,
+		isolationStore,
 	} = useEditorStores({ initialIR, initialActivePageId, initialTool, runtime });
 	const ir = useSyncExternalStore(
 		sceneStore.subscribe,
@@ -622,6 +658,11 @@ export function CanvasStudio({
 	useEffect(() => {
 		onActivePageChangeRef.current?.(activePageId);
 	}, [activePageId, onActivePageChangeRef]);
+
+	// FR-055: the isolation stack is per page — switching pages exits it.
+	useEffect(() => {
+		isolationStore.getState().exitAll();
+	}, [activePageId, isolationStore]);
 
 	// Subscribe so viewportStore changes (hand-tool pan, zoom) re-render
 	// <CanvasStage> with the new transform.
@@ -710,6 +751,25 @@ export function CanvasStudio({
 		() => saveControllerRef.current?.canLeave() ?? true,
 		[],
 	);
+
+	// FR-164 (C-10): mirror the document into the recovery adapter, debounced;
+	// a successful real save clears the snapshot.
+	useEffect(() => {
+		if (!recoveryAdapter) return;
+		const controller = createRecoveryController({
+			adapter: recoveryAdapter,
+			getIR,
+			historyStore,
+			...(persistenceAdapter ? { saveStatusStore } : {}),
+		});
+		return () => controller.dispose();
+	}, [
+		recoveryAdapter,
+		getIR,
+		historyStore,
+		persistenceAdapter,
+		saveStatusStore,
+	]);
 
 	const onPickAssetRef = useHostCallbackRef(onPickAsset);
 	const onAiIntentRef = useHostCallbackRef(onAiIntent);
@@ -822,11 +882,13 @@ export function CanvasStudio({
 			commitBatch,
 			fieldPreviewStore,
 			rulerGuideStore,
+			isolationStore,
 			replaceDocument,
 			pickAsset,
 			requestAiIntent,
 			brandKit,
 			templates,
+			templateProvider,
 			t,
 			kindRenderers,
 			kindInspectors,
@@ -862,11 +924,13 @@ export function CanvasStudio({
 			commitBatch,
 			fieldPreviewStore,
 			rulerGuideStore,
+			isolationStore,
 			replaceDocument,
 			pickAsset,
 			requestAiIntent,
 			brandKit,
 			templates,
+			templateProvider,
 			t,
 			kindRenderers,
 			kindInspectors,
@@ -888,6 +952,18 @@ export function CanvasStudio({
 		() => ({ ...stableCtxValue, stage, activePageId, ir }),
 		[stableCtxValue, stage, activePageId, ir],
 	);
+
+	// C-09 (FR-055): exterior-dim set while a container is isolated.
+	const isolationPath = useSyncExternalStore(
+		isolationStore.subscribe,
+		() => isolationStore.getState().path,
+		() => isolationStore.getState().path,
+	);
+	const dimmedIds = useMemo(() => {
+		if (isolationPath.length === 0) return null;
+		const page = ir.pages.find((p) => p.id === activePageId);
+		return page ? computeDimmedIds(page, isolationPath) : null;
+	}, [isolationPath, ir, activePageId]);
 
 	const activePage = ir.pages.find((p) => p.id === activePageId);
 	if (!activePage) {
@@ -937,14 +1013,25 @@ export function CanvasStudio({
 			onExportRecovery={exportRecovery}
 			onStageReady={handleStageReady}
 			draggedIds={draggedIds}
+			dimmedIds={dimmedIds}
 			toolRegistry={effectiveToolRegistry}
 		/>
+	);
+	// FR-164: the recover-draft prompt rides with the stage so it sits under
+	// the workspace's dialog host when a shell is composed around it.
+	const stageWithRecovery = recoveryAdapter ? (
+		<>
+			{stageNode}
+			<RecoverDraftPrompt adapter={recoveryAdapter} />
+		</>
+	) : (
+		stageNode
 	);
 	return (
 		<CanvasStudioContext value={ctxValue}>
 			<CanvasStudioStableContext value={stableCtxValue}>
 				{renderShell ? (
-					renderShell(stageNode)
+					renderShell(stageWithRecovery)
 				) : (
 					<div
 						data-testid="canvas-studio-root"
@@ -952,7 +1039,7 @@ export function CanvasStudio({
 					>
 						<ToolAnnouncer />
 						{!hidePageNavigator && <PageNavigator />}
-						{stageNode}
+						{stageWithRecovery}
 					</div>
 				)}
 				<CanvasKeyboardLayer />

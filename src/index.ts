@@ -39,18 +39,6 @@ export {
 } from "./CanvasErrorBoundary.js";
 // ── Core editor + shell ──────────────────────────────────────────────────────
 export { CanvasStudio, type CanvasStudioProps } from "./CanvasStudio.js";
-// ── Persistence (B-08, FR-160..163) ─────────────────────────────────────────
-export type {
-	CanvasAutoSaveOptions,
-	CanvasPersistenceAdapter,
-	CanvasSaveInput,
-	CanvasSaveResult,
-} from "./persistence/types.js";
-export type {
-	CanvasSaveState,
-	SaveStatusState,
-	SaveStatusStoreApi,
-} from "./stores/save-status-store.js";
 // ── Context + hooks ──────────────────────────────────────────────────────────
 export {
 	type CanvasIRGetter,
@@ -140,6 +128,19 @@ export {
 	insertTemplateAsNewPages,
 	loadTemplate,
 } from "./panels/template-actions.js";
+// ── Local recovery (C-10, FR-164) ────────────────────────────────────────────
+export type {
+	CanvasRecoveryAdapter,
+	CanvasRecoverySnapshot,
+} from "./persistence/recovery.js";
+export { createIndexedDbRecoveryAdapter } from "./persistence/recovery.js";
+// ── Persistence (B-08, FR-160..163) ─────────────────────────────────────────
+export type {
+	CanvasAutoSaveOptions,
+	CanvasPersistenceAdapter,
+	CanvasSaveInput,
+	CanvasSaveResult,
+} from "./persistence/types.js";
 // ── Render utilities (host export bridges) ───────────────────────────────────
 export type { ExportStageContentOptions } from "./render/export-stage.js";
 export { exportStageContentDataURL } from "./render/export-stage.js";
@@ -148,9 +149,21 @@ export type {
 	RasterizePageResult,
 } from "./render/rasterize-page.js";
 export { rasterizePage } from "./render/rasterize-page.js";
+export type {
+	CanvasSaveState,
+	SaveStatusState,
+	SaveStatusStoreApi,
+} from "./stores/save-status-store.js";
 // ── Tool id (host may set `initialTool` / drive tool selection) ──────────────
 export type { ToolId } from "./stores/tool-store.js";
 export type { CanvasTemplateEntry } from "./templates/template-entry.js";
+// ── Template provider (C-06, FR-131) ────────────────────────────────────────
+export type {
+	CanvasTemplateProvider,
+	CanvasTemplateSearchQuery,
+	CanvasTemplateSearchResult,
+} from "./templates/template-provider.js";
+export { createStaticTemplateProvider } from "./templates/template-provider.js";
 // The stage's `CanvasTextMeasurer` — pass to core's `serializePageToSvg` (or
 // `@anvilkit/plugin-export-canvas`'s `canvasToSvg`) so a rich-text export
 // wraps at the same points the stage does.
