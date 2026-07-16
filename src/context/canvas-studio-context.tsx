@@ -16,6 +16,7 @@ import type { AiJobStoreApi } from "../stores/ai-job-store.js";
 import type { CropStoreApi } from "../stores/crop-store.js";
 import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
+import type { ExportRequestStoreApi } from "../stores/export-request-store.js";
 import type { FieldPreviewStoreApi } from "../stores/field-preview-store.js";
 import type { CanvasFocusStoreApi } from "../stores/focus-store.js";
 import type { GuidesStoreApi } from "../stores/guides-store.js";
@@ -24,6 +25,7 @@ import type {
 	HistoryStoreApi,
 } from "../stores/history-store.js";
 import type { IsolationStoreApi } from "../stores/isolation-store.js";
+import type { LayerRenameStoreApi } from "../stores/layer-rename-store.js";
 import type { PagesStoreApi } from "../stores/pages-store.js";
 import type { PathEditStoreApi } from "../stores/path-edit-store.js";
 import type { PenStoreApi } from "../stores/pen-store.js";
@@ -155,6 +157,12 @@ export interface CanvasStudioContextValue {
 	 */
 	templateProvider?: CanvasTemplateProvider;
 	/**
+	 * FR-132 host "open as new document" seam. Present when the host wired
+	 * `<CanvasStudio onCreateDocument>`; the Templates panel uses it to offer
+	 * the "Open as new document" choice.
+	 */
+	onCreateDocument?: (document: CanvasIR) => void;
+	/**
 	 * Renderers for custom (extension) node kinds, keyed by kind. Consulted by
 	 * `<CanvasNodeRenderer>` for any node whose `type` is not a built-in kind.
 	 */
@@ -212,6 +220,12 @@ export interface CanvasStudioContextValue {
 	 * provided by `<CanvasStudio>`; optional for partial test contexts.
 	 */
 	exportRequestStore?: ExportRequestStoreApi;
+	/**
+	 * Layer-rename channel (FR-031): the node context menu's "Rename layer"
+	 * posts a node id here for the mounted `<LayerPanel>` to enter inline
+	 * rename. UI state only; optional for partial test contexts.
+	 */
+	layerRenameStore?: LayerRenameStoreApi;
 	/** Konva.Stage instance — null until <CanvasStage>'s onReady fires. */
 	stage: Konva.Stage | null;
 	/**
