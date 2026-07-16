@@ -9,6 +9,7 @@ import {
 	type RichTextWrap,
 	resolveSpanStyle,
 } from "@anvilkit/canvas-core";
+import { Button } from "@anvilkit/ui/button";
 import { Switch } from "@anvilkit/ui/components/animate-ui/components/base/switch";
 import type { BrandKit } from "../../brand/brand-kit.js";
 import {
@@ -16,6 +17,10 @@ import {
 	resolveFontFamilyForDisplay,
 } from "../../brand/resolve-brand-token.js";
 import type { CanvasT } from "../../context/canvas-studio-context.js";
+import { measureGlyphWidth } from "../../text/canvas-glyph-measurer.js";
+import { observeFontFamily } from "../../text/font-status.js";
+import { getCachedLayout } from "../../text/layout-cache.js";
+import { layoutRichText } from "../../text/rich-text-layout.js";
 import { DEFAULT_RICH_TEXT_STYLE } from "../../text/rich-text-style.js";
 import {
 	type CommitPatch,
@@ -127,6 +132,46 @@ export function renderRichTextFields(
 	const wrap = node.wrap ?? "word";
 	const overflow = node.overflow ?? "visible";
 
+	// FR-083 (C-11): passive font state; FR-084: overflow warning + fixes.
+	const fontStatus = observeFontFamily(fontFamilyResolved.value);
+	const measured = getCachedLayout(node.paragraphs, node.width, wrap, () =>
+		layoutRichText(
+			{
+				paragraphs: node.paragraphs,
+				width: node.width,
+				wrap,
+				defaults: DEFAULT_RICH_TEXT_STYLE,
+			},
+			measureGlyphWidth,
+		),
+	);
+	const overflowing =
+		overflow !== "auto-height" &&
+		measured.height > node.bounds.height + 0.5 &&
+		node.bounds.height > 0;
+	const shrinkToFit = (): void => {
+		const factor = node.bounds.height / measured.height;
+		commitPatch(node, {
+			paragraphs: node.paragraphs.map((p) => ({
+				...p,
+				spans: p.spans.map((s) => ({
+					...s,
+					fontSize: Math.max(
+						1,
+						Math.floor(
+							resolveSpanStyle(s, DEFAULT_RICH_TEXT_STYLE).fontSize * factor,
+						),
+					),
+				})),
+			})),
+		});
+	};
+	const expandBox = (): void => {
+		commitPatch(node, {
+			bounds: { ...node.bounds, height: Math.ceil(measured.height) },
+		});
+	};
+
 	const allParagraphsPatch = (
 		patch: Pick<
 			CanvasRichTextNode["paragraphs"][number],
@@ -214,6 +259,54 @@ export function renderRichTextFields(
 						</option>
 					</select>
 				</FieldRow>
+				{overflowing ? (
+					<div
+						data-testid="rich-text-overflow-warning"
+						role="status"
+						className="space-y-1 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-[0.7rem] text-amber-700 dark:text-amber-400"
+					>
+						<div>
+							{t(
+								"canvas.inspector.overflowWarning",
+								"Text exceeds the box and may be cut off.",
+							)}
+						</div>
+						<div className="flex gap-1.5">
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="h-6 px-2 text-[11px]"
+								data-testid="rich-text-shrink-to-fit"
+								onClick={shrinkToFit}
+							>
+								{t("canvas.inspector.shrinkToFit", "Shrink to fit")}
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="h-6 px-2 text-[11px]"
+								data-testid="rich-text-expand-box"
+								onClick={expandBox}
+							>
+								{t("canvas.inspector.expandBox", "Expand box")}
+							</Button>
+						</div>
+					</div>
+				) : null}
+				{fontStatus === "missing" || fontStatus === "error" ? (
+					<div
+						data-testid="rich-text-font-status"
+						role="status"
+						className="rounded-md bg-amber-500/10 px-2.5 py-1.5 text-[0.7rem] text-amber-700 dark:text-amber-400"
+					>
+						{t(
+							"canvas.inspector.fontMissing",
+							"Font isn't available — showing a fallback.",
+						)}
+					</div>
+				) : null}
 				<FieldRow label={t("canvas.inspector.sizing", "Sizing")}>
 					<select
 						aria-label={t("canvas.inspector.sizing", "Sizing")}
