@@ -103,4 +103,16 @@ describe("RichTextToolbar (C-11, FR-082)", () => {
 			lastPatch(h).paragraphs[0]?.spans.every((s) => s.fontSize === 32),
 		).toBe(true);
 	});
+
+	it("font-family control rewrites every span's family (FR-082)", () => {
+		const { h, view } = mount();
+		fireEvent.change(view.getByTestId("rich-text-font"), {
+			target: { value: "Georgia" },
+		});
+		expect(
+			lastPatch(h).paragraphs[0]?.spans.every(
+				(s) => s.fontFamily === "Georgia",
+			),
+		).toBe(true);
+	});
 });

@@ -29,6 +29,17 @@ import { DEFAULT_RICH_TEXT_STYLE } from "../text/rich-text-style.js";
 
 const ALIGN_CYCLE: readonly CanvasTextAlign[] = ["left", "center", "right"];
 
+/** Common families offered in the FR-082 font control (whole-block scope). */
+const FONT_FAMILIES: readonly string[] = [
+	"Inter",
+	"Arial",
+	"Helvetica",
+	"Georgia",
+	"Times New Roman",
+	"Courier New",
+	"Verdana",
+];
+
 type SpanFlag = "italic" | "underline" | "strikethrough";
 
 function mapSpans(
@@ -192,6 +203,28 @@ export function RichTextToolbar(): React.JSX.Element | null {
 					{icon}
 				</Button>
 			))}
+			<select
+				data-testid="rich-text-font"
+				aria-label={t("canvas.richText.font", "Font")}
+				title={t("canvas.richText.font", "Font")}
+				className="h-6 max-w-24 rounded border border-input bg-transparent px-1 text-xs"
+				value={
+					typeof firstStyle.fontFamily === "string" &&
+					FONT_FAMILIES.includes(firstStyle.fontFamily)
+						? firstStyle.fontFamily
+						: "Inter"
+				}
+				onChange={(e) => {
+					const fontFamily = e.currentTarget.value;
+					commitParagraphs(mapSpans(richText, (s) => ({ ...s, fontFamily })));
+				}}
+			>
+				{FONT_FAMILIES.map((family) => (
+					<option key={family} value={family}>
+						{family}
+					</option>
+				))}
+			</select>
 			<input
 				type="color"
 				data-testid="rich-text-color"
