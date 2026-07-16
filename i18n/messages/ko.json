@@ -383,6 +383,7 @@
 	"canvas.placeholder.failed": "AI 실패",
 	"canvas.placeholder.cancel": "취소",
 	"canvas.a11y.sceneTree": "캔버스 레이어",
+	"canvas.a11y.missingAsset": "에셋 없음",
 	"canvas.audio.placeholder": "오디오",
 	"canvas.error.canvas": "캔버스를 렌더링하지 못했습니다.",
 	"canvas.export.failed": "내보내기 실패",
@@ -477,5 +478,11 @@
 	"canvas.shortcutHelp.categoryTools": "도구",
 	"canvas.dialog.close": "닫기",
 	"canvas.export.hint.jpeg": "작은 사진, 투명도 없음",
-	"canvas.export.hint.webp": "현대적이고 작은 래스터"
+	"canvas.export.hint.webp": "현대적이고 작은 래스터",
+	"canvas.image.missingAsset": "이미지 없음",
+	"canvas.image.loadError": "이미지를 불러오지 못했습니다",
+	"canvas.image.loading": "이미지 불러오는 중…",
+	"canvas.svg.missingAsset": "그래픽 없음",
+	"canvas.svg.loadError": "그래픽을 불러오지 못했습니다",
+	"canvas.svg.loading": "그래픽 불러오는 중…"
 }

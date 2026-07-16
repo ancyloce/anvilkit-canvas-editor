@@ -383,6 +383,7 @@
 	"canvas.placeholder.failed": "AI が失敗しました",
 	"canvas.placeholder.cancel": "キャンセル",
 	"canvas.a11y.sceneTree": "キャンバスレイヤー",
+	"canvas.a11y.missingAsset": "アセットが見つかりません",
 	"canvas.audio.placeholder": "オーディオ",
 	"canvas.error.canvas": "キャンバスの描画に失敗しました。",
 	"canvas.export.failed": "書き出しに失敗しました",
@@ -477,5 +478,11 @@
 	"canvas.shortcutHelp.categoryTools": "ツール",
 	"canvas.dialog.close": "閉じる",
 	"canvas.export.hint.jpeg": "軽量な写真、透過なし",
-	"canvas.export.hint.webp": "モダンで軽量なラスター"
+	"canvas.export.hint.webp": "モダンで軽量なラスター",
+	"canvas.image.missingAsset": "画像が見つかりません",
+	"canvas.image.loadError": "画像を読み込めませんでした",
+	"canvas.image.loading": "画像を読み込み中…",
+	"canvas.svg.missingAsset": "グラフィックが見つかりません",
+	"canvas.svg.loadError": "グラフィックを読み込めませんでした",
+	"canvas.svg.loading": "グラフィックを読み込み中…"
 }

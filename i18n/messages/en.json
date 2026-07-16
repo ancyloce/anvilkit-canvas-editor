@@ -383,6 +383,7 @@
 	"canvas.placeholder.failed": "AI failed",
 	"canvas.placeholder.cancel": "Cancel",
 	"canvas.a11y.sceneTree": "Canvas layers",
+	"canvas.a11y.missingAsset": "missing asset",
 	"canvas.audio.placeholder": "Audio",
 	"canvas.error.canvas": "The canvas failed to render.",
 	"canvas.export.failed": "Export failed",
@@ -477,5 +478,11 @@
 	"canvas.shortcutHelp.categoryTools": "Tools",
 	"canvas.dialog.close": "Close",
 	"canvas.export.hint.jpeg": "Small photos, no transparency",
-	"canvas.export.hint.webp": "Modern small raster"
+	"canvas.export.hint.webp": "Modern small raster",
+	"canvas.image.missingAsset": "Missing image",
+	"canvas.image.loadError": "Image failed to load",
+	"canvas.image.loading": "Loading image…",
+	"canvas.svg.missingAsset": "Missing graphic",
+	"canvas.svg.loadError": "Graphic failed to load",
+	"canvas.svg.loading": "Loading graphic…"
 }

@@ -383,6 +383,7 @@
 	"canvas.placeholder.failed": "AI 失败",
 	"canvas.placeholder.cancel": "取消",
 	"canvas.a11y.sceneTree": "画布图层",
+	"canvas.a11y.missingAsset": "资源缺失",
 	"canvas.audio.placeholder": "音频",
 	"canvas.error.canvas": "画布渲染失败。",
 	"canvas.export.failed": "导出失败",
@@ -477,5 +478,11 @@
 	"canvas.shortcutHelp.categoryTools": "工具",
 	"canvas.dialog.close": "关闭",
 	"canvas.export.hint.jpeg": "照片体积小，无透明度",
-	"canvas.export.hint.webp": "现代小体积位图"
+	"canvas.export.hint.webp": "现代小体积位图",
+	"canvas.image.missingAsset": "图片缺失",
+	"canvas.image.loadError": "图片加载失败",
+	"canvas.image.loading": "正在加载图片…",
+	"canvas.svg.missingAsset": "图形缺失",
+	"canvas.svg.loadError": "图形加载失败",
+	"canvas.svg.loading": "正在加载图形…"
 }
