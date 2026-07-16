@@ -514,5 +514,6 @@
 	"canvas.inspector.flipVertical": "垂直翻转",
 	"canvas.inspector.fillNone": "无",
 	"canvas.inspector.fillAlpha": "填充透明度",
-	"canvas.inspector.recentColors": "最近"
+	"canvas.inspector.recentColors": "最近",
+	"canvas.richText.font": "字体"
 }

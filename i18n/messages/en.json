@@ -514,5 +514,6 @@
 	"canvas.inspector.flipVertical": "Flip vertical",
 	"canvas.inspector.fillNone": "None",
 	"canvas.inspector.fillAlpha": "Fill alpha",
-	"canvas.inspector.recentColors": "Recent"
+	"canvas.inspector.recentColors": "Recent",
+	"canvas.richText.font": "Font"
 }

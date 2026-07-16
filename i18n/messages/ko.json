@@ -514,5 +514,6 @@
 	"canvas.inspector.flipVertical": "상하 반전",
 	"canvas.inspector.fillNone": "없음",
 	"canvas.inspector.fillAlpha": "채우기 불투명도",
-	"canvas.inspector.recentColors": "최근"
+	"canvas.inspector.recentColors": "최근",
+	"canvas.richText.font": "글꼴"
 }

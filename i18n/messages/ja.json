@@ -514,5 +514,6 @@
 	"canvas.inspector.flipVertical": "上下反転",
 	"canvas.inspector.fillNone": "なし",
 	"canvas.inspector.fillAlpha": "塗りの不透明度",
-	"canvas.inspector.recentColors": "最近"
+	"canvas.inspector.recentColors": "最近",
+	"canvas.richText.font": "フォント"
 }
