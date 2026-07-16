@@ -1,6 +1,7 @@
 import type { CanvasExportWarning, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { ReactNode } from "react";
+import type { BrandKit } from "../brand/brand-kit.js";
 
 /**
  * A pluggable action mounted in the {@link WorkspaceHeader}'s right cluster
@@ -32,6 +33,13 @@ export interface CanvasExportContext {
 	readonly activePageId: string;
 	/** The live Konva stage; `null` until the canvas mounts. Raster formats need it. */
 	readonly stage: Konva.Stage | null;
+	/**
+	 * The editor's brand kit, when the host wired one. The built-in SVG/PDF
+	 * exporters resolve `BrandTokenRef` fills/fonts against it so exports
+	 * agree with the live canvas; additive and optional (older host exporters
+	 * ignore it).
+	 */
+	readonly brandKit?: BrandKit;
 }
 
 /**

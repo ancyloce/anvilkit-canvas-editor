@@ -1,16 +1,69 @@
 "use client";
 
-import type { CanvasIR } from "@anvilkit/canvas-core";
+import type {
+	BrandTokenRef,
+	CanvasExportWarning,
+	CanvasGradientFill,
+	CanvasIR,
+} from "@anvilkit/canvas-core";
+import { resolveBrandToken } from "../brand/resolve-brand-token.js";
 import type {
 	CanvasExportArtifact,
 	CanvasExporter,
 	CanvasExportFormat,
 } from "./types.js";
 
-/** `<title>.<ext>`, falling back to the IR id then a generic stem. */
+/**
+ * §14.5 export file-name sanitization: strip path separators, characters
+ * illegal on common filesystems, control characters, and leading dots, then
+ * cap the length. An empty result falls back to `fallback`.
+ */
+export function sanitizeExportFilename(
+	stem: string,
+	fallback = "canvas",
+): string {
+	let cleaned = "";
+	for (const ch of stem.replace(/[/\\:*?"<>|]/g, " ")) {
+		cleaned += ch.charCodeAt(0) < 0x20 ? " " : ch;
+	}
+	cleaned = cleaned
+		.replace(/\s+/g, " ")
+		// Trim leading/trailing dot+space runs — this also strips a `../../`
+		// path-traversal prefix once separators became spaces.
+		.replace(/^[.\s]+/, "")
+		.replace(/[.\s]+$/, "")
+		.slice(0, 120)
+		.trim();
+	return cleaned.length > 0 ? cleaned : fallback;
+}
+
+/** `<sanitized title>.<ext>`, falling back to the IR id then a generic stem. */
 function exportFilename(ir: CanvasIR, ext: string): string {
-	const stem = ir.title?.trim() || ir.id || "canvas";
-	return `${stem}.${ext}`;
+	return `${sanitizeExportFilename(ir.title?.trim() || ir.id || "canvas")}.${ext}`;
+}
+
+/**
+ * Map core serializer warnings (`SvgSerializeWarning`/`PdfSerializeWarning`)
+ * into the shared {@link CanvasExportWarning} shape 1:1 — `code` carries the
+ * same string value; core's serializer warnings are all degrade-level.
+ */
+function toExportWarnings(
+	warnings: readonly {
+		code: string;
+		message: string;
+		nodeId?: string;
+		pageId?: string;
+		fallback?: string;
+	}[],
+): CanvasExportWarning[] {
+	return warnings.map((w) => ({
+		level: "warn" as const,
+		code: w.code,
+		message: w.message,
+		...(w.nodeId !== undefined ? { nodeId: w.nodeId } : {}),
+		...(w.pageId !== undefined ? { pageId: w.pageId } : {}),
+		...(w.fallback !== undefined ? { fallback: w.fallback } : {}),
+	}));
 }
 
 /**
@@ -62,13 +115,81 @@ export const jsonExporter: CanvasExporter = ({ ir }) => ({
 	mimeType: "application/json",
 });
 
-/** Formats the editor can export with zero host wiring. */
+/**
+ * Built-in SVG exporter (FR-151, AC-010): core's `serializePageToSvg` on the
+ * requested page, with brand tokens resolved against the editor's brand kit
+ * (same resolution the stage uses). The serializer module is `import()`ed so
+ * its weight stays out of the eager editor bundle.
+ */
+export const svgExporter: CanvasExporter = async ({
+	ir,
+	activePageId,
+	brandKit,
+}) => {
+	const { serializePageToSvg } = await import("@anvilkit/canvas-core");
+	const { svg, warnings } = await serializePageToSvg(ir, activePageId, {
+		...(brandKit
+			? {
+					resolveBrandToken: (
+						ref: BrandTokenRef,
+					): string | CanvasGradientFill | undefined =>
+						resolveBrandToken(ref, brandKit),
+				}
+			: {}),
+	});
+	return {
+		filename: exportFilename(ir, "svg"),
+		data: svg,
+		mimeType: "image/svg+xml",
+		warnings: toExportWarnings(warnings),
+	};
+};
+
+/**
+ * Built-in PDF exporter (FR-151/FR-152, AC-010): every page of the given IR
+ * is rasterized off-screen (the live stage only holds the active page), then
+ * core's raster-embed `serializeDocumentToPdf` packs one PDF page per canvas
+ * page — this is what makes multi-page PDF export work (Flow 2). pdf-lib
+ * loads via `import()` on first use, never in the eager bundle.
+ */
+export const pdfExporter: CanvasExporter = async (
+	{ ir, brandKit },
+	request,
+) => {
+	const { serializeDocumentToPdf } = await import("@anvilkit/canvas-core");
+	const { rasterizePage } = await import("../render/rasterize-page.js");
+	const rasters = [];
+	for (const page of ir.pages) {
+		const { url } = await rasterizePage({
+			page,
+			assets: ir.assets,
+			...(brandKit ? { brandKit } : {}),
+			pixelRatio: 2 * (request.resolution || 1),
+		});
+		rasters.push({ pageId: page.id, image: url });
+	}
+	const { pdf, warnings } = await serializeDocumentToPdf(ir, {
+		rasters,
+		pages: ir.pages.map((p) => p.id),
+		...(ir.title !== undefined ? { title: ir.title } : {}),
+	});
+	return {
+		filename: exportFilename(ir, "pdf"),
+		data: pdf,
+		mimeType: "application/pdf",
+		warnings: toExportWarnings(warnings),
+	};
+};
+
+/** Formats the editor can export with zero host wiring (AC-010: all six). */
 export const DEFAULT_CANVAS_EXPORTERS: Partial<
 	Record<CanvasExportFormat, CanvasExporter>
 > = {
 	png: pngExporter,
 	jpeg: jpegExporter,
 	webp: webpExporter,
+	svg: svgExporter,
+	pdf: pdfExporter,
 	json: jsonExporter,
 };
 
@@ -101,7 +222,7 @@ export function downloadCanvasArtifact(artifact: CanvasExportArtifact): void {
 	const url = URL.createObjectURL(blob);
 	const anchor = document.createElement("a");
 	anchor.href = url;
-	anchor.download = artifact.filename;
+	anchor.download = sanitizeExportFilename(artifact.filename, "export");
 	document.body.appendChild(anchor);
 	anchor.click();
 	anchor.remove();

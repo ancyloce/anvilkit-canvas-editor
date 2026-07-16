@@ -49,14 +49,19 @@ async function openDialog(): Promise<void> {
 }
 
 describe("ExportDialog (B-09, FR-150..154)", () => {
-	it("opens code-split, shows built-in formats, pages and scale controls", async () => {
+	it("opens code-split, shows all six built-in formats, pages and scale controls", async () => {
 		setup();
 		await openDialog();
+		// FR-151 / AC-010: all six formats export with no host wiring.
 		expect(screen.getByTestId("export-format-png")).toBeTruthy();
 		expect(screen.getByTestId("export-format-json")).toBeTruthy();
-		expect(screen.queryByTestId("export-format-svg")).toBeNull();
+		expect(screen.getByTestId("export-format-svg")).toBeTruthy();
+		expect(screen.getByTestId("export-format-pdf")).toBeTruthy();
 		expect(screen.getByTestId("export-pages-current")).toBeTruthy();
+		expect(screen.getByTestId("export-pages-all")).toBeTruthy();
+		// FR-153 raster controls appear for the default (PNG) format.
 		expect(screen.getByTestId("export-scale-2")).toBeTruthy();
+		expect(screen.getByTestId("export-filename")).toBeTruthy();
 	});
 
 	it("exports all pages sequentially with an injected exporter and reports progress", async () => {
@@ -117,5 +122,61 @@ describe("ExportDialog (B-09, FR-150..154)", () => {
 			).toBe("failed");
 		});
 		expect(onError).toHaveBeenCalledTimes(0); // not wired in this render
+	});
+
+	it("whole-document JSON export honors the current-page scope (FR-152)", async () => {
+		let seenPageCount = -1;
+		const json: CanvasExporter = ({ ir }) => {
+			seenPageCount = ir.pages.length;
+			return { filename: "x.json", data: "{}", mimeType: "application/json" };
+		};
+		vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+			() => undefined,
+		);
+		vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+		vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+		setup({ json });
+		await openDialog();
+		fireEvent.click(screen.getByTestId("export-format-json"));
+		// Default scope is "current page" → the scoped IR has exactly one page.
+		fireEvent.click(screen.getByTestId("export-run"));
+		await waitFor(() => {
+			expect(
+				screen.getByTestId("export-progress").getAttribute("data-phase"),
+			).toBe("completed");
+		});
+		expect(seenPageCount).toBe(1);
+	});
+
+	it("all-pages JSON export passes every page to the exporter (FR-152)", async () => {
+		let seenPageCount = -1;
+		const json: CanvasExporter = ({ ir }) => {
+			seenPageCount = ir.pages.length;
+			return { filename: "x.json", data: "{}", mimeType: "application/json" };
+		};
+		vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+			() => undefined,
+		);
+		vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+		vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+		setup({ json });
+		await openDialog();
+		fireEvent.click(screen.getByTestId("export-format-json"));
+		fireEvent.click(screen.getByTestId("export-pages-all"));
+		fireEvent.click(screen.getByTestId("export-run"));
+		await waitFor(() => {
+			expect(
+				screen.getByTestId("export-progress").getAttribute("data-phase"),
+			).toBe("completed");
+		});
+		expect(seenPageCount).toBe(2);
+	});
+
+	it("disables the Selection scope when nothing is selected (FR-031)", async () => {
+		setup();
+		await openDialog();
+		expect(
+			screen.getByTestId("export-pages-selection").hasAttribute("disabled"),
+		).toBe(true);
 	});
 });

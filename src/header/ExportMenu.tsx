@@ -152,7 +152,12 @@ export function ExportMenu({
 		setWarnings([]);
 		try {
 			const artifact = await exporter(
-				{ ir: ctx.getIR(), activePageId: ctx.activePageId, stage: ctx.stage },
+				{
+					ir: ctx.getIR(),
+					activePageId: ctx.activePageId,
+					stage: ctx.stage,
+					...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
+				},
 				{ quality, resolution: resolutionScale(resolution), stripMetadata },
 			);
 			downloadCanvasArtifact(artifact);

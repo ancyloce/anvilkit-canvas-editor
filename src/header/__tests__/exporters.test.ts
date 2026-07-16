@@ -6,6 +6,7 @@ import {
 	jpegExporter,
 	jsonExporter,
 	pngExporter,
+	sanitizeExportFilename,
 	webpExporter,
 } from "../exporters.js";
 
@@ -95,12 +96,34 @@ describe("built-in raster exporters (B-18, AC-010)", () => {
 		expect(artifact.mimeType).toBe("application/json");
 	});
 
-	it("the default exporter map covers png/jpeg/webp/json", () => {
+	it("the default exporter map covers all six FR-151 formats", () => {
+		// FR-151 / AC-010: PNG, JPG, WebP, SVG, PDF, JSON all export with zero
+		// host wiring (SVG via core's serializer, PDF via raster-embed).
 		expect(Object.keys(DEFAULT_CANVAS_EXPORTERS).sort()).toEqual([
 			"jpeg",
 			"json",
+			"pdf",
 			"png",
+			"svg",
 			"webp",
 		]);
+	});
+});
+
+describe("sanitizeExportFilename (§14.5)", () => {
+	it("strips path separators and illegal filename characters", () => {
+		expect(sanitizeExportFilename("../../etc/passwd")).toBe("etc passwd");
+		expect(sanitizeExportFilename('a:b*c?"<>|d')).toBe("a b c d");
+	});
+
+	it("strips leading dots and collapses whitespace and control chars", () => {
+		expect(sanitizeExportFilename(".hidden")).toBe("hidden");
+		expect(sanitizeExportFilename("a   b")).toBe("a b");
+		expect(sanitizeExportFilename(`a${String.fromCharCode(1)}b`)).toBe("a b");
+	});
+
+	it("falls back when the result is empty", () => {
+		expect(sanitizeExportFilename("///", "fallback")).toBe("fallback");
+		expect(sanitizeExportFilename("")).toBe("canvas");
 	});
 });
