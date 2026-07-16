@@ -505,5 +505,14 @@
 	"canvas.header.pageSize": "Page size",
 	"canvas.templates.openAsNewDocument": "Open as new document",
 	"canvas.templates.unsavedTitle": "Replace with unsaved changes?",
-	"canvas.templates.unsavedBody": "Loading this template replaces every page. Your unsaved changes will be lost."
+	"canvas.templates.unsavedBody": "Loading this template replaces every page. Your unsaved changes will be lost.",
+	"canvas.toast.clipboardRejected": "Clipboard content couldn't be pasted",
+	"canvas.inspector.scale": "Scale",
+	"canvas.inspector.lockAspect": "Lock aspect ratio",
+	"canvas.inspector.resetRotation": "Reset rotation",
+	"canvas.inspector.flipHorizontal": "Flip horizontal",
+	"canvas.inspector.flipVertical": "Flip vertical",
+	"canvas.inspector.fillNone": "None",
+	"canvas.inspector.fillAlpha": "Fill alpha",
+	"canvas.inspector.recentColors": "Recent"
 }

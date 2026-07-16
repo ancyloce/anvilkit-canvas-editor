@@ -505,5 +505,14 @@
 	"canvas.header.pageSize": "ページサイズ",
 	"canvas.templates.openAsNewDocument": "新規ドキュメントとして開く",
 	"canvas.templates.unsavedTitle": "未保存の変更を置き換えますか？",
-	"canvas.templates.unsavedBody": "このテンプレートを読み込むとすべてのページが置き換えられ、未保存の変更は失われます。"
+	"canvas.templates.unsavedBody": "このテンプレートを読み込むとすべてのページが置き換えられ、未保存の変更は失われます。",
+	"canvas.toast.clipboardRejected": "クリップボードの内容を貼り付けできませんでした",
+	"canvas.inspector.scale": "拡大縮小",
+	"canvas.inspector.lockAspect": "縦横比を固定",
+	"canvas.inspector.resetRotation": "回転をリセット",
+	"canvas.inspector.flipHorizontal": "左右反転",
+	"canvas.inspector.flipVertical": "上下反転",
+	"canvas.inspector.fillNone": "なし",
+	"canvas.inspector.fillAlpha": "塗りの不透明度",
+	"canvas.inspector.recentColors": "最近"
 }

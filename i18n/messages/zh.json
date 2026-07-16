@@ -505,5 +505,14 @@
 	"canvas.header.pageSize": "页面尺寸",
 	"canvas.templates.openAsNewDocument": "作为新文档打开",
 	"canvas.templates.unsavedTitle": "替换未保存的更改？",
-	"canvas.templates.unsavedBody": "加载此模板将替换所有页面。未保存的更改将丢失。"
+	"canvas.templates.unsavedBody": "加载此模板将替换所有页面。未保存的更改将丢失。",
+	"canvas.toast.clipboardRejected": "无法粘贴剪贴板内容",
+	"canvas.inspector.scale": "缩放",
+	"canvas.inspector.lockAspect": "锁定宽高比",
+	"canvas.inspector.resetRotation": "重置旋转",
+	"canvas.inspector.flipHorizontal": "水平翻转",
+	"canvas.inspector.flipVertical": "垂直翻转",
+	"canvas.inspector.fillNone": "无",
+	"canvas.inspector.fillAlpha": "填充透明度",
+	"canvas.inspector.recentColors": "最近"
 }
