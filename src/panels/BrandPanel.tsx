@@ -3,8 +3,11 @@
 import {
 	applyBrandColors,
 	type BrandApplyResult,
+	type BrandAsset,
 	type BrandComplianceIssue,
 	type BrandComplianceReport,
+	type CanvasCommand,
+	createImage,
 	generateBrandComplianceReport,
 	normalizeTypography,
 	replaceFonts,
@@ -17,6 +20,7 @@ import {
 	useBrandColors,
 	useBrandFonts,
 	useBrandKitDefinition,
+	useBrandLogos,
 } from "../brand/use-brand-kit.js";
 import {
 	type CanvasT,
@@ -27,6 +31,9 @@ import {
 export interface BrandPanelProps {
 	className?: string;
 }
+
+/** FR-141: default square size for a standalone logo insert (no natural size on {@link BrandAsset}). */
+const LOGO_INSERT_SIZE = 120;
 
 type ApplyActionKind = "colors" | "fonts" | "logos" | "typography";
 
@@ -98,6 +105,7 @@ export function BrandPanel({
 	const ctx = useCanvasStudio();
 	const colors = useBrandColors();
 	const fonts = useBrandFonts();
+	const logos = useBrandLogos();
 	const definition = useBrandKitDefinition();
 	const t = useCanvasT();
 	const [preview, setPreview] = useState<Record<
@@ -106,7 +114,7 @@ export function BrandPanel({
 	> | null>(null);
 	const [complianceReport, setComplianceReport] =
 		useState<BrandComplianceReport | null>(null);
-	const hasBrand = colors.length > 0 || fonts.length > 0;
+	const hasBrand = colors.length > 0 || fonts.length > 0 || logos.length > 0;
 
 	if (!hasBrand) {
 		return (
@@ -125,6 +133,43 @@ export function BrandPanel({
 				</div>
 			</div>
 		);
+	}
+
+	/**
+	 * FR-141 standalone logo insertion: click a logo → a new image node at
+	 * page center, selected, ONE undo step — mirrors the paste/duplicate
+	 * selection-after-create pattern. `asset.put` only fires when this
+	 * logo's asset isn't already registered in the document (repeat inserts
+	 * of the same logo reuse it, matching `regenerateNodeIds`-based flows
+	 * elsewhere that never duplicate an unchanged asset record).
+	 */
+	function insertLogo(logo: BrandAsset): void {
+		const ir = ctx.getIR();
+		const page = ir.pages.find((p) => p.id === ctx.activePageId);
+		if (!page) return;
+		const node = createImage({
+			assetId: logo.id,
+			bounds: { width: LOGO_INSERT_SIZE, height: LOGO_INSERT_SIZE },
+			transform: {
+				x: (page.size.width - LOGO_INSERT_SIZE) / 2,
+				y: (page.size.height - LOGO_INSERT_SIZE) / 2,
+			},
+		});
+		const cmds: CanvasCommand[] = [
+			...(ir.assets[logo.id]
+				? []
+				: [
+						{
+							type: "asset.put" as const,
+							asset: { id: logo.id, uri: logo.uri },
+						},
+					]),
+			{ type: "node.create" as const, node, pageId: page.id },
+		];
+		const first = cmds[0];
+		if (cmds.length === 1 && first) ctx.commit(first);
+		else ctx.commitBatch(cmds, "Add logo");
+		ctx.selectionStore.getState().setSelection([node.id]);
 	}
 
 	function checkCompliance(): void {
@@ -180,6 +225,38 @@ export function BrandPanel({
 							{f}
 						</div>
 					))}
+				</div>
+			) : null}
+			{logos.length > 0 ? (
+				<div className="flex flex-col gap-1.5">
+					<div className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+						{t("canvas.brand.logos", "Logos")}
+					</div>
+					<div className="flex flex-wrap gap-1.5" data-testid="brand-logos">
+						{logos.map((logo) => (
+							<button
+								key={logo.id}
+								type="button"
+								data-testid={`brand-logo-${logo.id}`}
+								title={t("canvas.brand.insertLogo", "Insert {name}").replace(
+									"{name}",
+									logo.name,
+								)}
+								aria-label={t(
+									"canvas.brand.insertLogo",
+									"Insert {name}",
+								).replace("{name}", logo.name)}
+								className="flex h-12 w-12 items-center justify-center rounded-md ring-1 ring-border hover:ring-2 hover:ring-primary"
+								onClick={() => insertLogo(logo)}
+							>
+								<img
+									src={logo.uri}
+									alt=""
+									className="max-h-full max-w-full object-contain"
+								/>
+							</button>
+						))}
+					</div>
 				</div>
 			) : null}
 

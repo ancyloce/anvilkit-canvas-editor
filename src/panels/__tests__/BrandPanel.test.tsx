@@ -1,5 +1,6 @@
 import {
 	type CanvasIR,
+	type CanvasNodeCreateCommand,
 	createCanvasIR,
 	createGroup,
 	createPage,
@@ -107,5 +108,46 @@ describe("BrandPanel", () => {
 
 		expect(h.studioCtx.commit).toHaveBeenCalledTimes(1);
 		expect(view.queryByTestId("brand-apply-actions")).toBeNull();
+	});
+});
+
+describe("BrandPanel logos (FR-141)", () => {
+	const logo = { id: "logo-1", name: "Acme mark", uri: "data:logo" };
+
+	it("a brand kit with ONLY logos (no colors/fonts) is not the empty state", () => {
+		const { view } = renderPanel({ colors: [], fonts: [], logos: [logo] });
+		expect(view.queryByTestId("brand-empty-state")).toBeNull();
+		expect(view.getByTestId("brand-logos")).toBeDefined();
+		expect(view.getByTestId(`brand-logo-${logo.id}`)).toBeDefined();
+	});
+
+	it("clicking a logo inserts a centered, selected image node as one commit (new asset)", () => {
+		const { h, view } = renderPanel(
+			{ colors: [], fonts: [], logos: [logo] },
+			makeIR(),
+		);
+		fireEvent.click(view.getByTestId(`brand-logo-${logo.id}`));
+
+		expect(h.studioCtx.commitBatch).toHaveBeenCalledTimes(1);
+		expect(h.commits.map((c) => c.type)).toEqual(["asset.put", "node.create"]);
+		const created = h.commits[1] as CanvasNodeCreateCommand;
+		expect((created.node as { assetId: string }).assetId).toBe(logo.id);
+		expect(h.studioCtx.selectionStore.getState().selectedIds).toEqual([
+			created.node.id,
+		]);
+	});
+
+	it("clicking a logo whose asset is already registered reuses it (single commit, no asset.put)", () => {
+		const ir = makeIR();
+		ir.assets[logo.id] = { id: logo.id, uri: logo.uri };
+		const { h, view } = renderPanel(
+			{ colors: [], fonts: [], logos: [logo] },
+			ir,
+		);
+		fireEvent.click(view.getByTestId(`brand-logo-${logo.id}`));
+
+		expect(h.studioCtx.commit).toHaveBeenCalledTimes(1);
+		expect(h.studioCtx.commitBatch).not.toHaveBeenCalled();
+		expect(h.commits.map((c) => c.type)).toEqual(["node.create"]);
 	});
 });

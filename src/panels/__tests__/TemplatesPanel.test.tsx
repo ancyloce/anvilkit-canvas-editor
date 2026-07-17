@@ -10,6 +10,8 @@ import {
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import { CanvasDialogContext } from "@/context/dialog-context.js";
+import { RecentTemplatesContext } from "@/context/recent-templates-context.js";
 import type { CanvasTemplateEntry } from "@/templates/template-entry.js";
 import type {
 	CanvasTemplateProvider,
@@ -166,6 +168,106 @@ describe("TemplatesPanel", () => {
 			}
 		).mock.calls[0];
 		expect(cmd.type).toBe("batch");
+	});
+
+	it("shows a Recently used row for an id useRecentTemplates() reports (C-06)", async () => {
+		const h = makeHarness();
+		const view = render(
+			<CanvasStudioContext.Provider
+				value={{ ...h.studioCtx, templates: [entry()] }}
+			>
+				<RecentTemplatesContext.Provider
+					value={{ ids: ["poster"], add: vi.fn() }}
+				>
+					<TemplatesPanel />
+				</RecentTemplatesContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+		await view.findByTestId("templates-recents");
+		expect(view.getByTestId("recent-template-item-poster")).toBeDefined();
+	});
+
+	it("shows no Recently used row when useRecentTemplates() has nothing (headless default)", async () => {
+		const { view } = renderPanel([entry()]);
+		await view.findByTestId("template-item-poster");
+		expect(view.queryByTestId("templates-recents")).toBeNull();
+	});
+});
+
+describe("TemplatesPanel — unsaved-changes replace guard (FR-132)", () => {
+	it("with unsaved changes (canLeave() false): confirms before replacing", async () => {
+		const h = makeHarness();
+		const confirm = vi.fn().mockResolvedValue(true);
+		const view = render(
+			<CanvasStudioContext.Provider
+				value={{
+					...h.studioCtx,
+					templates: [entry()],
+					canLeave: () => false,
+				}}
+			>
+				<CanvasDialogContext.Provider value={{ confirm }}>
+					<TemplatesPanel />
+				</CanvasDialogContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+		await view.findByTestId("template-item-poster");
+		fireEvent.click(view.getByTestId("template-item-poster"));
+		fireEvent.click(view.getByTestId("template-load-poster"));
+
+		expect(confirm).toHaveBeenCalledTimes(1);
+		expect(confirm.mock.calls[0]?.[0]).toMatchObject({
+			destructive: true,
+		});
+		await waitFor(() => expect(h.commits.length).toBeGreaterThan(0));
+	});
+
+	it("declining the confirm never commits", async () => {
+		const h = makeHarness();
+		const confirm = vi.fn().mockResolvedValue(false);
+		const view = render(
+			<CanvasStudioContext.Provider
+				value={{
+					...h.studioCtx,
+					templates: [entry()],
+					canLeave: () => false,
+				}}
+			>
+				<CanvasDialogContext.Provider value={{ confirm }}>
+					<TemplatesPanel />
+				</CanvasDialogContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+		await view.findByTestId("template-item-poster");
+		fireEvent.click(view.getByTestId("template-item-poster"));
+		fireEvent.click(view.getByTestId("template-load-poster"));
+
+		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+		expect(h.commits).toHaveLength(0);
+	});
+
+	it("with no unsaved changes (canLeave() true): replaces without confirming", async () => {
+		const h = makeHarness();
+		const confirm = vi.fn().mockResolvedValue(true);
+		const view = render(
+			<CanvasStudioContext.Provider
+				value={{
+					...h.studioCtx,
+					templates: [entry()],
+					canLeave: () => true,
+				}}
+			>
+				<CanvasDialogContext.Provider value={{ confirm }}>
+					<TemplatesPanel />
+				</CanvasDialogContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+		await view.findByTestId("template-item-poster");
+		fireEvent.click(view.getByTestId("template-item-poster"));
+		fireEvent.click(view.getByTestId("template-load-poster"));
+
+		expect(confirm).not.toHaveBeenCalled();
+		expect(h.commits.length).toBeGreaterThan(0);
 	});
 });
 
