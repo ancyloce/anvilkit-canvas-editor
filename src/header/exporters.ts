@@ -156,8 +156,10 @@ export const pdfExporter: CanvasExporter = async (
 	{ ir, brandKit },
 	request,
 ) => {
-	const { serializeDocumentToPdf } = await import("@anvilkit/canvas-core");
-	const { rasterizePage } = await import("../render/rasterize-page.js");
+	const [{ serializeDocumentToPdf }, { rasterizePage }] = await Promise.all([
+		import("@anvilkit/canvas-core"),
+		import("../render/rasterize-page.js"),
+	]);
 	const rasters = [];
 	for (const page of ir.pages) {
 		const { url } = await rasterizePage({

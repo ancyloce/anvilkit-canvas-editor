@@ -7,6 +7,7 @@ import {
 	createRect,
 } from "@anvilkit/canvas-core";
 import { cleanup, render } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
@@ -176,7 +177,10 @@ describe("useCanvasActions", () => {
 	}: {
 		capture: (actions: CanvasEditorActions) => void;
 	}) {
-		capture(useCanvasActions());
+		const actions = useCanvasActions();
+		useEffect(() => {
+			capture(actions);
+		}, [actions, capture]);
 		return null;
 	}
 

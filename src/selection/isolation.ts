@@ -137,7 +137,7 @@ export function progressiveSelectAllImpl(ctx: CanvasStudioContextValue): void {
 	const store = ctx.isolationStore;
 	const path = store?.getState().path ?? [];
 	const selectable = (children: readonly CanvasNode[]): string[] =>
-		children.filter((n) => n.locked !== true).map((n) => n.id);
+		children.flatMap((node) => (node.locked === true ? [] : [node.id]));
 	let ids = selectable(isolationScopeChildren(page, path));
 	const selected = new Set(ctx.selectionStore.getState().selectedIds);
 	const fullySelected = ids.length > 0 && ids.every((id) => selected.has(id));

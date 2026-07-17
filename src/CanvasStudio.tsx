@@ -486,8 +486,7 @@ function useCommitPipeline(
  * bugs P0-9 fixed for the collab path.
  */
 function useReplaceDocument(stores: DocumentStores) {
-	const storesRef = useRef(stores);
-	storesRef.current = stores;
+	const storesRef = useHostCallbackRef(stores);
 	return useCallback((ir: CanvasIR, source: DocumentSnapshotSource) => {
 		replaceDocumentSnapshot(storesRef.current, ir, { source });
 	}, []);

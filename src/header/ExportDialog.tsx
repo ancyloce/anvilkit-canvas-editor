@@ -101,7 +101,7 @@ export default function ExportDialog({
 	const [quality, setQuality] = useState<number>(92);
 	const [includeBackground, setIncludeBackground] = useState(true);
 	const ir = ctx.getIR();
-	const [filename, setFilename] = useState(
+	const [filename, setFilename] = useState(() =>
 		sanitizeExportFilename(ir.title?.trim() || ir.id || "canvas"),
 	);
 	const [customW, setCustomW] = useState<string>("");

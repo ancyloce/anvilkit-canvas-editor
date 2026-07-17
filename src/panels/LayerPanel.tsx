@@ -320,12 +320,13 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 			const ir = ctx.getIR();
 			const dragged = draggedIdsRef.current;
 			if (dragged.length === 0) return false;
-			if (dragged.includes(targetId)) return false;
+			const draggedSet = new Set(dragged);
+			if (draggedSet.has(targetId)) return false;
 			// Descendant guard: the target (or, for before/after, its parent
 			// chain) must not sit inside any dragged subtree.
 			let cursor: string | null = targetId;
 			while (cursor) {
-				if (dragged.includes(cursor)) return false;
+				if (draggedSet.has(cursor)) return false;
 				const parentResult = parentOf(ir, cursor);
 				cursor = parentResult ? parentResult.parent.id : null;
 			}
