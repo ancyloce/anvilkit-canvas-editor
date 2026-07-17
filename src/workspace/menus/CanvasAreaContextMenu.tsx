@@ -27,7 +27,7 @@ import {
 
 /** FR-030 "Page settings" — same code-split dialog the page navigator uses. */
 const PageSettingsDialog = lazy(
-	() => import("../dialogs/PageSettingsDialog.js"),
+	() => import("../../pages/PageSettingsDialog.js"),
 );
 
 export interface CanvasAreaContextMenuProps {
