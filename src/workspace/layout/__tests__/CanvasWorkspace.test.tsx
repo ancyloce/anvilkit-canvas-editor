@@ -119,4 +119,32 @@ describe("CanvasWorkspace shell", () => {
 		const results = await axe(container);
 		expect(results.violations).toHaveLength(0);
 	});
+
+	// PRD §11.1: the previously-missing `initialWorkspaceState` seam. The
+	// workspace store's own precedence rules (seed vs. persisted value) are
+	// covered by `workspace/state/__tests__/workspace-ui-store.test.ts`; this
+	// test only checks the prop actually reaches the store on a fresh mount.
+	it("initialWorkspaceState seeds the dock tab and inspector on mount", () => {
+		const { container } = render(
+			<CanvasWorkspace
+				initialIR={ir()}
+				initialActivePageId="p1"
+				storeId="ws-initial-state"
+				initialWorkspaceState={{
+					activeDockId: "brand",
+					inspectorCollapsed: true,
+				}}
+			/>,
+		);
+		expect(
+			container
+				.querySelector("[data-testid='panel-dock-brand']")
+				?.getAttribute("data-active"),
+		).toBe("true");
+		expect(
+			container
+				.querySelector("[data-testid='workspace-inspector']")
+				?.getAttribute("data-collapsed"),
+		).toBe("true");
+	});
 });

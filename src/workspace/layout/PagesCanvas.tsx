@@ -16,6 +16,7 @@ import {
 	lazy,
 	type ReactNode,
 	Suspense,
+	useCallback,
 	useEffect,
 	useLayoutEffect,
 	useRef,
@@ -28,6 +29,7 @@ import {
 	useCanvasT,
 } from "@/context/canvas-studio-context.js";
 import { useCanvasDialogs } from "@/context/dialog-context.js";
+import { useCanvasToaster } from "@/context/toast-context.js";
 import {
 	addPage,
 	deletePage,
@@ -43,7 +45,7 @@ import { IsolationBreadcrumb } from "./IsolationBreadcrumb.js";
 
 /** Dialog-class UI is code-split (PRD 0012 constraint 20.15). */
 const PageSettingsDialog = lazy(
-	() => import("../dialogs/PageSettingsDialog.js"),
+	() => import("../../pages/PageSettingsDialog.js"),
 );
 
 /** Drag payload type for page-row reordering (kept off `Files` so the
@@ -92,6 +94,21 @@ export function PagesCanvas({
 		() => ctx.viewportStore.getState().zoom,
 		() => ctx.viewportStore.getState().zoom,
 	);
+	// FR-152 "Selected pages" (Bug 3): a page-navigator multi-select, distinct
+	// from node selection — UI-only, never enters Canvas IR. Ctrl/Cmd-click a
+	// row (see `PageRow`) toggles membership; 2+ selected surfaces an "Export
+	// selected pages" entry in every row's context menu.
+	const [selectedPageIds, setSelectedPageIds] = useState<ReadonlySet<string>>(
+		() => new Set(),
+	);
+	const togglePageSelected = useCallback((pageId: string) => {
+		setSelectedPageIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(pageId)) next.delete(pageId);
+			else next.add(pageId);
+			return next;
+		});
+	}, []);
 	const pages = ctx.ir.pages;
 	const thumbnails = usePageThumbnails({
 		pages,
@@ -200,6 +217,8 @@ export function PagesCanvas({
 							stage={stage}
 							elementActions={elementActions}
 							thumbnail={thumbnails.get(page.id)}
+							selectedPageIds={selectedPageIds}
+							onToggleMultiSelected={togglePageSelected}
 						/>
 					))}
 					<AddPageButton width={addWidth} />
@@ -220,6 +239,9 @@ interface PageRowProps {
 	stage: ReactNode;
 	elementActions?: ElementActions;
 	thumbnail: string | undefined;
+	/** FR-152 page-navigator multi-select (Bug 3) — UI-only, not Canvas IR. */
+	selectedPageIds: ReadonlySet<string>;
+	onToggleMultiSelected: (pageId: string) => void;
 }
 
 /** Ghost icon button base color for the (theme-adaptive) canvas surface. */
@@ -234,15 +256,25 @@ function PageRow({
 	stage,
 	elementActions,
 	thumbnail,
+	selectedPageIds,
+	onToggleMultiSelected,
 }: PageRowProps): React.JSX.Element {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
 	const dialogs = useCanvasDialogs();
+	const toaster = useCanvasToaster();
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [renaming, setRenaming] = useState(false);
 	const [dropTarget, setDropTarget] = useState(false);
+	const isMultiSelected = selectedPageIds.has(page.id);
+	const multiSelectedCount = selectedPageIds.size;
 	// FR-032 Export page disables when no export UI is mounted.
 	const exportAvailable = ctx.exportRequestStore?.getState().available ?? false;
+	const deleteDisabled = total <= 1;
+	const cannotDeleteOnlyLabel = t(
+		"canvas.nav.cannotDeleteOnly",
+		"Cannot delete the only page",
+	);
 	const confirmDelete = (): void => {
 		void dialogs
 			.confirm({
@@ -255,7 +287,7 @@ function PageRow({
 				destructive: true,
 			})
 			.then((ok) => {
-				if (ok) deletePage(ctx, page.id);
+				if (ok) deletePage(ctx, page.id, toaster);
 			});
 	};
 	const width = page.size.width * zoom;
@@ -271,8 +303,21 @@ function PageRow({
 			data-testid={`page-row-${page.id}`}
 			data-active={isActive ? "true" : "false"}
 			data-drop-target={dropTarget ? "true" : undefined}
+			data-page-multi-selected={isMultiSelected ? "true" : undefined}
 			style={{ width }}
-			className={cn(dropTarget && "rounded-sm ring-2 ring-violet-500/60")}
+			className={cn(
+				dropTarget && "rounded-sm ring-2 ring-violet-500/60",
+				isMultiSelected && "rounded-sm ring-2 ring-sky-500/70",
+			)}
+			// FR-152 "Selected pages" (Bug 3): Ctrl/Cmd-click toggles this row into
+			// the page-navigator multi-select instead of activating/dragging it.
+			// Capture phase so it wins BEFORE the thumbnail button's own onClick.
+			onClickCapture={(e) => {
+				if (!(e.ctrlKey || e.metaKey)) return;
+				e.preventDefault();
+				e.stopPropagation();
+				onToggleMultiSelected(page.id);
+			}}
 			onDragOver={(e) => {
 				if (!e.dataTransfer.types.includes(PAGE_DRAG_MIME)) return;
 				e.preventDefault();
@@ -347,11 +392,31 @@ function PageRow({
 					>
 						{t("canvas.pages.exportPage", "Export page")}
 					</ContextMenuItem>
+					{multiSelectedCount >= 2 ? (
+						<ContextMenuItem
+							data-testid={`page-menu-export-selected-${page.id}`}
+							disabled={!exportAvailable}
+							onClick={() => {
+								// FR-152 "Selected pages" (Bug 3): open the export dialog
+								// scoped to exactly the multi-selected pages.
+								ctx.exportRequestStore?.getState().request({
+									scope: "pages",
+									pageIds: Array.from(selectedPageIds),
+								});
+							}}
+						>
+							{t(
+								"canvas.pages.exportSelectedPages",
+								"Export {n} selected pages",
+							).replace("{n}", String(multiSelectedCount))}
+						</ContextMenuItem>
+					) : null}
 					<ContextMenuSeparator />
 					<ContextMenuItem
 						data-testid={`page-menu-delete-${page.id}`}
 						variant="destructive"
-						disabled={total <= 1}
+						disabled={deleteDisabled}
+						title={deleteDisabled ? cannotDeleteOnlyLabel : undefined}
 						onClick={confirmDelete}
 					>
 						{t("canvas.pages.delete", "Delete page")}
@@ -441,8 +506,12 @@ function PageRow({
 							className={SURFACE_GHOST}
 							data-testid={`page-delete-${page.id}`}
 							aria-label={t("canvas.pages.delete", "Delete page")}
-							title={t("canvas.pages.deleteTitle", "Delete")}
-							disabled={total <= 1}
+							title={
+								deleteDisabled
+									? cannotDeleteOnlyLabel
+									: t("canvas.pages.deleteTitle", "Delete")
+							}
+							disabled={deleteDisabled}
 							onClick={confirmDelete}
 						>
 							<Trash2 aria-hidden />

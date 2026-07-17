@@ -3,8 +3,11 @@
 import { Button } from "@anvilkit/ui/button";
 import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
-import { type ReactNode, useEffect, useState } from "react";
-import { CanvasErrorBoundary } from "@/CanvasErrorBoundary.js";
+import { lazy, type ReactNode, useEffect, useState } from "react";
+import {
+	CanvasErrorBoundary,
+	type CanvasErrorDetailsInfo,
+} from "@/CanvasErrorBoundary.js";
 import { useCanvasT } from "@/context/canvas-studio-context.js";
 import type {
 	CanvasPanelDescriptor,
@@ -13,6 +16,35 @@ import type {
 	SearchPanelDescriptor,
 } from "../panel-registry.js";
 import { useActiveDock, usePanelSearch } from "../state/hooks.js";
+
+// FR-171 error-details dialog (B-15): CODE-SPLIT (PRD 0012 constraint
+// 20.15) — the chunk loads only when "View details" is actually clicked.
+const ErrorDetailsDialog = lazy(
+	() => import("../dialogs/ErrorDetailsDialog.js"),
+);
+
+/**
+ * FR-171 composition seam: `<CanvasErrorBoundary>` is a leaf module (see
+ * `scripts/check-layering.mjs`) and cannot import `workspace/dialogs/`
+ * itself, so this workspace-rank panel host supplies the dialog directly.
+ */
+function renderErrorDetails(info: CanvasErrorDetailsInfo): ReactNode {
+	return (
+		<ErrorDetailsDialog
+			error={info.error}
+			errorId={info.errorId}
+			componentStack={info.componentStack}
+			onClose={info.onClose}
+			{...(info.onReloadDocument
+				? { onReloadDocument: info.onReloadDocument }
+				: {})}
+			{...(info.onExportRecovery
+				? { onExportRecovery: info.onExportRecovery }
+				: {})}
+			{...(info.onCopyErrorId ? { onCopyErrorId: info.onCopyErrorId } : {})}
+		/>
+	);
+}
 
 export interface TabPanelProps {
 	/** Resolves the active dock id to a panel descriptor. */
@@ -87,6 +119,7 @@ export function TabPanel({
 				<CanvasErrorBoundary
 					label={t("canvas.tabpanel.error", "This panel failed to render.")}
 					resetKey={activeDockId}
+					renderErrorDetails={renderErrorDetails}
 				>
 					<PanelBody descriptor={descriptor} search={search} />
 				</CanvasErrorBoundary>

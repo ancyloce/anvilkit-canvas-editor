@@ -3,8 +3,10 @@
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef } from "react";
+import * as React from "react";
+import { lazy, type ReactNode, useEffect, useMemo, useRef } from "react";
 import { ToolAnnouncer } from "@/a11y/ToolAnnouncer.js";
+import type { CanvasErrorDetailsInfo } from "@/CanvasErrorBoundary.js";
 import { useCanvasT } from "@/context/canvas-studio-context.js";
 import { PropertyInspector } from "@/panels/PropertyInspector.js";
 // CanvasStudio's relative path (not @/): CanvasStudioProps surfaces in the
@@ -36,6 +38,7 @@ import {
 	WorkspaceUiStoreProvider,
 } from "../state/WorkspaceUiStoreProvider.js";
 import {
+	type CanvasWorkspaceState,
 	PANEL_WIDTH_DEFAULT,
 	PANEL_WIDTH_MAX,
 	PANEL_WIDTH_MIN,
@@ -52,10 +55,52 @@ import { TabPanel } from "./TabPanel.js";
 import { WorkspaceFooter } from "./WorkspaceFooter.js";
 import { WorkspaceHeader } from "./WorkspaceHeader.js";
 
+// FR-171 error-details dialog (B-15): CODE-SPLIT (PRD 0012 constraint
+// 20.15), same as every other dialog-class surface — the chunk loads only
+// when "View details" is actually clicked, not with the editor bundle.
+const ErrorDetailsDialog = lazy(
+	() => import("../dialogs/ErrorDetailsDialog.js"),
+);
+
+/**
+ * FR-171 composition seam: `<CanvasErrorBoundary>` is a leaf module (see
+ * `scripts/check-layering.mjs`) and cannot import `workspace/dialogs/`
+ * itself, so the shell supplies the actual dialog here and threads it down
+ * through `<CanvasStudio renderErrorDetails>`. Always wired — see the
+ * `renderErrorDetails` omission from {@link CanvasWorkspaceProps} below.
+ */
+function renderErrorDetails(info: CanvasErrorDetailsInfo): ReactNode {
+	return (
+		<ErrorDetailsDialog
+			error={info.error}
+			errorId={info.errorId}
+			componentStack={info.componentStack}
+			onClose={info.onClose}
+			{...(info.onReloadDocument
+				? { onReloadDocument: info.onReloadDocument }
+				: {})}
+			{...(info.onExportRecovery
+				? { onExportRecovery: info.onExportRecovery }
+				: {})}
+			{...(info.onCopyErrorId ? { onCopyErrorId: info.onCopyErrorId } : {})}
+		/>
+	);
+}
+
 export interface CanvasWorkspaceProps
-	extends Omit<CanvasStudioProps, "renderShell"> {
+	extends Omit<CanvasStudioProps, "renderShell" | "renderErrorDetails"> {
 	/** Namespaces the persisted UI slice. Pass a per-design id to isolate state. */
 	storeId?: string;
+	/**
+	 * PRD §11.1 seed for a FRESH workspace mount (no prior `localStorage` value
+	 * for `storeId`). An existing persisted layout always wins over this seed
+	 * for the persisted fields (`activeDockId`/`inspectorCollapsed`/
+	 * `panelWidth`/`recentTemplateIds`) — see
+	 * `workspace/state/workspace-ui-store.ts`'s
+	 * `CreateWorkspaceUiStoreOptions.initialWorkspaceState` for the full
+	 * precedence rule. Read only on first render, like `storeId`.
+	 */
+	initialWorkspaceState?: Partial<CanvasWorkspaceState>;
 	/** Header back action (hidden when omitted). */
 	onBack?: () => void;
 	/** Controlled document title (defaults to `ir.title`). */
@@ -103,6 +148,7 @@ export interface CanvasWorkspaceProps
  */
 export function CanvasWorkspace({
 	storeId = "default",
+	initialWorkspaceState,
 	onBack,
 	title,
 	onTitleChange,
@@ -123,8 +169,12 @@ export function CanvasWorkspace({
 	return (
 		<CanvasStudio
 			{...studioProps}
+			renderErrorDetails={renderErrorDetails}
 			renderShell={(stage) => (
-				<WorkspaceUiStoreProvider storeId={storeId}>
+				<WorkspaceUiStoreProvider
+					storeId={storeId}
+					initialWorkspaceState={initialWorkspaceState}
+				>
 					<RecentTemplatesBridge>
 						<CanvasToastHost>
 							<CanvasDialogHost>

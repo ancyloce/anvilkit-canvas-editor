@@ -17,6 +17,8 @@ import {
 	lazy,
 	type ReactNode,
 	Suspense,
+	useEffect,
+	useRef,
 	useState,
 	useSyncExternalStore,
 } from "react";
@@ -26,6 +28,7 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "@/context/canvas-studio-context.js";
+import { useCanvasToaster } from "@/context/toast-context.js";
 // Relative (not @/) on purpose: this type surfaces in the emitted .d.ts, and
 // rslib rewrites alias paths only in .js, not in declarations — an aliased
 // import here would ship an unresolvable "@/" to consumers.
@@ -146,6 +149,38 @@ export function WorkspaceHeader({
 		() => saveStatusStore?.getState().status ?? "clean",
 		() => saveStatusStore?.getState().status ?? "clean",
 	);
+	// FR-170 save failure/recovery toast: the header pill above already shows
+	// live status text, but that's easy to miss buried in the chrome — this is
+	// the SAME `saveStatusStore` subscription, so it needs no new observation
+	// point. Fires once when a save enters "error" (never once per retry: the
+	// ref-tracked episode flag stays set through any number of retries that
+	// keep landing back on "error"), and again exactly once when it recovers
+	// — never on every routine autosave, which would be constant noise for a
+	// debounced save firing every few seconds of typing.
+	const saveErrorEpisodeRef = useRef(false);
+	const toaster = useCanvasToaster();
+	useEffect(() => {
+		if (!saveStatusStore) return;
+		if (saveStatus === "error") {
+			if (saveErrorEpisodeRef.current) return;
+			saveErrorEpisodeRef.current = true;
+			toaster.add({
+				type: "error",
+				title: t("canvas.toast.saveFailed", "Couldn't save your changes"),
+			});
+			return;
+		}
+		if (
+			saveErrorEpisodeRef.current &&
+			(saveStatus === "saved" || saveStatus === "clean")
+		) {
+			saveErrorEpisodeRef.current = false;
+			toaster.add({
+				type: "success",
+				title: t("canvas.toast.saveRecovered", "Changes saved"),
+			});
+		}
+	}, [saveStatus, saveStatusStore, t, toaster]);
 	const zoom = useSyncExternalStore(
 		ctx.viewportStore.subscribe,
 		() => ctx.viewportStore.getState().zoom,

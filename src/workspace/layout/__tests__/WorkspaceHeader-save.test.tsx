@@ -7,6 +7,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import {
+	CanvasToastContext,
+	type CanvasToastInput,
+} from "@/context/toast-context.js";
 import { createSaveStatusStore } from "@/stores/save-status-store.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { WorkspaceUiStoreProvider } from "../../state/WorkspaceUiStoreProvider.js";
@@ -75,6 +79,82 @@ describe("WorkspaceHeader save status + zoom (B-07)", () => {
 		expect(label.textContent).toContain("1,080");
 		expect(label.textContent).toContain("×");
 		expect(label.textContent).toContain("px");
+	});
+});
+
+describe("WorkspaceHeader save failure/recovery toast (FR-170)", () => {
+	function setupWithToaster() {
+		const h = makeHarness();
+		const saveStatusStore = createSaveStatusStore();
+		h.studioCtx.saveStatusStore = saveStatusStore;
+		h.studioCtx.save = vi.fn(() => Promise.resolve(true));
+		const toasts: CanvasToastInput[] = [];
+		render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<CanvasToastContext.Provider
+					value={{ add: (input) => toasts.push(input) }}
+				>
+					<WorkspaceUiStoreProvider storeId="header-save-toast-test">
+						<WorkspaceHeader />
+					</WorkspaceUiStoreProvider>
+				</CanvasToastContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+		return { h, saveStatusStore, toasts };
+	}
+
+	it("fires an error toast once when a save enters the error state", () => {
+		const { saveStatusStore, toasts } = setupWithToaster();
+		act(() => {
+			saveStatusStore.getState().recordError("boom");
+		});
+		expect(toasts).toHaveLength(1);
+		expect(toasts[0]?.type).toBe("error");
+		expect(toasts[0]?.title).toBe("Couldn't save your changes");
+	});
+
+	it("does not repeat the error toast across retries that keep landing back on error", () => {
+		const { saveStatusStore, toasts } = setupWithToaster();
+		act(() => {
+			saveStatusStore.getState().recordError("boom");
+		});
+		act(() => {
+			saveStatusStore.getState().setStatus("saving");
+		});
+		act(() => {
+			saveStatusStore.getState().recordError("boom again");
+		});
+		expect(toasts).toHaveLength(1);
+	});
+
+	it("fires a recovery toast once the save succeeds after a prior failure", () => {
+		const { saveStatusStore, toasts } = setupWithToaster();
+		act(() => {
+			saveStatusStore.getState().recordError("boom");
+		});
+		act(() => {
+			saveStatusStore.getState().setStatus("saving");
+		});
+		act(() => {
+			saveStatusStore.getState().recordSaved("2026-07-16T00:00:00.000Z");
+		});
+		expect(toasts).toHaveLength(2);
+		expect(toasts[1]?.type).toBe("success");
+		expect(toasts[1]?.title).toBe("Changes saved");
+	});
+
+	it("does not toast a routine successful autosave with no prior failure", () => {
+		const { saveStatusStore, toasts } = setupWithToaster();
+		act(() => {
+			saveStatusStore.getState().setStatus("dirty");
+		});
+		act(() => {
+			saveStatusStore.getState().setStatus("saving");
+		});
+		act(() => {
+			saveStatusStore.getState().recordSaved("2026-07-16T00:00:00.000Z");
+		});
+		expect(toasts).toHaveLength(0);
 	});
 });
 
