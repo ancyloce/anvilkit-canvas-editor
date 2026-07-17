@@ -4,13 +4,14 @@ import {
 	findNode,
 	parentOf,
 } from "@anvilkit/canvas-core";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import {
 	groupSelection,
 	ungroupSelection,
 } from "../selection/group-actions.js";
 import { progressiveSelectAllImpl } from "../selection/isolation.js";
+import type { ToolId } from "../stores/tool-store.js";
 import {
 	nudgeCommand,
 	resizeStepCommand,
@@ -40,6 +41,10 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 		ctx;
 	const nudgeStep = opts.nudgeStep ?? 1;
 	const rotateStep = opts.rotateStep ?? 1;
+	// FR-041/043 space-hold Hand tool: the tool active when Space was first
+	// pressed, restored on keyup — null while Space isn't held. A ref (not
+	// state) since it must survive across renders without triggering one.
+	const spaceHeldToolRef = useRef<ToolId | null>(null);
 
 	useEffect(() => {
 		if (!stage) return;
@@ -58,6 +63,22 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 				target &&
 				(target.isContentEditable || EDITABLE_TAG.test(target.tagName))
 			) {
+				return;
+			}
+			// FR-041/043: hold Space for a temporary Hand tool + drag-pan. Setting
+			// `activeTool` to "hand" is the ENTIRE implementation — `handTool`
+			// already owns cursor/drag-pan/cleanup via its onActivate/onDeactivate
+			// lifecycle (ToolInteractionLayer fires these on every tool switch), so
+			// there's nothing else to wire. Guarded by the ref (not `e.repeat`) so
+			// OS key-repeat keydowns are no-ops once already held.
+			if (e.code === "Space") {
+				e.preventDefault();
+				if (spaceHeldToolRef.current === null) {
+					spaceHeldToolRef.current = ctx.toolStore.getState().activeTool;
+					if (spaceHeldToolRef.current !== "hand") {
+						ctx.toolStore.getState().setActiveTool("hand");
+					}
+				}
 				return;
 			}
 			// Undo / redo (⌘Z / ⌘⇧Z, plus Ctrl+Y on Windows/Linux). Kept STAGE-
@@ -195,8 +216,27 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 			}
 		};
 
+		const onKeyUp = (e: KeyboardEvent): void => {
+			if (e.code !== "Space") return;
+			const previous = spaceHeldToolRef.current;
+			spaceHeldToolRef.current = null;
+			// Only restore if still on "hand" — a tool picked explicitly while
+			// Space was held (e.g. a toolbar click) must not be clobbered.
+			if (
+				previous !== null &&
+				previous !== "hand" &&
+				ctx.toolStore.getState().activeTool === "hand"
+			) {
+				ctx.toolStore.getState().setActiveTool(previous);
+			}
+		};
+
 		container.addEventListener("keydown", onKeyDown);
-		return () => container.removeEventListener("keydown", onKeyDown);
+		container.addEventListener("keyup", onKeyUp);
+		return () => {
+			container.removeEventListener("keydown", onKeyDown);
+			container.removeEventListener("keyup", onKeyUp);
+		};
 	}, [
 		stage,
 		selectionStore,
