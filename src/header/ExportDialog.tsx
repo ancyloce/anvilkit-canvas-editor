@@ -189,6 +189,10 @@ export default function ExportDialog({
 	async function runExport(): Promise<void> {
 		const exporter = merged[format];
 		if (!exporter) return;
+		// FR-150: a host-supplied `exporters[format]` override, if present, must
+		// win over the offscreen rasterizer for raster formats too (see
+		// `renderPageArtifact`'s `isHostOverride` doc).
+		const isHostOverride = Boolean(exporters?.[format]);
 		const request: CanvasExportRequest = {
 			quality: quality / 100,
 			resolution,
@@ -236,6 +240,7 @@ export default function ExportDialog({
 					request,
 					pixelRatio: pixelRatioFor(resolved.page),
 					includeBackground,
+					isHostOverride,
 				});
 				const downloadFilename = withFilename(artifact.filename);
 				downloadCanvasArtifact({ ...artifact, filename: downloadFilename });
@@ -385,6 +390,7 @@ export default function ExportDialog({
 			request,
 			pixelRatio: pixelRatioFor(page),
 			includeBackground,
+			isHostOverride: Boolean(exporters?.[format]),
 		});
 		const downloadFilename = numbered(artifact.filename);
 		downloadCanvasArtifact({ ...artifact, filename: downloadFilename });

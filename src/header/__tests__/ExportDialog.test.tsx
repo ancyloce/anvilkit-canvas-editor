@@ -113,6 +113,46 @@ describe("ExportDialog (B-09, FR-150..154)", () => {
 		expect(urlSpy).toHaveBeenCalledTimes(2);
 	});
 
+	it("a host exporters.png override wins over the offscreen rasterizer (FR-150)", async () => {
+		const png: CanvasExporter = () => ({
+			filename: "custom.png",
+			data: "data:image/png;base64,CUSTOM",
+			mimeType: "image/png",
+		});
+		vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+			() => undefined,
+		);
+		vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+		vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+		setup({ png });
+		await openDialog();
+		// PNG is the dialog's default format — no need to click a format button.
+		fireEvent.click(screen.getByTestId("export-run"));
+		await waitFor(() => {
+			expect(
+				screen.getByTestId("export-progress").getAttribute("data-phase"),
+			).toBe("completed");
+		});
+		expect(rasterizePage).not.toHaveBeenCalled();
+	});
+
+	it("without a host override, PNG still renders via the offscreen rasterizer", async () => {
+		vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+			() => undefined,
+		);
+		vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+		vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+		setup();
+		await openDialog();
+		fireEvent.click(screen.getByTestId("export-run"));
+		await waitFor(() => {
+			expect(
+				screen.getByTestId("export-progress").getAttribute("data-phase"),
+			).toBe("completed");
+		});
+		expect(rasterizePage).toHaveBeenCalled();
+	});
+
 	it("shows the PDF fidelity note (FR-151 disclosure)", async () => {
 		const pdf: CanvasExporter = () => ({
 			filename: "x.pdf",

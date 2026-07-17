@@ -119,18 +119,31 @@ export interface RenderPageArtifactInput {
 	readonly pixelRatio?: number | { readonly x: number; readonly y: number };
 	/** Defaults to `true`. Raster-only. */
 	readonly includeBackground?: boolean;
+	/**
+	 * FR-150: true when `exporter` is a host-supplied override for this format
+	 * (`CanvasExportPluginOptions.exporters`), not the built-in default. The
+	 * built-in PNG/JPEG/WebP exporters (`exporters.ts`) call `stage.toDataURL`
+	 * on the LIVE on-screen Konva stage, which only ever shows the active
+	 * page — safe for the offscreen `rasterizePage` fallback below, but wrong
+	 * for a host override, which is expected to honor `docIr`/`page` like any
+	 * other exporter. Defaults to `false` (preserves the offscreen-rasterizer
+	 * path for the built-in exporters and for `export-action.ts`, which never
+	 * accepts host overrides by design).
+	 */
+	readonly isHostOverride?: boolean;
 }
 
 /**
  * Render ONE artifact for one page. Raster formats go through the offscreen
- * rasterizer directly; everything else calls the injected `exporter` with
+ * rasterizer directly UNLESS a host explicitly overrode that format
+ * (`isHostOverride`); everything else calls the injected `exporter` with
  * `docIr` (a properly scoped IR — see {@link resolveExportSelection}).
  */
 export async function renderPageArtifact(
 	input: RenderPageArtifactInput,
 ): Promise<CanvasExportArtifact> {
 	const { format, page, docIr, request } = input;
-	if (RASTER_FORMATS.has(format)) {
+	if (RASTER_FORMATS.has(format) && !input.isHostOverride) {
 		const { url, mimeType } = await rasterizePage({
 			page,
 			assets: docIr.assets,
