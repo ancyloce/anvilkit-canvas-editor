@@ -31,6 +31,10 @@ export function UploadsPanel(): React.JSX.Element {
 
 	const handleFiles = (list: FileList | null): void => {
 		if (!list || list.length === 0) return;
+		// Deliberately no position: this drop target is the side-panel dock, not
+		// the canvas, so there's no drop-relative page point to convert (unlike
+		// `CanvasDropZone`, which anchors to the real cursor position — FR-092).
+		// Page-center insertion is the correct semantic here.
 		void uploadFilesImpl(ctx, Array.from(list), undefined, toaster);
 	};
 
