@@ -59,6 +59,47 @@ export interface CanvasExportRequest {
 	readonly resolution: number;
 	/** Strip EXIF/location/camera metadata from raster output. */
 	readonly stripMetadata: boolean;
+	/**
+	 * Poll-based cancellation (FR-154): when present and returns `true`, a
+	 * built-in multi-page exporter (PDF) stops between page iterations and
+	 * throws {@link CanvasExportCancelledError} instead of completing.
+	 * Optional — most callers (the headless `export()` action, host-injected
+	 * exporters that don't support cancellation) omit it and run to
+	 * completion. A single page's own render call is never interrupted
+	 * mid-flight — only the boundary BETWEEN pages is checked, mirroring the
+	 * dialog's existing per-page raster/SVG loop.
+	 */
+	readonly isCancelled?: () => boolean;
+}
+
+/**
+ * Thrown by a multi-page built-in exporter (PDF) when
+ * {@link CanvasExportRequest.isCancelled} starts returning `true` between
+ * page iterations (FR-154). The export dialog's `runExport` catches this
+ * specifically and marks the export `"cancelled"` instead of `"failed"`,
+ * discarding the artifact instead of downloading it. A host-injected
+ * multi-page exporter honoring `isCancelled` may throw the same class to get
+ * identical cancel semantics.
+ */
+export class CanvasExportCancelledError extends Error {
+	constructor(message = "Canvas export was cancelled.") {
+		super(message);
+		this.name = "CanvasExportCancelledError";
+	}
+}
+
+/**
+ * Thrown when a requested export scope resolves to nothing exportable — an
+ * empty selection, or a `"pages"` request whose ids no longer exist on the
+ * document. Callers map it to their own "Nothing to export" surface (the
+ * dialog's `export-store` fail phase; the headless `export()` action's
+ * rejected promise).
+ */
+export class CanvasExportEmptyError extends Error {
+	constructor(message = "Nothing to export") {
+		super(message);
+		this.name = "CanvasExportEmptyError";
+	}
 }
 
 /** A downloadable artifact. `data` accepts a data URL, raw string, bytes, or a Blob. */

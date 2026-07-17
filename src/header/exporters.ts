@@ -12,6 +12,7 @@ import type {
 	CanvasExporter,
 	CanvasExportFormat,
 } from "./types.js";
+import { CanvasExportCancelledError } from "./types.js";
 
 /**
  * §14.5 export file-name sanitization: strip path separators, characters
@@ -162,6 +163,10 @@ export const pdfExporter: CanvasExporter = async (
 	]);
 	const rasters = [];
 	for (const page of ir.pages) {
+		// Bug 4 (FR-154): check BETWEEN page iterations, mirroring the check the
+		// dialog's per-page raster/SVG loop already does — a single page's own
+		// rasterization is never interrupted mid-flight.
+		if (request.isCancelled?.()) throw new CanvasExportCancelledError();
 		const { url } = await rasterizePage({
 			page,
 			assets: ir.assets,
@@ -206,7 +211,14 @@ function dataUrlToBlob(dataUrl: string): Blob {
 	return new Blob([bytes], { type: mime });
 }
 
-function toBlob(data: string | Uint8Array | Blob, mimeType: string): Blob {
+/** Converts an artifact's `data` (data URL, raw string, or bytes) into a real
+ * `Blob` — used by {@link downloadCanvasArtifact} and reused verbatim by the
+ * headless `export()` action (`header/export-action.ts`) so the two never
+ * drift on how `CanvasExportArtifact.data` becomes downloadable bytes. */
+export function toBlob(
+	data: string | Uint8Array | Blob,
+	mimeType: string,
+): Blob {
 	if (data instanceof Blob) return data;
 	if (typeof data === "string") {
 		return data.startsWith("data:")

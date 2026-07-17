@@ -1,6 +1,10 @@
 "use client";
 
-import type { CanvasPage } from "@anvilkit/canvas-core";
+import type {
+	CanvasExportWarning,
+	CanvasIR,
+	CanvasPage,
+} from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import {
 	Dialog,
@@ -11,25 +15,39 @@ import {
 	DialogTitle,
 } from "@anvilkit/ui/dialog";
 import { Input } from "@anvilkit/ui/input";
+import * as React from "react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
+	type CanvasExportResultArtifact,
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
-import { rasterizePage } from "../render/rasterize-page.js";
-import { buildSelectionExportPage } from "../render/selection-export.js";
+import { useCanvasToaster } from "../context/toast-context.js";
 import { createExportStore } from "../stores/export-store.js";
+import {
+	isSelectionResult,
+	RASTER_FORMATS,
+	type ResolvedExportPages,
+	type ResolvedExportSelection,
+	renderPageArtifact,
+	renderWholeDocArtifact,
+	resolveExportSelection,
+	WHOLE_DOC_FORMATS,
+} from "./export-runner.js";
 import {
 	DEFAULT_CANVAS_EXPORTERS,
 	downloadCanvasArtifact,
 	sanitizeExportFilename,
+	toBlob,
 } from "./exporters.js";
 import type {
+	CanvasExportArtifact,
 	CanvasExporter,
 	CanvasExportFormat,
 	CanvasExportPluginOptions,
 	CanvasExportRequest,
 } from "./types.js";
+import { CanvasExportCancelledError, CanvasExportEmptyError } from "./types.js";
 
 const FORMAT_ORDER: readonly CanvasExportFormat[] = [
 	"png",
@@ -42,21 +60,11 @@ const FORMAT_ORDER: readonly CanvasExportFormat[] = [
 
 const RESOLUTIONS = [0.5, 1, 2, 3] as const;
 
-/** Raster formats rendered per page via the offscreen rasterizer. */
-const RASTER_FORMATS = new Set<CanvasExportFormat>(["png", "jpeg", "webp"]);
-/** Whole-document formats: one artifact for the whole (scoped) IR. */
-const WHOLE_DOC_FORMATS = new Set<CanvasExportFormat>(["pdf", "json"]);
-const RASTER_MIME: Record<string, "image/png" | "image/jpeg" | "image/webp"> = {
-	png: "image/png",
-	jpeg: "image/jpeg",
-	webp: "image/webp",
-};
-
 export interface ExportDialogProps extends CanvasExportPluginOptions {
 	onClose: () => void;
 }
 
-type PageScope = "current" | "all" | "selection";
+type PageScope = "current" | "all" | "pages" | "selection";
 
 /**
  * The FR-150 export dialog (B-09, extended for FR-151..153 and §14.5) — the
@@ -77,6 +85,7 @@ export default function ExportDialog({
 }: ExportDialogProps): React.JSX.Element {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
+	const toaster = useCanvasToaster();
 	const exportStore = useMemo(() => createExportStore(), []);
 	const exportState = useSyncExternalStore(
 		exportStore.subscribe,
@@ -107,18 +116,26 @@ export default function ExportDialog({
 	const [customW, setCustomW] = useState<string>("");
 	const [customH, setCustomH] = useState<string>("");
 	const [lockAspect, setLockAspect] = useState(true);
+	// FR-152 "Selected pages" (Bug 3): populated only by an incoming
+	// `scope: "pages"` request from the page navigator's multi-select — the
+	// dialog has no page-multi-select UI of its own.
+	const [pageIds, setPageIds] = useState<readonly string[]>([]);
 
 	const selectedIds = ctx.selectionStore.getState().selectedIds;
 	const hasSelection = selectedIds.length > 0;
 
-	// FR-031/FR-032 preselected scope: the node menu's "Export selection" and
-	// the page menu's "Export page" post a scoped request; consume it on open.
+	// FR-031/FR-032/FR-152 preselected scope: the node menu's "Export
+	// selection", the page menu's "Export page"/"Export selected pages" post a
+	// scoped request; consume it on open.
 	useEffect(() => {
 		const req = ctx.exportRequestStore?.getState().consume();
 		if (!req) return;
 		if (req.scope === "selection") setScope("selection");
 		else if (req.scope === "all") setScope("all");
-		else setScope("current");
+		else if (req.scope === "pages" && req.pageIds && req.pageIds.length > 0) {
+			setPageIds(req.pageIds);
+			setScope("pages");
+		} else setScope("current");
 	}, [ctx.exportRequestStore]);
 
 	const isRaster = RASTER_FORMATS.has(format);
@@ -127,21 +144,46 @@ export default function ExportDialog({
 	const busy =
 		exportState.phase === "preparing" || exportState.phase === "rendering";
 
-	function scopedPages(): CanvasPage[] {
-		if (scope === "all") return [...ir.pages];
-		const active =
-			ir.pages.find((p) => p.id === ctx.activePageId) ?? ir.pages[0];
-		return active ? [active] : [];
-	}
-
-	/** Effective pixel ratio, honoring a custom width when set (FR-153). */
-	function pixelRatioFor(page: CanvasPage): number {
+	/** Effective pixel ratio, honoring custom width/height when set (FR-153,
+	 * Bug 1 fix): an unlocked, non-proportional width × height pair now
+	 * reaches the rasterizer as an independent `{x, y}` ratio instead of
+	 * being silently collapsed to a single width-derived number. */
+	function pixelRatioFor(page: CanvasPage): number | { x: number; y: number } {
 		const base = 2 * (resolution || 1);
 		const w = Number.parseFloat(customW);
-		if (Number.isFinite(w) && w > 0 && page.size.width > 0) {
-			return (w / page.size.width) * 2;
-		}
-		return base;
+		const h = Number.parseFloat(customH);
+		const hasW = Number.isFinite(w) && w > 0 && page.size.width > 0;
+		const hasH = Number.isFinite(h) && h > 0 && page.size.height > 0;
+		if (!hasW && !hasH) return base;
+		const x = hasW ? (w / page.size.width) * 2 : base;
+		const y = hasH ? (h / page.size.height) * 2 : base;
+		return x === y ? x : { x, y };
+	}
+
+	/**
+	 * FR-170: a dedicated toast for export completion/failure, IN ADDITION to
+	 * the inline `exportState.phase` status above — a user who closes this
+	 * dialog while a longer export (e.g. multi-page PDF) is still running
+	 * would otherwise never see that inline status resolve. `toaster` is a
+	 * captured reference, not tied to this component's mount state, so it
+	 * still fires correctly if `runExport`'s promise chain settles after the
+	 * dialog (and this component) has already unmounted.
+	 */
+	function completeExport(): void {
+		exportStore.getState().complete();
+		toaster.add({
+			type: "success",
+			title: t("canvas.export.completed", "Export complete"),
+		});
+	}
+
+	function failExport(message: string): void {
+		exportStore.getState().fail(message);
+		toaster.add({
+			type: "error",
+			title: t("canvas.export.failed", "Export failed"),
+			description: message,
+		});
 	}
 
 	async function runExport(): Promise<void> {
@@ -151,74 +193,159 @@ export default function ExportDialog({
 			quality: quality / 100,
 			resolution,
 			stripMetadata: true,
+			// Bug 4 (FR-154): poll-based cancellation the built-in multi-page PDF
+			// exporter checks between its own per-page rasterization passes.
+			isCancelled: () => exportStore.getState().cancelRequested,
 		};
 		const effectiveScope: PageScope =
 			scope === "selection" && !hasSelection ? "current" : scope;
 		try {
-			// FR-031 export-selection: synthesize a page framed to the selection.
-			if (effectiveScope === "selection") {
-				const active =
-					ir.pages.find((p) => p.id === ctx.activePageId) ?? ir.pages[0];
-				const selPage = active
-					? buildSelectionExportPage(active, selectedIds)
-					: null;
-				if (!selPage) {
-					exportStore
-						.getState()
-						.fail(t("canvas.export.empty", "Nothing to export"));
+			let resolved: ResolvedExportSelection | ResolvedExportPages;
+			try {
+				resolved = resolveExportSelection({
+					ir,
+					activePageId: ctx.activePageId,
+					scope: effectiveScope,
+					pageIds,
+					selectedIds,
+				});
+			} catch (err) {
+				if (err instanceof CanvasExportEmptyError) {
+					failExport(t("canvas.export.empty", "Nothing to export"));
 					return;
 				}
-				exportStore.getState().begin(1);
-				await exportOnePage(exporter, selPage, request, 0, 1);
-				exportStore.getState().complete();
-				return;
+				throw err;
 			}
 
-			const pages = scopedPages();
-			if (pages.length === 0) {
-				exportStore
-					.getState()
-					.fail(t("canvas.export.empty", "Nothing to export"));
-				return;
-			}
-
-			// Whole-document formats (PDF/JSON): one artifact over the scoped IR.
-			if (isWholeDoc) {
+			// FR-031 export-selection: ONE artifact over the synthetic selection
+			// page, properly scoped (Bug 2) for every format — SVG no longer
+			// throws, PDF/JSON no longer silently export the whole document.
+			if (isSelectionResult(resolved)) {
 				exportStore.getState().begin(1);
-				const scopedIr = { ...ir, pages };
-				const artifact = await exporter(
-					{
-						ir: scopedIr,
-						activePageId: pages[0]?.id ?? ctx.activePageId,
-						stage: ctx.stage,
-						...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
-					},
+				if (exportStore.getState().cancelRequested) {
+					exportStore.getState().markCancelled();
+					return;
+				}
+				const artifact = await renderPageArtifact({
+					exporter,
+					format,
+					page: resolved.page,
+					docIr: resolved.ir,
+					stage: ctx.stage,
+					...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
 					request,
-				);
-				downloadCanvasArtifact({
-					...artifact,
-					filename: withFilename(artifact.filename),
+					pixelRatio: pixelRatioFor(resolved.page),
+					includeBackground,
+				});
+				const downloadFilename = withFilename(artifact.filename);
+				downloadCanvasArtifact({ ...artifact, filename: downloadFilename });
+				// PRD §11.1: notify the host's `onExport` for this UI-driven export
+				// too, with the SAME `CanvasExportResult` shape the headless
+				// `useCanvasStudioActions().export()` action produces.
+				ctx.onExport?.({
+					format,
+					artifacts: [
+						{
+							filename: downloadFilename,
+							blob: toBlob(artifact.data, artifact.mimeType),
+							pageId: resolved.page.id,
+						},
+					],
+					warnings: artifact.warnings ?? [],
 				});
 				exportStore.getState().advance();
-				exportStore.getState().complete();
+				completeExport();
 				return;
 			}
 
-			// Per-page formats (raster + SVG): one artifact per page.
+			const pages = resolved.pages;
+			if (pages.length === 0) {
+				failExport(t("canvas.export.empty", "Nothing to export"));
+				return;
+			}
+
+			// Whole-document formats (PDF/JSON): one artifact over an IR scoped to
+			// exactly `pages` (Bug 2/3: `all`/`pages`/`selection` scopes must never
+			// leak the full unscoped document).
+			if (isWholeDoc) {
+				exportStore.getState().begin(1);
+				if (exportStore.getState().cancelRequested) {
+					exportStore.getState().markCancelled();
+					return;
+				}
+				let artifact: CanvasExportArtifact;
+				try {
+					artifact = await renderWholeDocArtifact({
+						exporter,
+						ir,
+						pages,
+						activePageId: ctx.activePageId,
+						stage: ctx.stage,
+						...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
+						request,
+					});
+				} catch (err) {
+					if (err instanceof CanvasExportCancelledError) {
+						exportStore.getState().markCancelled();
+						return;
+					}
+					throw err;
+				}
+				// Bug 4: cancellation may have landed while the (opaque,
+				// un-interruptible) whole-doc render was in flight — discard the
+				// finished artifact instead of downloading it.
+				if (exportStore.getState().cancelRequested) {
+					exportStore.getState().markCancelled();
+					return;
+				}
+				const downloadFilename = withFilename(artifact.filename);
+				downloadCanvasArtifact({ ...artifact, filename: downloadFilename });
+				ctx.onExport?.({
+					format,
+					artifacts: [
+						{
+							filename: downloadFilename,
+							blob: toBlob(artifact.data, artifact.mimeType),
+						},
+					],
+					warnings: artifact.warnings ?? [],
+				});
+				exportStore.getState().advance();
+				completeExport();
+				return;
+			}
+
+			// Per-page formats (raster + SVG): one artifact per page. Every
+			// page's artifact is collected into ONE `onExport` call after the
+			// loop — mirrors the headless action's per-page-loop branch, which
+			// also reports every page as one result (§11.2).
 			exportStore.getState().begin(pages.length);
+			const resultArtifacts: CanvasExportResultArtifact[] = [];
+			const resultWarnings: CanvasExportWarning[] = [];
 			for (const [index, page] of pages.entries()) {
 				if (exportStore.getState().cancelRequested) {
 					exportStore.getState().markCancelled();
 					return;
 				}
-				await exportOnePage(exporter, page, request, index, pages.length);
+				const pageResult = await exportOnePage(
+					exporter,
+					page,
+					request,
+					index,
+					pages.length,
+				);
+				resultArtifacts.push(pageResult.artifact);
+				resultWarnings.push(...pageResult.warnings);
 				exportStore.getState().advance();
 			}
-			exportStore.getState().complete();
+			ctx.onExport?.({
+				format,
+				artifacts: resultArtifacts,
+				warnings: resultWarnings,
+			});
+			completeExport();
 		} catch (err) {
-			exportStore
-				.getState()
-				.fail(err instanceof Error ? err.message : String(err));
+			failExport(err instanceof Error ? err.message : String(err));
 			onError?.(err, format);
 		}
 	}
@@ -237,7 +364,10 @@ export default function ExportDialog({
 		request: CanvasExportRequest,
 		index: number,
 		total: number,
-	): Promise<void> {
+	): Promise<{
+		artifact: CanvasExportResultArtifact;
+		warnings: readonly CanvasExportWarning[];
+	}> {
 		const numbered = (name: string): string => {
 			const stem = sanitizeExportFilename(filename || name, "export");
 			const ext = name.includes(".")
@@ -245,37 +375,27 @@ export default function ExportDialog({
 				: format;
 			return total > 1 ? `${stem}-${index + 1}.${ext}` : `${stem}.${ext}`;
 		};
-		if (isRaster) {
-			const { url, mimeType } = await rasterizePage({
-				page,
-				assets: ir.assets,
-				...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
-				pixelRatio: pixelRatioFor(page),
-				mimeType: RASTER_MIME[format],
-				quality: quality / 100,
-				includeBackground,
-			});
-			downloadCanvasArtifact({
-				filename: numbered(`${page.id}.${format}`),
-				data: url,
-				mimeType,
-			});
-			return;
-		}
-		// SVG (and any injected per-page exporter): render this page as active.
-		const artifact = await exporter(
-			{
-				ir,
-				activePageId: page.id,
-				stage: ctx.stage,
-				...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
-			},
+		const artifact = await renderPageArtifact({
+			exporter,
+			format,
+			page,
+			docIr: ir,
+			stage: ctx.stage,
+			...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
 			request,
-		);
-		downloadCanvasArtifact({
-			...artifact,
-			filename: numbered(artifact.filename),
+			pixelRatio: pixelRatioFor(page),
+			includeBackground,
 		});
+		const downloadFilename = numbered(artifact.filename);
+		downloadCanvasArtifact({ ...artifact, filename: downloadFilename });
+		return {
+			artifact: {
+				filename: downloadFilename,
+				blob: toBlob(artifact.data, artifact.mimeType),
+				pageId: page.id,
+			},
+			warnings: artifact.warnings ?? [],
+		};
 	}
 
 	return (
@@ -354,6 +474,21 @@ export default function ExportDialog({
 						>
 							{t("canvas.export.selection", "Selection")}
 						</Button>
+						{pageIds.length > 0 ? (
+							<Button
+								type="button"
+								size="sm"
+								variant={scope === "pages" ? "default" : "outline"}
+								data-testid="export-pages-selected"
+								aria-pressed={scope === "pages"}
+								onClick={() => setScope("pages")}
+							>
+								{t(
+									"canvas.export.selectedPages",
+									"Selected pages ({n})",
+								).replace("{n}", String(pageIds.length))}
+							</Button>
+						) : null}
 					</div>
 
 					{isRaster ? (
