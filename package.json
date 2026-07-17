@@ -13,7 +13,7 @@
 				"default": "./dist/index.js"
 			},
 			"require": {
-				"types": "./dist/index.d.cts",
+				"types": "./dist/cjs/index.d.cts",
 				"default": "./dist/index.cjs"
 			}
 		},
@@ -23,7 +23,7 @@
 				"default": "./dist/collab/index.js"
 			},
 			"require": {
-				"types": "./dist/collab/index.d.cts",
+				"types": "./dist/cjs/collab/index.d.cts",
 				"default": "./dist/collab/index.cjs"
 			}
 		},
@@ -33,7 +33,7 @@
 				"default": "./dist/internal.js"
 			},
 			"require": {
-				"types": "./dist/internal.d.cts",
+				"types": "./dist/cjs/internal.d.cts",
 				"default": "./dist/internal.cjs"
 			}
 		},
@@ -48,7 +48,7 @@
 				"default": "./dist/*.js"
 			},
 			"require": {
-				"types": "./dist/*.d.cts",
+				"types": "./dist/cjs/*.d.cts",
 				"default": "./dist/*.cjs"
 			}
 		}
@@ -101,7 +101,7 @@
 		"zustand": "^5.0.14"
 	},
 	"scripts": {
-		"build": "rslib build && pnpm build:css",
+		"build": "rslib build --lib esm && rslib build --lib cjs --no-clean && pnpm build:css",
 		"build:css": "tailwindcss -i ./src/styles.src.css -o ./dist/styles.css --minify",
 		"dev": "rslib build && pnpm build:css && rslib build --watch --no-clean",
 		"lint": "pnpm exec biome lint package.json tsconfig.json rslib.config.ts vitest.config.ts src",

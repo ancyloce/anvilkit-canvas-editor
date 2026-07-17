@@ -489,7 +489,7 @@ function useReplaceDocument(stores: DocumentStores) {
 	const storesRef = useHostCallbackRef(stores);
 	return useCallback((ir: CanvasIR, source: DocumentSnapshotSource) => {
 		replaceDocumentSnapshot(storesRef.current, ir, { source });
-	}, []);
+	}, [storesRef]);
 }
 
 /**
@@ -753,21 +753,39 @@ export function CanvasStudio({
 		onChange,
 		onChanges,
 	);
-	const replaceDocument = useReplaceDocument({
-		sceneStore,
-		historyStore,
-		pagesStore,
-		selectionStore,
-		focusStore,
-		draftStore,
-		editingStore,
-		cropStore,
-		penStore,
-		pathEditStore,
-		guidesStore,
-		aiJobStore,
-		fieldPreviewStore,
-	});
+	const documentStores = useMemo<DocumentStores>(
+		() => ({
+			sceneStore,
+			historyStore,
+			pagesStore,
+			selectionStore,
+			focusStore,
+			draftStore,
+			editingStore,
+			cropStore,
+			penStore,
+			pathEditStore,
+			guidesStore,
+			aiJobStore,
+			fieldPreviewStore,
+		}),
+		[
+			sceneStore,
+			historyStore,
+			pagesStore,
+			selectionStore,
+			focusStore,
+			draftStore,
+			editingStore,
+			cropStore,
+			penStore,
+			pathEditStore,
+			guidesStore,
+			aiJobStore,
+			fieldPreviewStore,
+		],
+	);
+	const replaceDocument = useReplaceDocument(documentStores);
 
 	// B-08 save lifecycle. The controller subscribes to history state identity;
 	// stable `save`/`canLeave` wrappers go into context so consumers never
