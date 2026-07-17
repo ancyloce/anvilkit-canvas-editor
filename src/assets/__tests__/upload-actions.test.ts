@@ -10,7 +10,11 @@ import type { CanvasToastInput } from "@/context/toast-context.js";
 import { createUploadStore } from "@/stores/upload-store.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import type { CanvasAssetUploader } from "../adapter-types.js";
-import { insertAssetsImpl, uploadFilesImpl } from "../upload-actions.js";
+import {
+	insertAssetsImpl,
+	retryUploadImpl,
+	uploadFilesImpl,
+} from "../upload-actions.js";
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
 
@@ -183,5 +187,76 @@ describe("uploadFilesImpl (B-10, FR-091/092)", () => {
 		expect(ids).toEqual([]);
 		expect(h.commits).toHaveLength(0);
 		expect(toasts[0]?.type).toBe("info");
+	});
+});
+
+describe("retryUploadImpl (FR-091 retry)", () => {
+	it("resubmits the SAME failed task's original file without a new task entry", async () => {
+		let attempt = 0;
+		const uploader: CanvasAssetUploader = {
+			upload: async (files) => {
+				attempt += 1;
+				if (attempt === 1) throw new Error("cdn down");
+				return files.map((f) => ({ id: "up-1", uri: `https://cdn/${f.name}` }));
+			},
+		};
+		const { h, uploadStore, toaster } = setup(uploader);
+		await uploadFilesImpl(h.studioCtx, [file("a.png")], undefined, toaster);
+		const failedTask = uploadStore.getState().tasks[0];
+		if (!failedTask) throw new Error("no task");
+		expect(failedTask.status).toBe("failed");
+
+		const ids = await retryUploadImpl(h.studioCtx, failedTask.id, toaster);
+
+		expect(ids).toHaveLength(1);
+		expect(uploadStore.getState().tasks).toHaveLength(1); // same id, not a new task
+		expect(uploadStore.getState().tasks[0]).toMatchObject({
+			id: failedTask.id,
+			status: "done",
+		});
+	});
+
+	it("re-failing keeps the task failed with the new error", async () => {
+		const uploader: CanvasAssetUploader = {
+			upload: async () => {
+				throw new Error("still down");
+			},
+		};
+		const { h, uploadStore, toaster } = setup(uploader);
+		await uploadFilesImpl(h.studioCtx, [file("a.png")], undefined, toaster);
+		const failedTask = uploadStore.getState().tasks[0];
+		if (!failedTask) throw new Error("no task");
+
+		const ids = await retryUploadImpl(h.studioCtx, failedTask.id, toaster);
+
+		expect(ids).toEqual([]);
+		expect(uploadStore.getState().tasks[0]).toMatchObject({
+			status: "failed",
+			error: "still down",
+		});
+	});
+
+	it("is a no-op for an unknown task id or a task that isn't failed", async () => {
+		const uploader: CanvasAssetUploader = {
+			upload: async (files) =>
+				files.map((f) => ({ id: "up", uri: `https://cdn/${f.name}` })),
+		};
+		const { h, uploadStore, toaster } = setup(uploader);
+		expect(await retryUploadImpl(h.studioCtx, "missing", toaster)).toEqual([]);
+		await uploadFilesImpl(h.studioCtx, [file("a.png")], undefined, toaster);
+		const doneTask = uploadStore.getState().tasks[0];
+		if (!doneTask) throw new Error("no task");
+		expect(doneTask.status).toBe("done");
+		expect(await retryUploadImpl(h.studioCtx, doneTask.id, toaster)).toEqual(
+			[],
+		);
+	});
+
+	it("without an uploader: no-op (no crash)", async () => {
+		const { h, uploadStore, toaster } = setup();
+		const taskId = uploadStore.getState().begin(file("a.png"));
+		uploadStore.getState().fail(taskId, "x");
+		h.studioCtx.assetUploader = undefined;
+		expect(await retryUploadImpl(h.studioCtx, taskId, toaster)).toEqual([]);
 	});
 });

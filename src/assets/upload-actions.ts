@@ -1,4 +1,8 @@
-import { type CanvasCommand, createImage } from "@anvilkit/canvas-core";
+import {
+	type CanvasCommand,
+	type CanvasPage,
+	createImage,
+} from "@anvilkit/canvas-core";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
 import {
 	type CanvasToaster,
@@ -11,6 +15,63 @@ const DEFAULT_H = 180;
 /** Grid step for multi-asset drops (FR-092 "simple grid"). */
 const GRID_STEP = 24;
 const GRID_COLUMNS = 3;
+
+/**
+ * Pure command-building core shared by {@link insertAssetsImpl} and the
+ * Image tool's multi-pick path (FR-090, `tools/image-tool.ts`): grid-arrange
+ * `assets` around `position` (falling back to page center when omitted or
+ * out of bounds), producing an `asset.put` + `node.create` pair per asset.
+ * No `ctx` dependency — callers own committing the batch and selecting the
+ * result, since that differs (`ToolContext.commitBatch` is optional, unlike
+ * {@link CanvasStudioContextValue.commitBatch}).
+ */
+export function buildAssetInsertCommands(
+	assets: readonly CanvasPickedAsset[],
+	page: CanvasPage,
+	position?: { x: number; y: number },
+): { commands: CanvasCommand[]; nodeIds: string[] } {
+	const anchor =
+		position &&
+		position.x >= 0 &&
+		position.x <= page.size.width &&
+		position.y >= 0 &&
+		position.y <= page.size.height
+			? position
+			: undefined;
+	const commands: CanvasCommand[] = [];
+	const nodeIds: string[] = [];
+	for (const [index, asset] of assets.entries()) {
+		const width = asset.width ?? DEFAULT_W;
+		const height = asset.height ?? DEFAULT_H;
+		const base = anchor ?? {
+			x: (page.size.width - width) / 2,
+			y: (page.size.height - height) / 2,
+		};
+		const node = createImage({
+			assetId: asset.id,
+			bounds: { width, height },
+			transform: {
+				x: base.x + (index % GRID_COLUMNS) * GRID_STEP,
+				y: base.y + Math.floor(index / GRID_COLUMNS) * GRID_STEP,
+			},
+		});
+		nodeIds.push(node.id);
+		commands.push(
+			{
+				type: "asset.put",
+				asset: {
+					id: asset.id,
+					uri: asset.uri,
+					...(asset.mimeType !== undefined ? { mimeType: asset.mimeType } : {}),
+					...(asset.width !== undefined ? { width: asset.width } : {}),
+					...(asset.height !== undefined ? { height: asset.height } : {}),
+				},
+			},
+			{ type: "node.create", node, pageId: page.id },
+		);
+	}
+	return { commands, nodeIds };
+}
 
 function resolveT(ctx: CanvasStudioContextValue) {
 	return ctx.t ?? ((_key: string, fallback?: string) => fallback ?? "");
@@ -36,49 +97,14 @@ export function insertAssetsImpl(
 	const activePageId = ctx.pagesStore.getState().activePageId;
 	const page = ir.pages.find((p) => p.id === activePageId);
 	if (!page) return [];
-	const anchor =
-		position &&
-		position.x >= 0 &&
-		position.x <= page.size.width &&
-		position.y >= 0 &&
-		position.y <= page.size.height
-			? position
-			: undefined;
-	const cmds: CanvasCommand[] = [];
-	const newIds: string[] = [];
-	for (const [index, asset] of assets.entries()) {
-		const width = asset.width ?? DEFAULT_W;
-		const height = asset.height ?? DEFAULT_H;
-		const base = anchor ?? {
-			x: (page.size.width - width) / 2,
-			y: (page.size.height - height) / 2,
-		};
-		const node = createImage({
-			assetId: asset.id,
-			bounds: { width, height },
-			transform: {
-				x: base.x + (index % GRID_COLUMNS) * GRID_STEP,
-				y: base.y + Math.floor(index / GRID_COLUMNS) * GRID_STEP,
-			},
-		});
-		newIds.push(node.id);
-		cmds.push(
-			{
-				type: "asset.put",
-				asset: {
-					id: asset.id,
-					uri: asset.uri,
-					...(asset.mimeType !== undefined ? { mimeType: asset.mimeType } : {}),
-					...(asset.width !== undefined ? { width: asset.width } : {}),
-					...(asset.height !== undefined ? { height: asset.height } : {}),
-				},
-			},
-			{ type: "node.create", node, pageId: activePageId },
-		);
-	}
-	ctx.commitBatch(cmds, "Add assets");
-	ctx.selectionStore.getState().setSelection(newIds);
-	return newIds;
+	const { commands, nodeIds } = buildAssetInsertCommands(
+		assets,
+		page,
+		position,
+	);
+	ctx.commitBatch(commands, "Add assets");
+	ctx.selectionStore.getState().setSelection(nodeIds);
+	return nodeIds;
 }
 
 /**
@@ -108,7 +134,7 @@ export async function uploadFilesImpl(
 	}
 	const uploadStore = ctx.uploadStore;
 	const taskIds = files.map(
-		(file) => uploadStore?.getState().begin(file.name) ?? "",
+		(file) => uploadStore?.getState().begin(file) ?? "",
 	);
 	try {
 		const uploaded = await uploader.upload(files, {
@@ -127,6 +153,43 @@ export async function uploadFilesImpl(
 		for (const id of taskIds) {
 			if (id !== "") uploadStore?.getState().fail(id, message);
 		}
+		toaster.add({
+			type: "error",
+			title: t("canvas.upload.failed", "Upload failed"),
+			description: message,
+		});
+		return [];
+	}
+}
+
+/**
+ * FR-091 retry: resubmit a single FAILED task's original file without the
+ * user re-selecting it. Resets the SAME task id back to "uploading" (not a
+ * new task) so the panel's list doesn't grow a duplicate entry. No-op for an
+ * unknown task, a task not currently failed, or a host with no uploader.
+ */
+export async function retryUploadImpl(
+	ctx: CanvasStudioContextValue,
+	taskId: string,
+	toaster: CanvasToaster = NOOP_CANVAS_TOASTER,
+): Promise<string[]> {
+	const uploadStore = ctx.uploadStore;
+	const uploader = ctx.assetUploader;
+	if (!uploadStore || !uploader) return [];
+	const task = uploadStore.getState().tasks.find((t) => t.id === taskId);
+	if (!task || task.status !== "failed") return [];
+	const t = resolveT(ctx);
+	uploadStore.getState().retry(taskId);
+	try {
+		const uploaded = await uploader.upload([task.file], {
+			documentId: ctx.getIR().id,
+		});
+		if (uploadStore.getState().isCancelled(taskId)) return [];
+		uploadStore.getState().succeed(taskId);
+		return insertAssetsImpl(ctx, uploaded);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		uploadStore.getState().fail(taskId, message);
 		toaster.add({
 			type: "error",
 			title: t("canvas.upload.failed", "Upload failed"),
