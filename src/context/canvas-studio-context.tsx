@@ -7,9 +7,11 @@ import type {
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { createContext, use } from "react";
+import type { CanvasClipboardAdapter } from "../actions/clipboard-adapter.js";
 import type {
 	CanvasAssetPicker,
 	CanvasAssetUploader,
+	CanvasPickedAsset,
 } from "../assets/adapter-types.js";
 import type { BrandKit } from "../brand/brand-kit.js";
 import type {
@@ -166,6 +168,20 @@ export interface CanvasStudioContextValue {
 	replaceDocument: (ir: CanvasIR, source: DocumentSnapshotSource) => void;
 	pickAsset: () => Promise<string>;
 	/**
+	 * FR-090 (B-10) multi-select pick: present only when a full `assetPicker`
+	 * adapter is wired (the legacy single-uri `onPickAsset` callback has no
+	 * multi-select concept). Optional — lightweight tool-test contexts, and
+	 * hosts without an `assetPicker`, omit it; callers fall back to
+	 * {@link pickAsset}.
+	 */
+	pickAssets?: () => Promise<readonly CanvasPickedAsset[]>;
+	/**
+	 * FR-011: whether the Image tool can pick an asset — `assetPicker` OR the
+	 * legacy `onPickAsset` callback is wired. Drives the Tool Strip's disabled
+	 * state; `true` when unset (lightweight test contexts default to usable).
+	 */
+	hasImagePicker?: boolean;
+	/**
 	 * Hand an AI gesture to the host (I1-7). Optional — present only when the
 	 * editor is mounted with an AI host. See {@link AiToolIntent}.
 	 */
@@ -243,6 +259,13 @@ export interface CanvasStudioContextValue {
 	assetUploader?: CanvasAssetUploader;
 	/** Upload task registry (B-10). Provided by `<CanvasStudio>`. */
 	uploadStore?: UploadStoreApi;
+	/**
+	 * §11.1 clipboard adapter override. Present when the host wires it;
+	 * `clipboard-actions.ts` prefers it over `system-clipboard.ts`'s
+	 * `navigator.clipboard` wrapper, falling back to the latter when absent —
+	 * clipboard behavior otherwise stays identical either way.
+	 */
+	clipboard?: CanvasClipboardAdapter;
 	/**
 	 * Ruler/guide chrome state (C-02, FR-110/111/113). Always provided by
 	 * `<CanvasStudio>`; optional in the type only for partial test contexts —
