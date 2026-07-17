@@ -72,6 +72,11 @@ export function createSaveController(
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	let maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
 	let retryTimer: ReturnType<typeof setTimeout> | null = null;
+	// FR-162: every in-flight save's controller, so `dispose()` can abort
+	// whichever ones haven't settled yet — plural because overlapping saves
+	// (a new commit while one is already in flight) are already a normal,
+	// supported case here (see the `seq`/`saveSeq` staleness guard below).
+	const inFlightAbortControllers = new Set<AbortController>();
 
 	const clearTimers = (): void => {
 		if (debounceTimer !== null) clearT(debounceTimer);
@@ -97,6 +102,8 @@ export function createSaveController(
 		const revision = history.getState().getStateId();
 		const ir = options.getIR();
 		inFlight += 1;
+		const abortController = new AbortController();
+		inFlightAbortControllers.add(abortController);
 		status.getState().setStatus("saving");
 		emit();
 		try {
@@ -104,6 +111,7 @@ export function createSaveController(
 				ir,
 				documentId: ir.id,
 				revision,
+				signal: abortController.signal,
 			});
 			if (disposed) return true;
 			// Checkpoint the revision that was ACTUALLY persisted — but only ever
@@ -142,6 +150,7 @@ export function createSaveController(
 			return false;
 		} finally {
 			inFlight -= 1;
+			inFlightAbortControllers.delete(abortController);
 		}
 	};
 
@@ -210,6 +219,11 @@ export function createSaveController(
 		dispose: () => {
 			disposed = true;
 			clearTimers();
+			// FR-162: abort every save still in flight — previously only pending
+			// TIMERS were cancelled; an in-flight `adapter.save()` call ran to
+			// completion for nothing.
+			for (const controller of inFlightAbortControllers) controller.abort();
+			inFlightAbortControllers.clear();
 			unsubscribe();
 		},
 	};

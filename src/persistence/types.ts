@@ -15,6 +15,14 @@ export interface CanvasSaveInput {
 	 * arrive out of order.
 	 */
 	revision: number;
+	/**
+	 * FR-162: aborts when this save is superseded by teardown (`dispose()`)
+	 * before it settles. An adapter that ignores it still behaves correctly —
+	 * the controller already discards a response that arrives after
+	 * disposal — but honoring it lets the adapter cancel the underlying I/O
+	 * instead of letting it run to completion for nothing.
+	 */
+	signal: AbortSignal;
 }
 
 export interface CanvasSaveResult {

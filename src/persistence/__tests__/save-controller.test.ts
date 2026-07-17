@@ -234,4 +234,55 @@ describe("manual save + auto save (FR-160/162)", () => {
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(h.calls).toHaveLength(0);
 	});
+
+	it("adapter.save() receives a real, not-yet-aborted AbortSignal (FR-162)", async () => {
+		const h = harness({ autoSave: false });
+		h.edit(1);
+		await h.controller.save();
+		expect(h.calls[0]?.signal).toBeInstanceOf(AbortSignal);
+		expect(h.calls[0]?.signal.aborted).toBe(false);
+		h.controller.dispose();
+	});
+
+	it("dispose aborts an in-flight save's signal — timers alone used to miss this (FR-162)", async () => {
+		let capturedSignal: AbortSignal | undefined;
+		let resolveSave: (() => void) | null = null;
+		const h = harness({
+			autoSave: false,
+			save: (input) =>
+				new Promise((resolve) => {
+					capturedSignal = input.signal;
+					resolveSave = () => resolve({ savedAt: FIXED_TS });
+				}),
+		});
+		h.edit(1);
+		const pending = h.controller.save();
+		expect(capturedSignal?.aborted).toBe(false);
+
+		h.controller.dispose();
+
+		expect(capturedSignal?.aborted).toBe(true);
+		resolveSave?.();
+		await pending;
+	});
+
+	it("dispose aborts EVERY overlapping in-flight save, not just the latest", async () => {
+		const signals: AbortSignal[] = [];
+		const h = harness({
+			autoSave: false,
+			save: (input) =>
+				new Promise(() => {
+					signals.push(input.signal);
+				}),
+		});
+		h.edit(1);
+		void h.controller.save(); // rev A, stays pending
+		h.edit(2);
+		void h.controller.save(); // rev B, also stays pending
+		expect(signals).toHaveLength(2);
+
+		h.controller.dispose();
+
+		expect(signals.every((s) => s.aborted)).toBe(true);
+	});
 });
