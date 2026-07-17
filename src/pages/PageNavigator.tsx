@@ -42,9 +42,7 @@ import {
  * so it renders correctly whether or not the host mounts `CanvasWorkspace`'s
  * shell — headless `<CanvasStudio>` embeds included.
  */
-const PageSettingsDialog = lazy(
-	() => import("../workspace/dialogs/PageSettingsDialog.js"),
-);
+const PageSettingsDialog = lazy(() => import("./PageSettingsDialog.js"));
 
 function tabLabel(name: string | undefined, id: string): string {
 	if (name && name.length > 0) return name;
