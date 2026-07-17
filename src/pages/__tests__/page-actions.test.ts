@@ -2,6 +2,7 @@ import {
 	type CanvasIR,
 	type CanvasPageCreateCommand,
 	type CanvasPageDeleteCommand,
+	type CanvasPageDuplicateCommand,
 	type CanvasPageRenameCommand,
 	type CanvasPageReorderCommand,
 	createCanvasIR,
@@ -76,27 +77,20 @@ describe("addPage", () => {
 });
 
 describe("duplicateCurrentPage", () => {
-	it("inserts a clone after the active page with name '<original> copy'", () => {
+	it("commits page.duplicate for the active page and activates the new page id", () => {
 		const h = makeHarness({ ir: singlePageWithRect() });
 		const cloneId = duplicateCurrentPage(h.studioCtx);
 		expect(cloneId).not.toBeNull();
 		expect(h.commits).toHaveLength(1);
-		const cmd = h.commits[0] as CanvasPageCreateCommand;
-		expect(cmd.type).toBe("page.create");
-		expect(cmd.index).toBe(1);
-		expect(cmd.page.name).toBe("First copy");
+		const cmd = h.commits[0] as CanvasPageDuplicateCommand;
+		expect(cmd.type).toBe("page.duplicate");
+		expect(cmd.sourcePageId).toBe("p1");
+		expect(cmd.newPageId).toBe(cloneId);
+		// Fresh id, distinct from the source — regeneration/positioning/naming
+		// are core command domain logic (see canvas-core's page-duplicate.test.ts).
+		expect(cloneId).not.toBe("p1");
 		// New page is active.
 		expect(h.studioCtx.pagesStore.getState().activePageId).toBe(cloneId);
-	});
-
-	it("clones nodes with fresh ids", () => {
-		const h = makeHarness({ ir: singlePageWithRect() });
-		duplicateCurrentPage(h.studioCtx);
-		const cmd = h.commits[0] as CanvasPageCreateCommand;
-		const originalRectId = "rectA";
-		const clonedRectId = cmd.page.root.children[0]?.id;
-		expect(clonedRectId).toBeTruthy();
-		expect(clonedRectId).not.toBe(originalRectId);
 	});
 
 	it("returns null when no active page exists in IR", () => {

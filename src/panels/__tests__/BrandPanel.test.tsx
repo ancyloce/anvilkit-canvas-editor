@@ -38,9 +38,12 @@ function renderPanel(brandKit?: BrandKit, ir?: CanvasIR) {
 }
 
 describe("BrandPanel", () => {
-	it("renders nothing when no brand kit is configured", () => {
+	it("renders an empty state (FR-173) when no brand kit is configured", () => {
 		const { view } = renderPanel();
-		expect(view.queryByTestId("brand-section")).toBeNull();
+		expect(view.getByTestId("brand-section")).toBeDefined();
+		expect(view.getByTestId("brand-empty-state")).toBeDefined();
+		expect(view.queryByTestId("brand-palette")).toBeNull();
+		expect(view.queryByTestId("brand-fonts")).toBeNull();
 	});
 
 	it("renders colors/fonts but no compliance UI without a sourceDefinition", () => {

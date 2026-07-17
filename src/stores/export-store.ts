@@ -5,7 +5,6 @@ export type CanvasExportPhase =
 	| "idle"
 	| "preparing"
 	| "rendering"
-	| "packaging"
 	| "completed"
 	| "failed"
 	| "cancelled";

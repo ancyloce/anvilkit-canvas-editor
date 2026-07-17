@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import * as React from "react";
 import { lazy, type ReactNode, useEffect, useMemo, useRef } from "react";
 import { ToolAnnouncer } from "@/a11y/ToolAnnouncer.js";
+import { ZoomAnnouncer } from "@/a11y/ZoomAnnouncer.js";
 import type { CanvasErrorDetailsInfo } from "@/CanvasErrorBoundary.js";
 import { useCanvasT } from "@/context/canvas-studio-context.js";
 import { PropertyInspector } from "@/panels/PropertyInspector.js";
@@ -191,6 +192,7 @@ export function CanvasWorkspace({
 										/>
 									) : null}
 									<ToolAnnouncer />
+									<ZoomAnnouncer />
 									<WorkspaceHeader
 										onBack={onBack}
 										title={title}

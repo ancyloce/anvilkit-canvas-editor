@@ -169,6 +169,28 @@ describe("createCanvasEditorActions — delegation", () => {
 		expect(next).toBeNull();
 		expect(h.commits).toHaveLength(0);
 	});
+
+	it("renameNode commits node.update for the target id regardless of selection", () => {
+		const { h, actions } = makeActionsHarness();
+		// "b" is not selected — rename targets it directly, not the selection.
+		h.studioCtx.selectionStore.getState().setSelection(["a"]);
+		actions.renameNode("b", "  Hero shape  ");
+		expect(h.commits).toHaveLength(1);
+		expect(h.commits[0]).toMatchObject({
+			type: "node.update",
+			nodeId: "b",
+			patch: { name: "Hero shape" },
+		});
+	});
+
+	it("renameNode is a no-op for an unknown id or an unchanged trimmed name", () => {
+		const { h, actions } = makeActionsHarness();
+		actions.renameNode("missing", "New name");
+		expect(h.commits).toHaveLength(0);
+		// Fixture rect "a" has no explicit name — "" is already its current name.
+		actions.renameNode("a", "  ");
+		expect(h.commits).toHaveLength(0);
+	});
 });
 
 describe("useCanvasActions", () => {

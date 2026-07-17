@@ -23,6 +23,7 @@ import { CanvasFocusRing } from "./a11y/CanvasFocusRing.js";
 import { SceneAccessibilityTree } from "./a11y/SceneAccessibilityTree.js";
 import { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
 import { CanvasKeyboardLayer } from "./a11y/useCanvasKeyboard.js";
+import { ZoomAnnouncer } from "./a11y/ZoomAnnouncer.js";
 import type {
 	CanvasAssetPicker,
 	CanvasAssetUploader,
@@ -1169,6 +1170,7 @@ export function CanvasStudio({
 						style={{ display: "flex", flexDirection: "column" }}
 					>
 						<ToolAnnouncer />
+						<ZoomAnnouncer />
 						{!hidePageNavigator && <PageNavigator />}
 						{stageWithRecovery}
 					</div>

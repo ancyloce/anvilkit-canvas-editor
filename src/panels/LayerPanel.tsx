@@ -348,16 +348,9 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 	const commitRename = useCallback(
 		(node: CanvasNode, name: string) => {
 			setRenamingId(null);
-			const trimmed = name.trim();
-			if (trimmed === (node.name ?? "")) return;
-			ctx.commit({
-				type: "node.update",
-				nodeId: node.id,
-				kind: node.type,
-				patch: { name: trimmed },
-			} as CanvasAnyNodeUpdateCommand);
+			actions.renameNode(node.id, name);
 		},
-		[ctx],
+		[actions],
 	);
 
 	const handleToggleVisibility = useCallback(

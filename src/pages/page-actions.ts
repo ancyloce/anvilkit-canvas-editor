@@ -1,6 +1,7 @@
 import {
 	type CanvasPageCreateCommand,
 	type CanvasPageDeleteCommand,
+	type CanvasPageDuplicateCommand,
 	type CanvasPageRenameCommand,
 	type CanvasPageReorderCommand,
 	type CanvasPageSize,
@@ -11,7 +12,6 @@ import {
 	type CanvasToaster,
 	NOOP_CANVAS_TOASTER,
 } from "../context/toast-context.js";
-import { clonePage } from "./clone-page.js";
 
 export interface AddPageOptions {
 	name?: string;
@@ -43,24 +43,28 @@ export function addPage(
  * Deep-clone the currently active page (including all nodes with fresh ids),
  * insert it directly after the original, and activate the clone. Returns the
  * clone's id, or null if there is no active page in the current IR.
+ *
+ * Dispatches core's `page.duplicate` command (§9.1, PRD 0012) rather than
+ * assembling a clone client-side — ID regeneration and after-source
+ * positioning are real command domain logic, not something this call site
+ * should own.
  */
 export function duplicateCurrentPage(
 	ctx: CanvasStudioContextValue,
 ): string | null {
 	const ir = ctx.getIR();
 	const activeId = ctx.pagesStore.getState().activePageId;
-	const originalIndex = ir.pages.findIndex((p) => p.id === activeId);
-	if (originalIndex < 0) return null;
-	const original = ir.pages[originalIndex]!;
-	const cloned = clonePage(original);
-	const cmd: CanvasPageCreateCommand = {
-		type: "page.create",
-		page: cloned,
-		index: originalIndex + 1,
+	const original = ir.pages.find((p) => p.id === activeId);
+	if (!original) return null;
+	const newPageId = crypto.randomUUID();
+	const cmd: CanvasPageDuplicateCommand = {
+		type: "page.duplicate",
+		sourcePageId: activeId,
+		newPageId,
 	};
 	ctx.commit(cmd);
-	ctx.pagesStore.getState().setActivePageId(cloned.id);
-	return cloned.id;
+	ctx.pagesStore.getState().setActivePageId(newPageId);
+	return newPageId;
 }
 
 /**

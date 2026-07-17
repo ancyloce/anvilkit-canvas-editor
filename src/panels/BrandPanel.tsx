@@ -108,7 +108,24 @@ export function BrandPanel({
 		useState<BrandComplianceReport | null>(null);
 	const hasBrand = colors.length > 0 || fonts.length > 0;
 
-	if (!hasBrand) return null;
+	if (!hasBrand) {
+		return (
+			<div
+				className={cn("flex flex-col gap-3 p-4", className)}
+				data-testid="brand-section"
+			>
+				<div className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+					{t("canvas.brand.title", "Brand kit")}
+				</div>
+				<div
+					data-testid="brand-empty-state"
+					className="p-2 text-xs text-muted-foreground italic"
+				>
+					{t("canvas.brand.noBrandKit", "No brand kit is connected yet.")}
+				</div>
+			</div>
+		);
+	}
 
 	function checkCompliance(): void {
 		if (!definition) return;

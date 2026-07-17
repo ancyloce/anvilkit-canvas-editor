@@ -123,6 +123,13 @@ export interface CanvasEditorActions {
 	duplicateSelection(): string[];
 	/** FR-031 layer order — move the selection within its parent, one batch. */
 	reorderSelection(direction: CanvasReorderDirection): void;
+	/**
+	 * Rename a single node (layer-panel inline rename, node context menu) —
+	 * targets `nodeId` directly rather than the current selection, since the
+	 * node being renamed need not be selected. No-op when the id is unknown or
+	 * the trimmed name is unchanged (avoids a spurious undo entry).
+	 */
+	renameNode(nodeId: string, name: string): void;
 	/** FR-043 zoom — viewport-store only, never a history entry. */
 	zoomIn(): void;
 	zoomOut(): void;
@@ -288,6 +295,25 @@ function toggleVisibilitySelectionImpl(
 	return nextVisible;
 }
 
+function renameNodeImpl(
+	ctx: CanvasStudioContextValue,
+	nodeId: string,
+	name: string,
+): void {
+	const ir = ctx.getIR();
+	const found = findNode(ir, nodeId);
+	if (!found) return;
+	const trimmed = name.trim();
+	if (trimmed === (found.node.name ?? "")) return;
+	const cmd: CanvasAnyNodeUpdateCommand = {
+		type: "node.update",
+		nodeId,
+		kind: found.node.type,
+		patch: { name: trimmed },
+	} as CanvasAnyNodeUpdateCommand;
+	ctx.commit(cmd);
+}
+
 /**
  * Build a {@link CanvasEditorActions} facade over a studio context. For
  * non-React callers and tests; components should prefer
@@ -321,6 +347,7 @@ export function createCanvasEditorActions(
 		paste: () => pasteImpl(ctx, toaster),
 		duplicateSelection: () => duplicateSelectionImpl(ctx),
 		reorderSelection: (direction) => reorderSelectionImpl(ctx, direction),
+		renameNode: (nodeId, name) => renameNodeImpl(ctx, nodeId, name),
 		zoomIn: () => zoomInImpl(ctx),
 		zoomOut: () => zoomOutImpl(ctx),
 		zoomToFit: () => zoomToFitImpl(ctx),
@@ -381,6 +408,7 @@ export function useCanvasActions(): CanvasEditorActions {
 			duplicateSelection: () => duplicateSelectionImpl(liveCtx()),
 			reorderSelection: (direction) =>
 				reorderSelectionImpl(liveCtx(), direction),
+			renameNode: (nodeId, name) => renameNodeImpl(liveCtx(), nodeId, name),
 			zoomIn: () => zoomInImpl(liveCtx()),
 			zoomOut: () => zoomOutImpl(liveCtx()),
 			zoomToFit: () => zoomToFitImpl(liveCtx()),

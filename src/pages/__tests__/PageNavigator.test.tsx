@@ -2,6 +2,7 @@ import {
 	type CanvasIR,
 	type CanvasPageCreateCommand,
 	type CanvasPageDeleteCommand,
+	type CanvasPageDuplicateCommand,
 	type CanvasPageRenameCommand,
 	type CanvasPageReorderCommand,
 	createCanvasIR,
@@ -203,7 +204,7 @@ describe("PageNavigator — add", () => {
 });
 
 describe("PageNavigator — duplicate", () => {
-	it("clicking Duplicate fires page.create with an index and clone name", () => {
+	it("clicking Duplicate fires page.duplicate for the active page", () => {
 		const h = makeHarness({ ir: multiPage() });
 		const { container } = mount(h.studioCtx);
 		const dup = container.querySelector(
@@ -211,10 +212,10 @@ describe("PageNavigator — duplicate", () => {
 		) as HTMLElement;
 		fireEvent.click(dup);
 		expect(h.commits).toHaveLength(1);
-		const cmd = h.commits[0] as CanvasPageCreateCommand;
-		expect(cmd.type).toBe("page.create");
-		expect(cmd.index).toBe(1);
-		expect(cmd.page.name).toBe("First copy");
+		const cmd = h.commits[0] as CanvasPageDuplicateCommand;
+		expect(cmd.type).toBe("page.duplicate");
+		expect(cmd.sourcePageId).toBe("p1");
+		expect(cmd.newPageId).not.toBe("p1");
 	});
 });
 
@@ -420,16 +421,16 @@ describe("PageNavigator — context menu (FR-032)", () => {
 		}
 	});
 
-	it("Duplicate fires page.create with an index and clone name", async () => {
+	it("Duplicate fires page.duplicate for the target page", async () => {
 		const h = makeHarness({ ir: multiPage() });
 		mount(h.studioCtx);
 		await openPageMenu("p1");
 		fireEvent.click(screen.getByTestId("page-menu-duplicate-p1"));
 		expect(h.commits).toHaveLength(1);
-		const cmd = h.commits[0] as CanvasPageCreateCommand;
-		expect(cmd.type).toBe("page.create");
-		expect(cmd.index).toBe(1);
-		expect(cmd.page.name).toBe("First copy");
+		const cmd = h.commits[0] as CanvasPageDuplicateCommand;
+		expect(cmd.type).toBe("page.duplicate");
+		expect(cmd.sourcePageId).toBe("p1");
+		expect(cmd.newPageId).not.toBe("p1");
 	});
 
 	it("Rename opens the rename input for that page", async () => {
