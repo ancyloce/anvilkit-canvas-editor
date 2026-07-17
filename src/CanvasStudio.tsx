@@ -59,6 +59,7 @@ import type {
 	CanvasPersistenceAdapter,
 } from "./persistence/types.js";
 import { CanvasTransformer } from "./selection/CanvasTransformer.js";
+import { CornerRadiusOverlay } from "./selection/CornerRadiusOverlay.js";
 import { CropEditorOverlay } from "./selection/CropEditorOverlay.js";
 import { computeDimmedIds } from "./selection/isolation.js";
 import { PathEditOverlay } from "./selection/PathEditOverlay.js";
@@ -487,9 +488,12 @@ function useCommitPipeline(
  */
 function useReplaceDocument(stores: DocumentStores) {
 	const storesRef = useHostCallbackRef(stores);
-	return useCallback((ir: CanvasIR, source: DocumentSnapshotSource) => {
-		replaceDocumentSnapshot(storesRef.current, ir, { source });
-	}, [storesRef]);
+	return useCallback(
+		(ir: CanvasIR, source: DocumentSnapshotSource) => {
+			replaceDocumentSnapshot(storesRef.current, ir, { source });
+		},
+		[storesRef],
+	);
 }
 
 /**
@@ -631,6 +635,7 @@ function EditorStage({
 					<TextEditorOverlay />
 					<RichTextToolbar />
 					<CropEditorOverlay />
+					<CornerRadiusOverlay />
 					<PenToolOverlay />
 				</CanvasBrandKitContext.Provider>
 			</CanvasAssetsContext.Provider>

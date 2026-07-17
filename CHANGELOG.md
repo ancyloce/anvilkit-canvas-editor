@@ -56,6 +56,16 @@ The PRD 0012 delivery (Phases 1a "editing loop", 1b "product chrome", 2
 - **Text (FR-080/FR-082/FR-083)**: empty text nodes are removed on close; the
   rich-text toolbar gains a font-family control; font-loading states are
   test-covered.
+- **Rich-text vertical align (FR-081)**: `top`/`middle`/`bottom` inspector
+  control; the Konva renderer offsets the block within its box height.
+- **Rich-text auto-width (FR-081)**: `sizing: "auto-width"` now has a renderer
+  consumer — the box is laid out unwrapped at its natural width and
+  `bounds.width` is reconciled (coalesced) to the measured content width.
+- **Corner-radius drag (FR-076)**: a new on-canvas handle
+  (`CornerRadiusOverlay`) drags the uniform radius for a selected rect/frame
+  (keyboard-accessible; clears per-corner radii; one coalesced undo entry).
+- **Image alt text (§12 item 11)**: an Accessibility section in the image
+  inspector edits `alt`; the accessibility scene tree announces it.
 
 ### Editing loop (Phase 1a)
 
