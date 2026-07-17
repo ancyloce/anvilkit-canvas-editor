@@ -2,7 +2,9 @@ import {
 	type CanvasIR,
 	type CanvasNodeReorderCommand,
 	createCanvasIR,
+	createFrame,
 	createGroup,
+	createImage,
 	createPage,
 	createRect,
 } from "@anvilkit/canvas-core";
@@ -165,5 +167,101 @@ describe("CanvasAreaContextMenu (A-06)", () => {
 		await openMenu();
 		expect(screen.queryByTestId("ctx-rename")).toBeTruthy();
 		expect(screen.queryByTestId("ctx-export-selection")).toBeTruthy();
+	});
+});
+
+/** p1 root children: rect (plain), image, and an image-well frame with an existing fill. */
+function replaceImageFixtureIR(): CanvasIR {
+	const page = createPage({ id: "p1" });
+	const image = createImage({
+		id: "img1",
+		assetId: "asset-old",
+		bounds: { width: 40, height: 40 },
+	});
+	const well = createFrame({
+		id: "well1",
+		bounds: { width: 40, height: 40 },
+		placeholder: { kind: "image", assetId: "asset-old" },
+		children: [
+			createImage({
+				id: "well1-fill",
+				assetId: "asset-old",
+				bounds: { width: 40, height: 40 },
+			}),
+		],
+	});
+	page.root = createGroup({
+		id: "p1-root",
+		bounds: page.root.bounds,
+		children: [
+			createRect({ id: "rect1", bounds: { width: 10, height: 10 } }),
+			image,
+			well,
+		],
+	});
+	const ir = createCanvasIR({ id: "ir", pages: [page], now: () => FIXED_TS });
+	ir.assets = {
+		"asset-old": { id: "asset-old", uri: "data:old" },
+		"asset-1": { id: "asset-1", uri: "data:new" },
+	};
+	return ir;
+}
+
+describe("CanvasAreaContextMenu — Replace image (FR-093)", () => {
+	function setupReplaceable(hitId: string) {
+		const h = makeHarness({ ir: replaceImageFixtureIR() });
+		render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<CanvasAreaContextMenu resolveContextTarget={() => hitId}>
+					<div data-testid="canvas-body" />
+				</CanvasAreaContextMenu>
+			</CanvasStudioContext.Provider>,
+		);
+		return h;
+	}
+
+	it("shows Replace image for a single selected plain image node", async () => {
+		setupReplaceable("img1");
+		await openMenu();
+		expect(screen.queryByTestId("ctx-replace-image")).toBeTruthy();
+	});
+
+	it("clicking Replace image on a plain image node commits image.replace", async () => {
+		const h = setupReplaceable("img1");
+		await openMenu();
+		fireEvent.click(screen.getByTestId("ctx-replace-image"));
+		await waitFor(() => {
+			expect(h.commits.map((c) => c.type)).toContain("image.replace");
+		});
+	});
+
+	it("shows Replace image for a single selected image-well frame", async () => {
+		setupReplaceable("well1");
+		await openMenu();
+		expect(screen.queryByTestId("ctx-replace-image")).toBeTruthy();
+	});
+
+	it("clicking Replace image on an image-well frame replaces the well's fill", async () => {
+		const h = setupReplaceable("well1");
+		await openMenu();
+		fireEvent.click(screen.getByTestId("ctx-replace-image"));
+		await waitFor(() => {
+			expect(h.commits.length).toBeGreaterThan(0);
+		});
+	});
+
+	it("does not show Replace image for a plain (non-image) node", async () => {
+		setupReplaceable("rect1");
+		await openMenu();
+		expect(screen.queryByTestId("ctx-replace-image")).toBeNull();
+	});
+
+	it("does not show Replace image when the image node is part of a multi-selection", async () => {
+		const h = setupReplaceable("img1");
+		// Right-clicking a node already in the selection preserves a
+		// multi-selection rather than collapsing it to one.
+		h.studioCtx.selectionStore.getState().setSelection(["img1", "rect1"]);
+		await openMenu();
+		expect(screen.queryByTestId("ctx-replace-image")).toBeNull();
 	});
 });

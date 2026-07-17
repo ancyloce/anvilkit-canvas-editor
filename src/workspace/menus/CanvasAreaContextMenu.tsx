@@ -17,6 +17,11 @@ import {
 	useCanvasT,
 } from "../../context/canvas-studio-context.js";
 import {
+	isImageWell,
+	pickAndReplaceImage,
+	replaceFrameImage,
+} from "../../selection/frame-image-actions.js";
+import {
 	canGroupSelection,
 	canUngroupSelection,
 } from "../../selection/group-actions.js";
@@ -128,6 +133,20 @@ export function CanvasAreaContextMenu({
 			(found.node.type === "group" || found.node.type === "frame")
 		);
 	})();
+	// FR-093: a single plain image node, or a single frame carrying an image
+	// well (regardless of whether it's currently filled — matches the
+	// inspector's own `isImageWell(node)` gate, not "has content").
+	const replaceableImageNode = (() => {
+		if (selectedIds.length !== 1) return null;
+		const id = selectedIds[0];
+		if (!id) return null;
+		const found = findNode(ctx.ir, id);
+		if (!found) return null;
+		const { node } = found;
+		if (node.type === "image") return node;
+		if (node.type === "frame" && isImageWell(node)) return node;
+		return null;
+	})();
 
 	const gridEnabled = ctx.viewportStore.getState().gridEnabled;
 	// Ruler/guide chrome (C-02, FR-030). Values are read at render like
@@ -176,6 +195,20 @@ export function CanvasAreaContextMenu({
 							>
 								{t("canvas.menu.duplicate", "Duplicate")}
 							</ContextMenuItem>
+							{replaceableImageNode ? (
+								<ContextMenuItem
+									data-testid="ctx-replace-image"
+									onClick={() => {
+										if (replaceableImageNode.type === "image") {
+											void pickAndReplaceImage(ctx, replaceableImageNode);
+										} else {
+											void replaceFrameImage(ctx, replaceableImageNode);
+										}
+									}}
+								>
+									{t("canvas.inspector.replaceImage", "Replace image")}
+								</ContextMenuItem>
+							) : null}
 							<ContextMenuItem
 								data-testid="ctx-copy-style"
 								onClick={() => actions.copyStyle()}
