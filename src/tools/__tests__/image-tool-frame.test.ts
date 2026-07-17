@@ -111,6 +111,24 @@ describe("imageTool — placing into a frame", () => {
 		});
 	});
 
+	it("FR-090 multi-select: fills the well with only the FIRST picked asset, dropping the rest", async () => {
+		const env = liveHarness(frameIR(well()));
+		env.h.ctx.pickAssets = vi.fn(() =>
+			Promise.resolve([
+				{ id: "asset-1", uri: "data:1" },
+				{ id: "asset-2", uri: "data:2" },
+			]),
+		);
+		imageTool.onPointerDown?.(pointerEvent(50, 50), env.h.ctx);
+		await settle();
+		const frame = frameOf(env.getIR());
+		// A frame's image well is a single slot — exactly one child, asset-1 only.
+		expect(frame.children).toHaveLength(1);
+		expect(frame.placeholder).toEqual({ kind: "image", assetId: "asset-1" });
+		const root = env.getIR().pages[0]?.root;
+		expect(root?.children).toHaveLength(1); // no loose second node anywhere
+	});
+
 	// The whole point of `commitBatch`: the child insert AND the placeholder
 	// update are two commands but one user action.
 	it("is ONE undo step, and undo restores the empty well exactly", async () => {

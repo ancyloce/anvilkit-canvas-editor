@@ -1,5 +1,6 @@
 import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
+import type { CanvasPickedAsset } from "../assets/adapter-types.js";
 import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
 import type { CanvasFocusStoreApi } from "../stores/focus-store.js";
@@ -41,6 +42,12 @@ export interface ToolContext {
 	/** Multi-click pen-path state (I3-2). Always supplied by `<CanvasStudio>`. */
 	penStore: PenStoreApi;
 	pickAsset: () => Promise<string>;
+	/**
+	 * FR-090 (B-10) multi-select pick: present only when a full `assetPicker`
+	 * adapter is wired. Optional — lightweight tool-test contexts, and hosts
+	 * without an `assetPicker`, omit it; tools fall back to {@link pickAsset}.
+	 */
+	pickAssets?: () => Promise<readonly CanvasPickedAsset[]>;
 	activePageId: string;
 	/**
 	 * Hand an AI gesture (marquee region / image selection) to the host. Optional

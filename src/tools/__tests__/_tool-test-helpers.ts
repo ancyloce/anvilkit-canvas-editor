@@ -3,6 +3,7 @@ import { createCanvasIR, createPage } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { vi } from "vitest";
 import type { CanvasStudioContextValue } from "@/context/canvas-studio-context.js";
+import { createAiJobStore } from "@/stores/ai-job-store.js";
 import { createCropStore } from "@/stores/crop-store.js";
 import { createDraftStore } from "@/stores/draft-store.js";
 import { createEditingStore } from "@/stores/editing-store.js";
@@ -78,6 +79,7 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 	const penStore = createPenStore();
 	const pathEditStore = createPathEditStore();
 	const fieldPreviewStore = createFieldPreviewStore();
+	const aiJobStore = createAiJobStore();
 	const pagesStore = createPagesStore({
 		initialActivePageId: opts.ir ? (opts.ir.pages[0]?.id ?? pageId) : pageId,
 	});
@@ -148,6 +150,7 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 		commitBatch,
 		fieldPreviewStore,
 		pickAsset,
+		aiJobStore,
 		requestAiIntent,
 		stage,
 		// `activePageId` and `ir` are snapshots at harness creation. Live reads

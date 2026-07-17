@@ -37,6 +37,7 @@ export function ToolInteractionLayer({
 		editingStore,
 		penStore,
 		pickAsset,
+		pickAssets,
 		activePageId,
 		requestAiIntent,
 		isolationStore,
@@ -87,6 +88,7 @@ export function ToolInteractionLayer({
 			activePageId,
 			requestAiIntent,
 			...(isolationStore ? { isolationStore } : {}),
+			...(pickAssets ? { pickAssets } : {}),
 		};
 	}, [
 		stage,
@@ -100,6 +102,7 @@ export function ToolInteractionLayer({
 		editingStore,
 		penStore,
 		pickAsset,
+		pickAssets,
 		activePageId,
 		requestAiIntent,
 		isolationStore,
