@@ -78,13 +78,16 @@ export function SceneAccessibilityTree(): React.JSX.Element {
 			node.name && node.name.length > 0
 				? node.name
 				: (ctx.kindInspectors?.[node.type]?.label ?? node.type);
-		// FR-095 accessible description: a broken asset reference must be
-		// perceivable without sight of the canvas placeholder chrome.
-		if (
-			(node.type === "image" || node.type === "svg") &&
-			ctx.ir.assets[node.assetId] === undefined
-		) {
-			return `${base} — ${t("canvas.a11y.missingAsset", "missing asset")}`;
+		if (node.type === "image" || node.type === "svg") {
+			// FR-095 accessible description: a broken asset reference must be
+			// perceivable without sight of the canvas placeholder chrome.
+			if (ctx.ir.assets[node.assetId] === undefined) {
+				return `${base} — ${t("canvas.a11y.missingAsset", "missing asset")}`;
+			}
+			// §12 alt-text: announce the image's alternative text when set.
+			if (node.alt && node.alt.trim().length > 0) {
+				return `${base} — ${node.alt.trim()}`;
+			}
 		}
 		return base;
 	};
