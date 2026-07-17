@@ -16,6 +16,8 @@ import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { Windowed } from "@anvilkit/ui/windowed";
 import {
+	ChevronDown,
+	ChevronRight,
 	Eye,
 	EyeOff,
 	Group as GroupIcon,
@@ -76,6 +78,34 @@ function flattenChildren(group: CanvasGroupNode): FlatRow[] {
 	};
 	walk(group.children, 0);
 	return rows;
+}
+
+/**
+ * FR-050 collapse/expand: fold a collapsed container's descendants out of an
+ * already-flattened row list. `flattenChildren` produces a preorder walk
+ * (a container's row always immediately precedes its descendants' rows), so
+ * a single forward pass tracking "skip everything deeper than this depth"
+ * is enough — no need to re-walk the tree or thread collapse state through
+ * the recursive walker itself.
+ */
+function foldCollapsed(
+	rows: FlatRow[],
+	collapsedIds: ReadonlySet<string>,
+): FlatRow[] {
+	if (collapsedIds.size === 0) return rows;
+	const out: FlatRow[] = [];
+	let skipBelowDepth: number | null = null;
+	for (const row of rows) {
+		if (skipBelowDepth !== null) {
+			if (row.depth > skipBelowDepth) continue;
+			skipBelowDepth = null;
+		}
+		out.push(row);
+		if (collapsedIds.has(row.node.id)) {
+			skipBelowDepth = row.depth;
+		}
+	}
+	return out;
 }
 
 const KIND_LABEL_KEYS: Record<CanvasNodeKind, string> = {
@@ -184,12 +214,28 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 	const [filter, setFilter] = useState<LayerFilter>(EMPTY_LAYER_FILTER);
 	const [searchScope, setSearchScope] = useState<"page" | "document">("page");
 	const filterActive = !isEmptyLayerFilter(filter);
+	// FR-050 collapse/expand: ids of containers whose descendants are folded
+	// out of the rendered list. Session-only local state, following the same
+	// pattern as `filter`/`searchScope` above rather than a dedicated store —
+	// it's transient view state (never enters the Canvas IR), and the sibling
+	// `workspace-ui-store`'s `panelSearch` slice documents the identical
+	// "transient, not persisted" choice for comparable per-panel UI state.
+	const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(
+		() => new Set(),
+	);
+	// A search query bypasses folding — a match nested inside a collapsed
+	// container should still surface, matching the "always reveal" convention
+	// `findLayers`/`revealLayer` (FR-191) already use elsewhere in this panel.
+	const visibleRows = useMemo(
+		() => (filterActive ? allRows : foldCollapsed(allRows, collapsedIds)),
+		[allRows, filterActive, collapsedIds],
+	);
 	const rows = useMemo(
 		() =>
 			filterActive
 				? allRows.filter((row) => matchesLayerFilter(row.node, filter))
-				: allRows,
-		[allRows, filterActive, filter],
+				: visibleRows,
+		[allRows, filterActive, filter, visibleRows],
 	);
 	// FR-191 find layer: document-scoped results across every page.
 	const findResults = useMemo(
@@ -243,9 +289,36 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 	);
 
 	// FR-051 auto-reveal: bring the first selected row into view when the
-	// selection changes from elsewhere (canvas click). Virtualized rows that
-	// aren't mounted (and jsdom, which lacks scrollIntoView) are skipped.
+	// selection changes from elsewhere (canvas click). A node selected inside
+	// a collapsed group/frame would otherwise stay hidden from the panel, so
+	// first un-collapse every ancestor on the path to it (view-only, no
+	// command/undo entry) — mirrors the descendant-chain walk `isValidDrop`
+	// above already does with `parentOf`.
 	const firstSelectedId = selectedIds[0];
+	useEffect(() => {
+		if (!firstSelectedId) return;
+		const ir = ctx.getIR();
+		const ancestorIds: string[] = [];
+		let cursor: string | null = firstSelectedId;
+		while (cursor) {
+			const parentResult = parentOf(ir, cursor);
+			if (!parentResult) break;
+			ancestorIds.push(parentResult.parent.id);
+			cursor = parentResult.parent.id;
+		}
+		if (ancestorIds.length === 0) return;
+		setCollapsedIds((prev) => {
+			if (!ancestorIds.some((id) => prev.has(id))) return prev;
+			const next = new Set(prev);
+			for (const id of ancestorIds) next.delete(id);
+			return next;
+		});
+	}, [firstSelectedId, ctx]);
+
+	// Second pass: scroll the (now possibly just-revealed) row into view.
+	// Depends on `collapsedIds` too, so it re-runs once the effect above
+	// mounts the row — Virtualized rows that aren't mounted (and jsdom, which
+	// lacks scrollIntoView) are skipped.
 	useEffect(() => {
 		if (!firstSelectedId) return;
 		const el = document.querySelector(
@@ -254,7 +327,7 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 		if (el && typeof (el as HTMLElement).scrollIntoView === "function") {
 			(el as HTMLElement).scrollIntoView({ block: "nearest" });
 		}
-	}, [firstSelectedId]);
+	}, [firstSelectedId, collapsedIds]);
 
 	// FR-031 "Rename layer" from the node context menu: consume a rename
 	// request posted by the menu, reveal the row, and enter inline rename.
@@ -312,6 +385,19 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 		},
 		[ctx],
 	);
+
+	// FR-050 collapse/expand toggle: view-only, never a command/undo entry.
+	const handleToggleCollapse = useCallback((nodeId: string) => {
+		setCollapsedIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(nodeId)) {
+				next.delete(nodeId);
+			} else {
+				next.add(nodeId);
+			}
+			return next;
+		});
+	}, []);
 
 	// ── FR-052 drag and drop ──────────────────────────────────────────────────
 
@@ -494,6 +580,10 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 			const locked = node.locked === true;
 			const isRenaming = renamingId === node.id;
 			const drop = dropState?.targetId === node.id ? dropState : null;
+			// FR-050: only a container that actually has children is expandable —
+			// an empty group/frame gets no disclosure control.
+			const hasChildren = isContainerNode(node) && node.children.length > 0;
+			const collapsed = collapsedIds.has(node.id);
 			return (
 				<div
 					key={node.id}
@@ -545,8 +635,36 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 					}}
 					role="treeitem"
 					aria-selected={isSelected}
+					{...(hasChildren ? { "aria-expanded": !collapsed } : {})}
 					tabIndex={-1}
 				>
+					{hasChildren ? (
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-xs"
+							className="size-6 shrink-0 text-muted-foreground"
+							data-testid={`layer-row-${node.id}-toggle`}
+							aria-label={
+								collapsed
+									? t("canvas.layer.expand", "Expand layer")
+									: t("canvas.layer.collapse", "Collapse layer")
+							}
+							aria-expanded={!collapsed}
+							onClick={(e) => {
+								e.stopPropagation();
+								handleToggleCollapse(node.id);
+							}}
+						>
+							{collapsed ? (
+								<ChevronRight aria-hidden />
+							) : (
+								<ChevronDown aria-hidden />
+							)}
+						</Button>
+					) : (
+						<span className="size-6 shrink-0" aria-hidden="true" />
+					)}
 					{isRenaming ? (
 						<Input
 							autoFocus
@@ -632,6 +750,8 @@ export function LayerPanel({ id }: LayerPanelProps): React.JSX.Element | null {
 			handleSelect,
 			handleToggleVisibility,
 			handleToggleLock,
+			collapsedIds,
+			handleToggleCollapse,
 			ctx.kindInspectors,
 			renamingId,
 			dropState,

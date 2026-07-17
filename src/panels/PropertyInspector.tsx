@@ -11,7 +11,7 @@ import {
 	NumberField,
 	Section,
 	TextField,
-	useCommitPatch,
+	useCommitPatchAll,
 } from "./fields.js";
 import { AppearanceSection } from "./inspector/appearance-section.js";
 import { BrandComplianceWarnings } from "./inspector/brand-warnings.js";
@@ -29,7 +29,12 @@ export interface PropertyInspectorProps {
  * - single selection → full per-kind sections,
  * - multi selection → the shared Layer/Transform/Appearance sections over
  *   every selected node, with mixed values rendered as "Mixed" and commits
- *   fanning out as ONE batch (§10 contract via the fields' `contract` prop).
+ *   fanning out as ONE batch (§10 contract via the fields' `contract` prop);
+ *   when every selected node also shares one KIND (`summary.sharedKind`),
+ *   the kind-specific section (Fill/Stroke/CornerRadius for a shape, the
+ *   text fields, the media section, …) renders too, over the whole
+ *   selection, via the same mixed-value/one-batch mechanism (FR-070 gap
+ *   closure — a mixed-kind selection still only gets the shared sections).
  */
 export function PropertyInspector({
 	id,
@@ -44,7 +49,7 @@ export function PropertyInspector({
 	const nodes = summary.nodes;
 	const node = summary.primary;
 
-	const commitPatch = useCommitPatch();
+	const commitPatchAll = useCommitPatchAll();
 	const t = useCanvasT();
 
 	const rootClass =
@@ -136,7 +141,9 @@ export function PropertyInspector({
 				</Section>
 				<TransformSection nodes={nodes} />
 				<AppearanceSection nodes={nodes} t={t} />
-				{multi ? null : renderTypeSpecificFields(node, commitPatch, ctx, t)}
+				{summary.sharedKind !== null
+					? renderTypeSpecificFields(nodes, commitPatchAll, ctx, t)
+					: null}
 			</div>
 		</section>
 	);

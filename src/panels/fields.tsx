@@ -431,3 +431,63 @@ export function useCommitPatch(): CommitPatch {
 		[ctx],
 	);
 }
+
+/** Applies a PER-NODE patch across every given node, as one undo entry. */
+export type CommitPatchAll = (
+	nodes: readonly CanvasNode[],
+	build: (node: CanvasNode) => Record<string, unknown>,
+	label?: string,
+) => void;
+
+/**
+ * Multi-node counterpart of {@link useCommitPatch} (FR-070 B-12 multi-kind
+ * sections): commits `build(node)` for every node in `nodes` as ONE undo
+ * entry — a `commitBatch` when there's more than one node, a plain `commit`
+ * otherwise. Continuous fields already get this "one batch across the whole
+ * selection" behavior from the `contract` prop (`useFieldContract` below,
+ * fed `nodes` instead of a single-node array); this is the same guarantee
+ * for DISCRETE controls (selects, switches, buttons) that bypass the field
+ * contract, generalizing the pattern `AppearanceSection`'s `patchAll` and
+ * `TransformSection`'s `batchPatch` each already established locally.
+ */
+export function useCommitPatchAll(): CommitPatchAll {
+	const ctx = useCanvasStores();
+	return useCallback<CommitPatchAll>(
+		(nodes, build, label) => {
+			const cmds = nodes.map(
+				(node) =>
+					({
+						type: "node.update",
+						nodeId: node.id,
+						kind: node.type,
+						patch: build(node),
+					}) as CanvasAnyNodeUpdateCommand,
+			);
+			const first = cmds[0];
+			if (!first) return;
+			if (cmds.length === 1) ctx.commit(first);
+			else ctx.commitBatch(cmds, label ?? "Update");
+		},
+		[ctx],
+	);
+}
+
+/**
+ * Shared-value/mixed reduction over a selection (FR-070 multi-editing):
+ * displays the FIRST node's value; `mixed` flags when another selected node
+ * disagrees — the exact semantics `NumberField`/`TextField`'s `mixed` prop
+ * expect. Generalizes the per-file `shared()` helper already duplicated
+ * (identically) in `PropertyInspector.tsx` and `transform-section.tsx`;
+ * kind-specific sections (rect/ellipse/.../text/image/…) are the third-plus
+ * call site, so the shared, generic version lives here for them to reuse.
+ * Callers must only invoke this over a NON-EMPTY `nodes` array — every
+ * kind-specific section already gates on the selection being non-empty
+ * before rendering.
+ */
+export function sharedFieldValue<T>(
+	nodes: readonly CanvasNode[],
+	get: (n: CanvasNode) => T,
+): { value: T; mixed: boolean } {
+	const v = get(nodes[0] as CanvasNode);
+	return { value: v, mixed: nodes.some((n) => get(n) !== v) };
+}
