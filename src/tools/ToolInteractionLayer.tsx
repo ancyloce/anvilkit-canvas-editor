@@ -4,8 +4,8 @@ import type Konva from "konva";
 import { useEffect, useMemo } from "react";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { getStagePointer } from "./get-stage-pointer.js";
-import { defaultToolRegistry } from "./tool-registry.js";
 import { shouldReturnToSelect } from "./tool-completion.js";
+import { defaultToolRegistry } from "./tool-registry.js";
 import type { Tool, ToolContext, ToolRegistry } from "./tool-types.js";
 
 export interface ToolInteractionLayerProps {
