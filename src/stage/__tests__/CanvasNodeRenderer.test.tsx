@@ -1216,6 +1216,62 @@ describe("CanvasNodeRenderer — FR-095 asset placeholders", () => {
 		expect(textLabels()).toContain("Image failed to load");
 	});
 
+	it("image with a known-unsupported mimeType shows 'Unsupported image format' chrome (FR-095)", () => {
+		useImageMock.mockReturnValueOnce([null, "failed"]);
+		const image = createImage({
+			id: "i-unsupported",
+			bounds: { width: 100, height: 80 },
+			assetId: "a1",
+		});
+		render(
+			<CanvasStudioContext.Provider
+				value={{} as unknown as CanvasStudioContextValue}
+			>
+				<CanvasAssetsContext.Provider
+					value={{
+						a1: {
+							id: "a1",
+							uri: "https://example.com/scan.tif",
+							mimeType: "image/tiff",
+						},
+					}}
+				>
+					<CanvasNodeRenderer node={image} />
+				</CanvasAssetsContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+		expect(textLabels()).toContain("Unsupported image format");
+		expect(textLabels()).not.toContain("Image failed to load");
+	});
+
+	it("a KNOWN-supported mimeType still shows the generic load-error chrome, not unsupported", () => {
+		useImageMock.mockReturnValueOnce([null, "failed"]);
+		const image = createImage({
+			id: "i-err-known-type",
+			bounds: { width: 100, height: 80 },
+			assetId: "a1",
+		});
+		render(
+			<CanvasStudioContext.Provider
+				value={{} as unknown as CanvasStudioContextValue}
+			>
+				<CanvasAssetsContext.Provider
+					value={{
+						a1: {
+							id: "a1",
+							uri: "https://example.com/broken.png",
+							mimeType: "image/png",
+						},
+					}}
+				>
+					<CanvasNodeRenderer node={image} />
+				</CanvasAssetsContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+		expect(textLabels()).toContain("Image failed to load");
+		expect(textLabels()).not.toContain("Unsupported image format");
+	});
+
 	it("image still loading shows the loading chrome in the editor", () => {
 		useImageMock.mockReturnValueOnce([null, "loading"]);
 		const image = createImage({

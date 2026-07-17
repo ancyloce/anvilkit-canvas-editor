@@ -802,14 +802,21 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 	// serializer (ASSET_UNRESOLVED warning + skip).
 	if (!asset || status === "failed") {
 		if (!isInteractive) return null;
+		// Distinct "unsupported format" state (vs. the generic "load error"):
+		// a browser's <img> onerror carries no reason code, so a genuinely
+		// unsupported MIME type can only be classified PROACTIVELY from
+		// `asset.mimeType`, not inferred from the failure itself.
+		const unsupported = asset ? isUnsupportedImageMime(asset.mimeType) : false;
 		return (
 			<AssetPlaceholder
 				node={node}
-				state={asset ? "error" : "missing"}
+				state={!asset ? "missing" : unsupported ? "unsupported" : "error"}
 				label={
-					asset
-						? t("canvas.image.loadError", "Image failed to load")
-						: t("canvas.image.missingAsset", "Missing image")
+					!asset
+						? t("canvas.image.missingAsset", "Missing image")
+						: unsupported
+							? t("canvas.image.unsupportedFormat", "Unsupported image format")
+							: t("canvas.image.loadError", "Image failed to load")
 				}
 			/>
 		);
@@ -1023,8 +1030,10 @@ function MediaPlaceholderChrome({
 
 /**
  * FR-095 image/svg asset states. `missing`/`error` use a destructive tint so
- * a broken reference reads as a problem, not content; `loading` is a quiet
- * neutral shimmer-less box (it usually lives for a frame or two).
+ * a broken reference reads as a problem, not content; `unsupported` uses an
+ * amber warning tint — a known, expected limitation, not a broken reference;
+ * `loading` is a quiet neutral shimmer-less box (it usually lives for a
+ * frame or two).
  */
 const ASSET_PLACEHOLDER_STYLE = {
 	missing: {
@@ -1037,12 +1046,40 @@ const ASSET_PLACEHOLDER_STYLE = {
 		stroke: "#dc2626",
 		labelColor: "#b91c1c",
 	},
+	unsupported: {
+		fill: "rgba(217, 119, 6, 0.06)",
+		stroke: "#d97706",
+		labelColor: "#b45309",
+	},
 	loading: {
 		fill: "rgba(120, 120, 120, 0.06)",
 		stroke: "#9ca3af",
 		labelColor: "#6b7280",
 	},
 } as const;
+
+/**
+ * FR-095: MIME types every target browser can decode as an `<img>`. Absent
+ * from this set (and present on the asset) proactively classifies a load
+ * failure as "unsupported format" rather than the generic "load error" —
+ * the DOM's `<img onerror>` carries no reason code, so this is the only way
+ * to distinguish the two. `asset.mimeType` unset (unknown) never classifies
+ * as unsupported — only a load failure with a KNOWN-bad type does.
+ */
+const SUPPORTED_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
+	"image/png",
+	"image/jpeg",
+	"image/gif",
+	"image/webp",
+	"image/svg+xml",
+	"image/avif",
+	"image/bmp",
+	"image/x-icon",
+]);
+
+function isUnsupportedImageMime(mimeType: string | undefined): boolean {
+	return mimeType !== undefined && !SUPPORTED_IMAGE_MIME_TYPES.has(mimeType);
+}
 
 /**
  * FR-170 "asset missing" toast. Firing a toast directly inside a render
