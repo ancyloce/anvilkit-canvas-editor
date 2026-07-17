@@ -170,6 +170,43 @@ describe("createCanvasEditorActions — delegation", () => {
 		expect(h.commits).toHaveLength(0);
 	});
 
+	it("toggleLockSelection locks unlocked nodes as one batch, then clears the selection (FR-054)", () => {
+		const { h, actions } = makeActionsHarness();
+		h.studioCtx.selectionStore.getState().setSelection(["a", "b"]);
+		const next = actions.toggleLockSelection();
+		expect(next).toBe(true);
+		expect(h.studioCtx.commitBatch).toHaveBeenCalledTimes(1);
+		expect(
+			h.commits.every(
+				(c) => (c as { patch: { locked?: boolean } }).patch.locked === true,
+			),
+		).toBe(true);
+		// Locked nodes are un-hittable — locking clears the selection.
+		expect(h.studioCtx.selectionStore.getState().selectedIds).toHaveLength(0);
+	});
+
+	it("toggleLockSelection unlocks an already-locked node with a plain commit, selection kept", () => {
+		const { h, actions } = makeActionsHarness();
+		h.studioCtx.selectionStore.getState().setSelection(["c"]);
+		const next = actions.toggleLockSelection();
+		expect(next).toBe(false);
+		expect(h.studioCtx.commit).toHaveBeenCalledTimes(1);
+		expect(h.studioCtx.commitBatch).not.toHaveBeenCalled();
+		expect(h.commits[0]).toMatchObject({
+			type: "node.update",
+			nodeId: "c",
+			patch: { locked: false },
+		});
+		expect(h.studioCtx.selectionStore.getState().selectedIds).toEqual(["c"]);
+	});
+
+	it("toggleLockSelection is null for an empty selection", () => {
+		const { h, actions } = makeActionsHarness();
+		const next = actions.toggleLockSelection();
+		expect(next).toBeNull();
+		expect(h.commits).toHaveLength(0);
+	});
+
 	it("renameNode commits node.update for the target id regardless of selection", () => {
 		const { h, actions } = makeActionsHarness();
 		// "b" is not selected — rename targets it directly, not the selection.
