@@ -34,7 +34,9 @@ const CATEGORY_LABELS: Record<string, [string, string]> = {
 	tools: ["canvas.shortcutHelp.categoryTools", "Tools"],
 };
 
-const subscribeToPlatform = (): (() => void) => () => {};
+// The platform never changes at runtime, so the subscribe is a no-op that
+// returns a no-op unsubscribe (`useSyncExternalStore` requires a function).
+const subscribeToPlatform = (): (() => void) => () => undefined;
 
 /**
  * FR-042 shortcut help (AC-004): searchable, category-grouped, with
