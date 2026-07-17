@@ -88,6 +88,30 @@ describe("copySelectionImpl", () => {
 		expect(await copySelectionImpl(h.studioCtx)).toBe(0);
 		expect(internalClipboardStore.getState().payload).toBeNull();
 	});
+
+	it("§11.1: a host clipboard adapter's write() wins over navigator.clipboard", async () => {
+		const { h } = setup();
+		const navigatorWrite = vi.fn(async () => undefined);
+		vi.stubGlobal("navigator", { clipboard: { writeText: navigatorWrite } });
+		const adapterWrite = vi.fn(async () => true);
+		h.studioCtx.clipboard = { read: vi.fn(), write: adapterWrite };
+		h.studioCtx.selectionStore.getState().setSelection(["a"]);
+		await copySelectionImpl(h.studioCtx);
+		expect(adapterWrite).toHaveBeenCalledTimes(1);
+		expect(navigatorWrite).not.toHaveBeenCalled();
+		const written = JSON.parse(adapterWrite.mock.calls[0]?.[0] as string);
+		expect(written.nodes.map((n: { id: string }) => n.id)).toEqual(["a"]);
+	});
+
+	it("§11.1: an adapter write() failure fires the same unavailable toast as a failed system write", async () => {
+		const { h, toasts } = setup();
+		h.studioCtx.clipboard = { read: vi.fn(), write: vi.fn(async () => false) };
+		h.studioCtx.selectionStore.getState().setSelection(["a"]);
+		await copySelectionImpl(h.studioCtx, {
+			add: (input) => toasts.push(input),
+		});
+		expect(toasts[0]?.type).toBe("info");
+	});
 });
 
 describe("pasteImpl", () => {
@@ -152,6 +176,31 @@ describe("pasteImpl", () => {
 			},
 		});
 		await pasteImpl(h.studioCtx);
+		expect(h.commits.map((c) => c.type)).toEqual(["asset.put", "node.create"]);
+	});
+
+	it("§11.1: a host clipboard adapter's read() wins over navigator.clipboard", async () => {
+		const { h } = setup();
+		const foreign: CanvasClipboardPayload = {
+			version: 1,
+			sourceDocumentId: "doc-OTHER",
+			nodes: [
+				createImage({
+					id: "img",
+					assetId: "asset-x",
+					bounds: { width: 10, height: 10 },
+				}),
+			],
+			assetRefs: { "asset-x": { id: "asset-x", uri: "https://x/a.png" } },
+			bounds: { x: 0, y: 0, width: 10, height: 10 },
+		};
+		const navigatorRead = vi.fn(async () => "should never be read");
+		vi.stubGlobal("navigator", { clipboard: { readText: navigatorRead } });
+		const adapterRead = vi.fn(async () => JSON.stringify(foreign));
+		h.studioCtx.clipboard = { read: adapterRead, write: vi.fn() };
+		await pasteImpl(h.studioCtx);
+		expect(adapterRead).toHaveBeenCalledTimes(1);
+		expect(navigatorRead).not.toHaveBeenCalled();
 		expect(h.commits.map((c) => c.type)).toEqual(["asset.put", "node.create"]);
 	});
 

@@ -168,9 +168,12 @@ export async function copySelectionImpl(
 	const payload = buildClipboardPayload(ctx);
 	if (!payload) return 0;
 	internalClipboardStore.getState().setPayload(payload);
-	const wroteToSystemClipboard = await writeSystemClipboard(
-		JSON.stringify(payload),
-	);
+	const text = JSON.stringify(payload);
+	// §11.1: a host-supplied clipboard adapter wins over the built-in
+	// `navigator.clipboard` wrapper when present.
+	const wroteToSystemClipboard = ctx.clipboard
+		? await ctx.clipboard.write(text)
+		: await writeSystemClipboard(text);
 	if (!wroteToSystemClipboard) {
 		notifySystemClipboardUnavailable(toaster, resolveT(ctx));
 	}
@@ -206,7 +209,11 @@ export async function pasteImpl(
 	toaster: CanvasToaster = NOOP_CANVAS_TOASTER,
 ): Promise<string[]> {
 	let payload: CanvasClipboardPayload | null = null;
-	const text = await readSystemClipboard();
+	// §11.1: a host-supplied clipboard adapter wins over the built-in
+	// `navigator.clipboard` wrapper when present.
+	const text = ctx.clipboard
+		? await ctx.clipboard.read()
+		: await readSystemClipboard();
 	// `null` means the read genuinely failed (missing API, permission denied,
 	// insecure context) — distinct from `""` (system clipboard IS available,
 	// just empty). Only the former is "system clipboard unavailable".
