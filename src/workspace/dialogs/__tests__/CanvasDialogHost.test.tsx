@@ -6,8 +6,8 @@ import {
 	screen,
 	waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
 import { useEffect } from "react";
+import { afterEach, describe, expect, it } from "vitest";
 import {
 	type CanvasDialogs,
 	useCanvasDialogs,
