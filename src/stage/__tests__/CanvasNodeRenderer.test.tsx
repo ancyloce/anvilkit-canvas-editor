@@ -1,4 +1,5 @@
 import {
+	type CanvasImageNode,
 	createAudio,
 	createCanvasIR,
 	createEllipse,
@@ -15,7 +16,7 @@ import {
 	createText,
 	createVideo,
 } from "@anvilkit/canvas-core";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -55,11 +56,18 @@ import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
 } from "@/context/canvas-studio-context.js";
+import {
+	CanvasToastContext,
+	type CanvasToastInput,
+} from "@/context/toast-context.js";
 import { createAiJobStore } from "@/stores/ai-job-store.js";
 import type { BrandKit } from "../../brand/brand-kit.js";
 import { CanvasAssetsContext } from "../CanvasAssetsContext.js";
 import { CanvasBrandKitContext } from "../CanvasBrandKitContext.js";
-import { CanvasNodeRenderer } from "../CanvasNodeRenderer.js";
+import {
+	CanvasNodeRenderer,
+	resetMissingAssetToastForTests,
+} from "../CanvasNodeRenderer.js";
 
 function callsOfType(type: string): ElementCall[] {
 	return calls.filter((c) => c.type === type);
@@ -293,6 +301,114 @@ describe("CanvasNodeRenderer", () => {
 			</CanvasAssetsContext.Provider>,
 		);
 		expect(callsOfType("Image")[0]?.props.crop).toBeUndefined();
+	});
+
+	it("honors a non-stretch fit mode when a crop is also present (FR-094)", () => {
+		// 200×100 natural image, cropped to a 100×100 square sub-rect, placed
+		// with fitMode "fit" inside a 100×100 node. The crop must compose
+		// within the fitted (letterboxed) placement — not force a stretch —
+		// mirroring core's SVG serializer, which layers the crop clip-path on
+		// top of the fit-mode placement (see `serialize/svg.ts`).
+		const fakeImg = {
+			src: "data:image/png;base64,XXX",
+			width: 200,
+			height: 100,
+		} as HTMLImageElement;
+		useImageMock.mockReturnValueOnce([fakeImg, "loaded"]);
+		const image = {
+			...createImage({
+				id: "i1",
+				bounds: { width: 100, height: 100 },
+				assetId: "a1",
+				crop: { x: 50, y: 0, width: 100, height: 100 },
+			}),
+			fitMode: "fit",
+		} as CanvasImageNode;
+		render(
+			<CanvasAssetsContext.Provider
+				value={{ a1: { id: "a1", uri: "data:image/png;base64,XXX" } }}
+			>
+				<CanvasNodeRenderer node={image} />
+			</CanvasAssetsContext.Provider>,
+		);
+		const p = callsOfType("Image")[0]?.props;
+		// fit scale = min(100/200, 100/100) = 0.5; the crop (a source-pixel
+		// sub-rect) is projected through that same scale, not stretched to
+		// fill the full 100×100 bounds (the pre-fix bug).
+		expect(p?.width).toBe(50);
+		expect(p?.height).toBe(50);
+		expect(p?.x).toBe(25);
+		expect(p?.y).toBe(25);
+		expect(p?.crop).toEqual({ x: 50, y: 0, width: 100, height: 100 });
+		// Still wrapped in the fit-mode's bounds clip, like the no-crop case.
+		expect(
+			callsOfType("Group").some(
+				(c) => c.props.clipWidth === 100 && c.props.clipHeight === 100,
+			),
+		).toBe(true);
+	});
+
+	it("composes an explicit crop within fitMode 'fill's covering placement", () => {
+		// 200×100 natural image covering a 100×100 node (fill scale = 1, so
+		// the whole image is centered and overhangs left/right by 50 each);
+		// a crop then selects a sub-rect of the SOURCE image, projected
+		// through that same cover scale.
+		const fakeImg = {
+			src: "data:image/png;base64,XXX",
+			width: 200,
+			height: 100,
+		} as HTMLImageElement;
+		useImageMock.mockReturnValueOnce([fakeImg, "loaded"]);
+		const image = {
+			...createImage({
+				id: "i1",
+				bounds: { width: 100, height: 100 },
+				assetId: "a1",
+				crop: { x: 20, y: 10, width: 40, height: 20 },
+			}),
+			fitMode: "fill",
+		} as CanvasImageNode;
+		render(
+			<CanvasAssetsContext.Provider
+				value={{ a1: { id: "a1", uri: "data:image/png;base64,XXX" } }}
+			>
+				<CanvasNodeRenderer node={image} />
+			</CanvasAssetsContext.Provider>,
+		);
+		const p = callsOfType("Image")[0]?.props;
+		expect(p?.width).toBe(40);
+		expect(p?.height).toBe(20);
+		expect(p?.x).toBe(-30);
+		expect(p?.y).toBe(10);
+		expect(p?.crop).toEqual({ x: 20, y: 10, width: 40, height: 20 });
+	});
+
+	it("fitMode 'stretch' plus crop is unchanged (regression)", () => {
+		const fakeImg = { src: "data:image/png;base64,XXX" } as HTMLImageElement;
+		useImageMock.mockReturnValueOnce([fakeImg, "loaded"]);
+		const image = {
+			...createImage({
+				id: "i1",
+				bounds: { width: 100, height: 100 },
+				assetId: "a1",
+				crop: { x: 10, y: 20, width: 30, height: 40 },
+			}),
+			fitMode: "stretch",
+		} as CanvasImageNode;
+		render(
+			<CanvasAssetsContext.Provider
+				value={{ a1: { id: "a1", uri: "data:image/png;base64,XXX" } }}
+			>
+				<CanvasNodeRenderer node={image} />
+			</CanvasAssetsContext.Provider>,
+		);
+		const p = callsOfType("Image")[0]?.props;
+		// Stretch draws at the full node bounds; the crop passes straight
+		// through to Konva's native source-rect crop, unscaled — exactly the
+		// pre-existing behavior.
+		expect(p?.width).toBe(100);
+		expect(p?.height).toBe(100);
+		expect(p?.crop).toEqual({ x: 10, y: 20, width: 30, height: 40 });
 	});
 
 	it("renders nothing for an svg node whose assetId is missing", () => {
@@ -631,6 +747,7 @@ function beforeEachReset() {
 		calls.length = 0;
 		useImageMock.mockReset();
 		useImageMock.mockImplementation(() => [null, "loading"]);
+		resetMissingAssetToastForTests();
 	});
 }
 
@@ -1139,6 +1256,125 @@ describe("CanvasNodeRenderer — FR-095 asset placeholders", () => {
 		render(<CanvasNodeRenderer node={image} />);
 		expect(callsOfType("Text")).toHaveLength(0);
 		expect(callsOfType("Rect")).toHaveLength(0);
+	});
+});
+
+/**
+ * FR-170 asset-missing toast: `AssetPlaceholder` chrome above (FR-095) is a
+ * pure render, so a real toast side effect can't live there — this covers
+ * the `useEffect`-driven `useMissingAssetToast` seam instead (dedupe +
+ * batching), not the visual chrome.
+ */
+describe("CanvasNodeRenderer — FR-170 asset missing toast", () => {
+	beforeEachReset();
+	afterEach(() => {
+		cleanup();
+	});
+
+	function renderWithToaster(
+		nodes: readonly Parameters<typeof CanvasNodeRenderer>[0]["node"][],
+		toasts: CanvasToastInput[],
+	) {
+		return render(
+			<CanvasStudioContext.Provider
+				value={{} as unknown as CanvasStudioContextValue}
+			>
+				<CanvasToastContext.Provider
+					value={{ add: (input) => toasts.push(input) }}
+				>
+					{nodes.map((n) => (
+						<CanvasNodeRenderer key={n.id} node={n} />
+					))}
+				</CanvasToastContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+	}
+
+	it("fires one warning toast, after a short batch window, when a single image goes missing", async () => {
+		const toasts: CanvasToastInput[] = [];
+		const image = createImage({
+			id: "i-missing-toast",
+			bounds: { width: 100, height: 80 },
+			assetId: "nope",
+		});
+		renderWithToaster([image], toasts);
+		await waitFor(() => {
+			expect(toasts).toHaveLength(1);
+		});
+		expect(toasts[0]?.type).toBe("warning");
+		expect(toasts[0]?.title).toBe("An asset is missing");
+	});
+
+	it("batches several simultaneously-missing nodes (image + svg) into ONE combined toast", async () => {
+		const toasts: CanvasToastInput[] = [];
+		const nodes = [
+			createImage({
+				id: "batch-1",
+				bounds: { width: 10, height: 10 },
+				assetId: "nope",
+			}),
+			createImage({
+				id: "batch-2",
+				bounds: { width: 10, height: 10 },
+				assetId: "nope",
+			}),
+			createSvg({
+				id: "batch-3",
+				bounds: { width: 10, height: 10 },
+				assetId: "nope",
+			}),
+		];
+		renderWithToaster(nodes, toasts);
+		await waitFor(() => {
+			expect(toasts).toHaveLength(1);
+		});
+		expect(toasts[0]?.title).toBe("3 assets are missing");
+	});
+
+	it("does not toast for a load FAILURE (status: failed) — only for a genuinely missing reference", async () => {
+		useImageMock.mockReturnValueOnce([null, "failed"]);
+		const toasts: CanvasToastInput[] = [];
+		const image = createImage({
+			id: "i-err-no-toast",
+			bounds: { width: 100, height: 80 },
+			assetId: "a1",
+		});
+		render(
+			<CanvasStudioContext.Provider
+				value={{} as unknown as CanvasStudioContextValue}
+			>
+				<CanvasToastContext.Provider
+					value={{ add: (input) => toasts.push(input) }}
+				>
+					<CanvasAssetsContext.Provider
+						value={{ a1: { id: "a1", uri: "https://example.com/broken.png" } }}
+					>
+						<CanvasNodeRenderer node={image} />
+					</CanvasAssetsContext.Provider>
+				</CanvasToastContext.Provider>
+			</CanvasStudioContext.Provider>,
+		);
+		// Give the batch window a chance to fire — it must not.
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		expect(toasts).toHaveLength(0);
+	});
+
+	it("does not toast outside the editor (export/rasterize path — no CanvasStudioContext)", async () => {
+		const toasts: CanvasToastInput[] = [];
+		const image = createImage({
+			id: "i-export-no-toast",
+			bounds: { width: 100, height: 80 },
+			assetId: "nope",
+		});
+		render(
+			<CanvasToastContext.Provider
+				value={{ add: (input) => toasts.push(input) }}
+			>
+				<CanvasNodeRenderer node={image} />
+			</CanvasToastContext.Provider>,
+		);
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		expect(toasts).toHaveLength(0);
 	});
 });
 

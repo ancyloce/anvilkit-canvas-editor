@@ -56,6 +56,10 @@ import {
 	CanvasStudioContext,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
+import {
+	type CanvasToaster,
+	useCanvasToaster,
+} from "../context/toast-context.js";
 import { measureGlyphWidth } from "../text/canvas-glyph-measurer.js";
 import { useFontStatus } from "../text/font-status.js";
 import { getCachedLayout } from "../text/layout-cache.js";
@@ -788,6 +792,10 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 	const t = useCanvasT();
 	const asset = useCanvasAsset(node.assetId);
 	const [image, status] = useImage(asset?.uri ?? "");
+	// FR-170: a toast for the "unresolvable asset reference" case specifically
+	// — NOT the `status === "failed"` (load error) case below, which is a
+	// different, already-visible failure mode.
+	useMissingAssetToast(node.id, !asset, isInteractive);
 	// FR-095: a missing asset or failed load must never disappear silently.
 	// The live editor shows selectable placeholder chrome; export/rasterize
 	// passes (isInteractive false) still emit nothing, matching core's SVG
@@ -817,15 +825,12 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 		);
 	}
 	const { width, height } = node.bounds;
-	// FR-094 fit modes (B-02/B-12). An explicit `crop` keeps the legacy
-	// stretch+crop path (the editor does not compose crop with fit modes —
-	// the SVG exporter is the exact form; see core `serialize/svg.ts`).
-	const fitMode = node.crop ? "stretch" : (node.fitMode ?? "stretch");
-	if (fitMode === "stretch" || fitMode === "fill") {
-		const crop =
-			fitMode === "fill"
-				? centerCoverCrop(image.width, image.height, width, height)
-				: node.crop;
+	// FR-094 fit modes (B-02/B-12). `stretch` (default/absent) keeps the
+	// legacy single-Image path: `node.crop` (a source-pixel sub-rect, see
+	// `crop-actions.ts`) feeds Konva's native `crop` + destination
+	// width/height directly — Konva does the (possibly non-uniform) scale.
+	const fitMode = node.fitMode ?? "stretch";
+	if (fitMode === "stretch") {
 		return (
 			<AdjustedKonvaImage
 				{...commonProps(node)}
@@ -833,25 +838,48 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 				image={image}
 				width={width}
 				height={height}
-				{...(crop ? { crop } : {})}
+				{...(node.crop ? { crop: node.crop } : {})}
 			/>
 		);
 	}
-	// fit / original / center: natural-ratio draw inside a bounds clip.
-	let dw = image.width;
-	let dh = image.height;
-	let dx = 0;
-	let dy = 0;
-	if (fitMode === "fit") {
-		const scale = Math.min(width / image.width, height / image.height);
-		dw = image.width * scale;
-		dh = image.height * scale;
-		dx = (width - dw) / 2;
-		dy = (height - dh) / 2;
-	} else if (fitMode === "center") {
-		dx = (width - dw) / 2;
-		dy = (height - dh) / 2;
+	// `fill` WITHOUT a crop keeps its own dedicated path: the desired "cover"
+	// framing is achieved by asking Konva to crop straight to the covering
+	// source rect, so the image already draws at exactly width×height with no
+	// clip wrapper needed.
+	if (fitMode === "fill" && !node.crop) {
+		const crop = centerCoverCrop(image.width, image.height, width, height);
+		return (
+			<AdjustedKonvaImage
+				{...commonProps(node)}
+				adjustments={node.adjustments}
+				image={image}
+				width={width}
+				height={height}
+				crop={crop}
+			/>
+		);
 	}
+	// fit / original / center, and fill+crop (FR-094): compute the fit mode's
+	// own uniform placement scale for the WHOLE image first — exactly as the
+	// no-crop case above — then, when `node.crop` is also present, project
+	// that source-pixel sub-rect through the SAME scale so it composes within
+	// the fitted image space (matching core's SVG serializer, which layers a
+	// crop clip-path on top of the fit-mode placement; see
+	// `serialize/svg.ts`). The crop rectangle itself is never recomputed —
+	// only how it combines with the fit-mode scale/offset. Always clipped to
+	// bounds since a crop or an aspect-preserving/covering placement can
+	// extend past the frame edges.
+	let scale = 1;
+	if (fitMode === "fit") {
+		scale = Math.min(width / image.width, height / image.height);
+	} else if (fitMode === "fill") {
+		scale = Math.max(width / image.width, height / image.height);
+	}
+	const dw = image.width * scale;
+	const dh = image.height * scale;
+	const dx = fitMode === "original" ? 0 : (width - dw) / 2;
+	const dy = fitMode === "original" ? 0 : (height - dh) / 2;
+	const crop = node.crop;
 	return (
 		<Group
 			{...commonProps(node)}
@@ -863,10 +891,11 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 			<AdjustedKonvaImage
 				adjustments={node.adjustments}
 				image={image}
-				x={dx}
-				y={dy}
-				width={dw}
-				height={dh}
+				x={crop ? dx + crop.x * scale : dx}
+				y={crop ? dy + crop.y * scale : dy}
+				width={crop ? crop.width * scale : dw}
+				height={crop ? crop.height * scale : dh}
+				{...(crop ? { crop } : {})}
 			/>
 		</Group>
 	);
@@ -890,6 +919,10 @@ function CanvasSvgNodeRenderer({ node }: { node: CanvasSvgNode }) {
 	const t = useCanvasT();
 	const asset = useCanvasAsset(node.assetId);
 	const [image, status] = useImage(asset?.uri ?? "");
+	// FR-170: same "unresolvable asset reference" toast the image renderer
+	// fires — shares the module-level batch so a mixed image+svg document
+	// still coalesces into one toast.
+	useMissingAssetToast(node.id, !asset, isInteractive);
 	// FR-095: same missing/error/loading treatment as image nodes — editor-only
 	// chrome, never emitted by export/rasterize passes.
 	if (!asset || status === "failed") {
@@ -1010,6 +1043,102 @@ const ASSET_PLACEHOLDER_STYLE = {
 		labelColor: "#6b7280",
 	},
 } as const;
+
+/**
+ * FR-170 "asset missing" toast. Firing a toast directly inside a render
+ * function is a side-effect-in-render anti-pattern, so the actual
+ * `toaster.add` call is driven by {@link useMissingAssetToast} below — a
+ * `useEffect` that watches the "missing" transition, not the render path.
+ *
+ * A document that loads with many broken references (e.g. 20 images) would
+ * otherwise fire 20 near-simultaneous toasts, so pending node ids collect in
+ * a module-level batch — shared by every `CanvasImageNodeRenderer`/
+ * `CanvasSvgNodeRenderer` instance in the same tab, mirroring the
+ * module-singleton posture `text/font-status.ts`'s registry already uses —
+ * and flush as ONE toast (singular or "{n} assets are missing") after a
+ * short window. The window is short enough that it never delays a genuinely
+ * isolated single-asset case by more than a beat.
+ */
+const MISSING_ASSET_BATCH_WINDOW_MS = 50;
+let missingAssetBatchIds = new Set<string>();
+let missingAssetBatchTimer: ReturnType<typeof setTimeout> | null = null;
+let missingAssetBatchToaster: CanvasToaster | null = null;
+let missingAssetBatchT: ((key: string, fallback?: string) => string) | null =
+	null;
+
+function flushMissingAssetBatch(): void {
+	const ids = missingAssetBatchIds;
+	missingAssetBatchIds = new Set();
+	missingAssetBatchTimer = null;
+	const toaster = missingAssetBatchToaster;
+	const t =
+		missingAssetBatchT ?? ((_key: string, fallback?: string) => fallback ?? "");
+	if (!toaster || ids.size === 0) return;
+	if (ids.size === 1) {
+		toaster.add({
+			type: "warning",
+			title: t("canvas.toast.assetMissing", "An asset is missing"),
+		});
+		return;
+	}
+	toaster.add({
+		type: "warning",
+		title: t("canvas.toast.assetsMissing", "{n} assets are missing").replace(
+			"{n}",
+			String(ids.size),
+		),
+	});
+}
+
+function queueMissingAssetToast(
+	nodeId: string,
+	toaster: CanvasToaster,
+	t: (key: string, fallback?: string) => string,
+): void {
+	missingAssetBatchIds.add(nodeId);
+	missingAssetBatchToaster = toaster;
+	missingAssetBatchT = t;
+	if (missingAssetBatchTimer !== null) return;
+	missingAssetBatchTimer = setTimeout(
+		flushMissingAssetBatch,
+		MISSING_ASSET_BATCH_WINDOW_MS,
+	);
+}
+
+/** Test seam: reset the module batch state between cases. */
+export function resetMissingAssetToastForTests(): void {
+	if (missingAssetBatchTimer !== null) clearTimeout(missingAssetBatchTimer);
+	missingAssetBatchTimer = null;
+	missingAssetBatchIds = new Set();
+	missingAssetBatchToaster = null;
+	missingAssetBatchT = null;
+}
+
+/**
+ * Fire the batched "asset missing" toast exactly once per node-becomes-
+ * missing EVENT — not on every render while a node stays missing, and not
+ * again when a later re-render finds the same still-missing state. The dedup
+ * ref is scoped to this component instance (one per node), reset as soon as
+ * the asset resolves so a later, genuinely NEW missing episode still toasts.
+ */
+function useMissingAssetToast(
+	nodeId: string,
+	missing: boolean,
+	isInteractive: boolean,
+): void {
+	const toaster = useCanvasToaster();
+	const t = useCanvasT();
+	const toastedRef = useRef(false);
+	useEffect(() => {
+		if (!isInteractive || !missing) {
+			toastedRef.current = false;
+			return;
+		}
+		if (toastedRef.current) return;
+		toastedRef.current = true;
+		queueMissingAssetToast(nodeId, toaster, t);
+	}, [isInteractive, missing, nodeId, toaster, t]);
+}
 
 /**
  * Selectable editor-chrome placeholder for an image/svg node whose asset is
