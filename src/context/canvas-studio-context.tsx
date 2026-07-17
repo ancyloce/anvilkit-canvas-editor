@@ -1,6 +1,10 @@
 "use client";
 
-import type { CanvasIR, CanvasRuntime } from "@anvilkit/canvas-core";
+import type {
+	CanvasExportWarning,
+	CanvasIR,
+	CanvasRuntime,
+} from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { createContext, use } from "react";
 import type {
@@ -51,6 +55,35 @@ export type CanvasIRGetter = () => CanvasIR;
  * locale-selected catalog via `<CanvasWorkspace messages>`.
  */
 export type CanvasT = (key: string, fallback?: string) => string;
+
+/**
+ * One artifact from a completed export — PRD §11.1 `onExport` / §11.2
+ * `CanvasStudioActions.export()`. Canonical home for
+ * `header/export-action.ts`'s identically-named type (re-exported from there
+ * unchanged, so `@anvilkit/canvas-editor`'s public import path is untouched):
+ * `header/` (rank 2, editor-surfaces) is where the export machinery that
+ * PRODUCES this shape lives, but {@link CanvasStudioContextValue.onExport}
+ * below needs it on THIS file's context value, and `check-layering.mjs`
+ * ranks `context/` (rank 1, interaction-core) below `header/` — this file may
+ * never import FROM header/, only the reverse. Defining the result shape
+ * here (header/ imports it back) keeps ONE canonical type instead of two.
+ */
+export interface CanvasExportResultArtifact {
+	readonly filename: string;
+	readonly blob: Blob;
+	/** Which page this artifact renders. Absent for whole-document formats
+	 * (PDF/JSON), which pack every requested page into ONE artifact. */
+	readonly pageId?: string;
+}
+
+/** @see CanvasExportResultArtifact */
+export interface CanvasExportResult {
+	/** Mirrors `header/types.ts`'s `CanvasExportFormat` verbatim (duplicated,
+	 * not imported — see {@link CanvasExportResultArtifact}'s layering note). */
+	readonly format: "png" | "jpeg" | "webp" | "svg" | "pdf" | "json";
+	readonly artifacts: readonly CanvasExportResultArtifact[];
+	readonly warnings: readonly CanvasExportWarning[];
+}
 
 export interface CanvasStudioContextValue {
 	historyStore: HistoryStoreApi;
@@ -162,6 +195,16 @@ export interface CanvasStudioContextValue {
 	 * the "Open as new document" choice.
 	 */
 	onCreateDocument?: (document: CanvasIR) => void;
+	/**
+	 * PRD §11.1 host export observer: fires with the completed
+	 * {@link CanvasExportResult} after EVERY successful export — both the
+	 * headless `useCanvasStudioActions().export()` action
+	 * (`header/export-action.ts`) and the built-in `<ExportDialog>`'s
+	 * user-driven export call it, so a host sees every export regardless of
+	 * which entry point triggered it. Present when the host wired
+	 * `<CanvasStudio onExport>`.
+	 */
+	onExport?: (result: CanvasExportResult) => void;
 	/**
 	 * Renderers for custom (extension) node kinds, keyed by kind. Consulted by
 	 * `<CanvasNodeRenderer>` for any node whose `type` is not a built-in kind.
