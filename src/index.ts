@@ -76,16 +76,23 @@ export type {
 } from "./extensions/editor-extension.js";
 // ── Export / header ──────────────────────────────────────────────────────────
 export type {
+	CanvasExportActionRequest,
 	CanvasExportArtifact,
 	CanvasExportContext,
 	CanvasExporter,
 	CanvasExportFormat,
 	CanvasExportPluginOptions,
 	CanvasExportRequest,
+	CanvasExportResult,
+	CanvasExportResultArtifact,
 	CanvasHeaderPlugin,
+	CanvasStudioActions,
 } from "./header/index.js";
 export {
+	CanvasExportCancelledError,
+	CanvasExportEmptyError,
 	createCanvasExportPlugin,
+	createCanvasStudioActions,
 	DEFAULT_CANVAS_EXPORTERS,
 	downloadCanvasArtifact,
 	ExportMenu,
@@ -95,6 +102,7 @@ export {
 	pngExporter,
 	sanitizeExportFilename,
 	svgExporter,
+	useCanvasStudioActions,
 	webpExporter,
 } from "./header/index.js";
 // ── Pages ────────────────────────────────────────────────────────────────────
@@ -112,6 +120,10 @@ export {
 	reorderPage,
 	switchToPage,
 } from "./pages/page-actions.js";
+export {
+	SizePresetPicker,
+	type SizePresetPickerProps,
+} from "./pages/SizePresetPicker.js";
 // ── Panels + inspector field primitives ──────────────────────────────────────
 export { BrandPanel, type BrandPanelProps } from "./panels/BrandPanel.js";
 export { CampaignResizePanel } from "./panels/CampaignResizePanel.js";
@@ -139,10 +151,6 @@ export {
 	PropertyInspector,
 	type PropertyInspectorProps,
 } from "./panels/PropertyInspector.js";
-export {
-	SizePresetPicker,
-	type SizePresetPickerProps,
-} from "./panels/SizePresetPicker.js";
 export { TemplatesPanel } from "./panels/TemplatesPanel.js";
 export type { TemplateActionResult } from "./panels/template-actions.js";
 export {

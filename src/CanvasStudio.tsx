@@ -29,8 +29,12 @@ import type {
 } from "./assets/adapter-types.js";
 import type { BrandKit } from "./brand/brand-kit.js";
 import { EMPTY_BRAND_KIT } from "./brand/brand-kit.js";
-import { CanvasErrorBoundary } from "./CanvasErrorBoundary.js";
 import {
+	CanvasErrorBoundary,
+	type CanvasErrorDetailsInfo,
+} from "./CanvasErrorBoundary.js";
+import {
+	type CanvasExportResult,
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
 	CanvasStudioStableContext,
@@ -162,6 +166,16 @@ export interface CanvasStudioProps {
 	 */
 	onError?: (error: Error, info: React.ErrorInfo) => void;
 	/**
+	 * FR-171 "View details": renders the full error-details dialog for the
+	 * stage-level error boundary. `<CanvasStudio>` sits below the `workspace`
+	 * layer (see `scripts/check-layering.mjs`) and cannot import dialog-class
+	 * UI itself, so it only threads this prop down to the boundary — the
+	 * headless bare-stage layout has no "View details" trigger unless the
+	 * caller supplies one. `<CanvasWorkspace>` wires its own `ErrorDetailsDialog`
+	 * here automatically.
+	 */
+	renderErrorDetails?: (info: CanvasErrorDetailsInfo) => React.ReactNode;
+	/**
 	 * Fires once after `<CanvasStage>` has constructed the Konva.Stage, and
 	 * again with `null` when the stage tears down. Hosts use this to drive
 	 * export pipelines (e.g. `stage.toDataURL()`) without reaching into the
@@ -205,6 +219,13 @@ export interface CanvasStudioProps {
 	autoSave?: boolean | CanvasAutoSaveOptions;
 	/** Save-state observer (PRD §11.1). */
 	onSaveStateChange?: (state: CanvasSaveState) => void;
+	/**
+	 * PRD §11.1 export observer: fires with the completed
+	 * {@link CanvasExportResult} after every successful export — both the
+	 * headless `useCanvasStudioActions().export()` action and the built-in
+	 * export dialog's user-driven export.
+	 */
+	onExport?: (result: CanvasExportResult) => void;
 	/**
 	 * FR-090 asset picker adapter (B-10). When present it supersedes
 	 * `onPickAsset` for tools (single pick) and powers multi-select flows;
@@ -516,6 +537,7 @@ function EditorStage({
 	onError,
 	onReloadDocument,
 	onExportRecovery,
+	renderErrorDetails,
 	onStageReady,
 	draggedIds,
 	dimmedIds,
@@ -534,6 +556,9 @@ function EditorStage({
 	onError: ((error: Error, info: React.ErrorInfo) => void) | undefined;
 	onReloadDocument: () => void;
 	onExportRecovery: () => void;
+	renderErrorDetails:
+		| ((info: CanvasErrorDetailsInfo) => React.ReactNode)
+		| undefined;
 	onStageReady: (stage: Konva.Stage | null) => void;
 	draggedIds: ReadonlySet<string>;
 	/** C-09 exterior-dim set while isolated; null = no isolation. */
@@ -553,6 +578,7 @@ function EditorStage({
 			{...(onError ? { onError } : {})}
 			onReloadDocument={onReloadDocument}
 			onExportRecovery={onExportRecovery}
+			{...(renderErrorDetails ? { renderErrorDetails } : {})}
 			labels={{
 				retry: t("canvas.error.retry", "Try again"),
 				reloadDocument: t("canvas.error.reloadDocument", "Reload document"),
@@ -561,6 +587,7 @@ function EditorStage({
 					"Export recovery JSON",
 				),
 				copyErrorId: t("canvas.error.copyErrorId", "Copy error ID"),
+				viewDetails: t("canvas.error.viewDetails", "View details"),
 			}}
 		>
 			<CanvasAssetsContext.Provider value={assets}>
@@ -655,6 +682,7 @@ export function CanvasStudio({
 	onPickAsset,
 	onAiIntent,
 	onError,
+	renderErrorDetails,
 	onStageReady,
 	toolRegistry,
 	hidePageNavigator,
@@ -671,6 +699,7 @@ export function CanvasStudio({
 	recoveryAdapter,
 	autoSave,
 	onSaveStateChange,
+	onExport,
 	assetPicker,
 	assetUploader,
 	children,
@@ -981,6 +1010,7 @@ export function CanvasStudio({
 			templates,
 			templateProvider,
 			...(onCreateDocument ? { onCreateDocument } : {}),
+			...(onExport ? { onExport } : {}),
 			t,
 			kindRenderers,
 			kindInspectors,
@@ -1026,6 +1056,7 @@ export function CanvasStudio({
 			templates,
 			templateProvider,
 			onCreateDocument,
+			onExport,
 			t,
 			kindRenderers,
 			kindInspectors,
@@ -1110,6 +1141,7 @@ export function CanvasStudio({
 			onError={onError}
 			onReloadDocument={reloadDocument}
 			onExportRecovery={exportRecovery}
+			renderErrorDetails={renderErrorDetails}
 			onStageReady={handleStageReady}
 			draggedIds={draggedIds}
 			dimmedIds={dimmedIds}
