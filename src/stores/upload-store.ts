@@ -7,16 +7,28 @@ export interface UploadTask {
 	fileName: string;
 	status: UploadTaskStatus;
 	error?: string;
+	/**
+	 * FR-091 retry: the original File, retained so a failed task can be
+	 * resubmitted without the user re-selecting it. Not serialized anywhere —
+	 * this store is transient, in-memory only.
+	 */
+	file: File;
 }
 
 export interface UploadState {
 	tasks: UploadTask[];
-	begin: (fileName: string) => string;
+	begin: (file: File) => string;
 	succeed: (id: string) => void;
 	fail: (id: string, error: string) => void;
 	/** FR-092: cancelled uploads never create nodes when they later resolve. */
 	cancel: (id: string) => void;
 	isCancelled: (id: string) => boolean;
+	/**
+	 * FR-091 retry: reset a failed task back to "uploading" in place (same id,
+	 * clears `error`) — the caller re-invokes the uploader with `task.file`.
+	 * No-op for any status other than "failed".
+	 */
+	retry: (id: string) => void;
 	clearFinished: () => void;
 }
 
@@ -27,10 +39,13 @@ let uploadTaskCounter = 0;
 export function createUploadStore(): UploadStoreApi {
 	return createStore<UploadState>()((set, get) => ({
 		tasks: [],
-		begin(fileName) {
+		begin(file) {
 			const id = `upload-${++uploadTaskCounter}`;
 			set((s) => ({
-				tasks: [...s.tasks, { id, fileName, status: "uploading" as const }],
+				tasks: [
+					...s.tasks,
+					{ id, fileName: file.name, status: "uploading" as const, file },
+				],
 			}));
 			return id;
 		},
@@ -65,6 +80,15 @@ export function createUploadStore(): UploadStoreApi {
 			return get().tasks.some(
 				(task) => task.id === id && task.status === "cancelled",
 			);
+		},
+		retry(id) {
+			set((s) => ({
+				tasks: s.tasks.map((task) =>
+					task.id === id && task.status === "failed"
+						? { ...task, status: "uploading" as const, error: undefined }
+						: task,
+				),
+			}));
 		},
 		clearFinished() {
 			set((s) => ({
