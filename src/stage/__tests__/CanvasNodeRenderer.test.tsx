@@ -1141,3 +1141,60 @@ describe("CanvasNodeRenderer — FR-095 asset placeholders", () => {
 		expect(callsOfType("Rect")).toHaveLength(0);
 	});
 });
+
+describe("CanvasNodeRenderer — FR-081 vertical align + auto-width", () => {
+	beforeEachReset();
+
+	function vNode(verticalAlign: "top" | "middle" | "bottom") {
+		return createRichText({
+			id: `rt-${verticalAlign}`,
+			bounds: { width: 300, height: 200 },
+			height: 200,
+			verticalAlign,
+			paragraphs: [{ spans: [{ text: "hi" }] }],
+		});
+	}
+
+	it("shifts the block down for middle/bottom vertical align", () => {
+		render(<CanvasNodeRenderer node={vNode("top")} />);
+		const topY = callsOfType("Text")[0]?.props.y as number;
+		calls.length = 0;
+		render(<CanvasNodeRenderer node={vNode("middle")} />);
+		const midY = callsOfType("Text")[0]?.props.y as number;
+		calls.length = 0;
+		render(<CanvasNodeRenderer node={vNode("bottom")} />);
+		const botY = callsOfType("Text")[0]?.props.y as number;
+		expect(topY).toBe(0);
+		expect(midY).toBeGreaterThan(topY);
+		expect(botY).toBeGreaterThan(midY);
+	});
+
+	it("auto-width reconciles bounds.width to the measured content width", () => {
+		const commitCoalesced = vi.fn();
+		const node = createRichText({
+			id: "rt-auto",
+			bounds: { width: 999, height: 40 },
+			sizing: "auto-width",
+			paragraphs: [{ spans: [{ text: "hi" }] }],
+		});
+		render(
+			<CanvasStudioContext.Provider
+				value={
+					{
+						commitCoalesced,
+						getIR: () => ({}),
+					} as unknown as CanvasStudioContextValue
+				}
+			>
+				<CanvasNodeRenderer node={node} />
+			</CanvasStudioContext.Provider>,
+		);
+		expect(commitCoalesced).toHaveBeenCalledTimes(1);
+		const [cmd] = commitCoalesced.mock.calls[0] as [
+			{ patch: { width: number; bounds: { width: number } } },
+		];
+		// The measured natural width is far smaller than the stale 999.
+		expect(cmd.patch.width).toBeLessThan(999);
+		expect(cmd.patch.bounds.width).toBe(cmd.patch.width);
+	});
+});

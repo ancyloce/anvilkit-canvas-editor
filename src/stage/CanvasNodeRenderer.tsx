@@ -555,13 +555,14 @@ function CanvasTextNodeRenderer({ node }: { node: CanvasTextNode }) {
 function richTextClipProps(
 	node: CanvasRichTextNode,
 	measuredHeight: number,
+	clipWidth: number,
 ): Konva.ContainerConfig {
 	const overflow = node.overflow ?? "visible";
 	if (overflow !== "clip" && overflow !== "ellipsis") return {};
 	return {
 		clipX: 0,
 		clipY: 0,
-		clipWidth: node.width,
+		clipWidth,
 		clipHeight: node.height ?? measuredHeight,
 	};
 }
@@ -581,8 +582,42 @@ function richTextClipProps(
  * so a drag/transform frame — which never touches `paragraphs` — does not
  * re-measure.
  */
+/** Width sentinel wide enough that no natural line ever reaches it. */
+const AUTO_WIDTH_SENTINEL = 1e6;
+
+/**
+ * FR-081 auto-width layout: two passes. Pass 1 lays the text out unwrapped at a
+ * huge width to discover the natural content width; pass 2 re-lays it at that
+ * width so paragraph alignment (which offsets against the box) is correct.
+ */
+function measureAutoWidthRichText(node: CanvasRichTextNode) {
+	const natural = layoutRichText(
+		{
+			paragraphs: node.paragraphs,
+			width: AUTO_WIDTH_SENTINEL,
+			wrap: "none",
+			defaults: DEFAULT_RICH_TEXT_STYLE,
+		},
+		measureGlyphWidth,
+	);
+	return layoutRichText(
+		{
+			paragraphs: node.paragraphs,
+			width: natural.width,
+			wrap: "none",
+			defaults: DEFAULT_RICH_TEXT_STYLE,
+		},
+		measureGlyphWidth,
+	);
+}
+
 function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
-	const wrap = node.wrap ?? "word";
+	// FR-081 auto-width (B-03c): the box width follows the content, so the text
+	// must NOT wrap — lay it out at its natural width. `fixed`/absent keeps the
+	// authored wrap width authoritative.
+	const autoWidth = node.sizing === "auto-width";
+	const wrap = autoWidth ? "none" : (node.wrap ?? "word");
+	const ctx = use(CanvasStudioContext);
 	const brandKit = useCanvasBrandKit();
 	// FR-083 (C-11): track the block's leading family so a late-loading font
 	// re-renders the block. Per-span families ride along on the same signal.
@@ -595,20 +630,63 @@ function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 			brandKit,
 		).value,
 	);
-	const measured = getCachedLayout(node.paragraphs, node.width, wrap, () =>
-		layoutRichText(
+	// Fixed width: the cached single-pass layout. Auto-width: a two-pass measure
+	// — first at a large sentinel width (no wrap) to find the natural content
+	// width, then re-laid-out at that width so paragraph alignment (which offsets
+	// against the box) is correct once the box hugs the content.
+	const measured = autoWidth
+		? measureAutoWidthRichText(node)
+		: getCachedLayout(node.paragraphs, node.width, wrap, () =>
+				layoutRichText(
+					{
+						paragraphs: node.paragraphs,
+						width: node.width,
+						wrap,
+						defaults: DEFAULT_RICH_TEXT_STYLE,
+					},
+					measureGlyphWidth,
+				),
+			);
+
+	// FR-081 auto-width reconciliation: keep `width`/`bounds.width` synced to the
+	// measured natural width (the editor's promise in the IR contract). Only in
+	// an interactive editor (never during export rasterization), coalesced so a
+	// burst of typing is one undo entry.
+	const measuredWidth = Math.ceil(measured.width);
+	useEffect(() => {
+		if (!autoWidth || !ctx) return;
+		if (Math.abs(node.bounds.width - measuredWidth) < 0.5) return;
+		ctx.commitCoalesced?.(
 			{
-				paragraphs: node.paragraphs,
-				width: node.width,
-				wrap,
-				defaults: DEFAULT_RICH_TEXT_STYLE,
+				type: "node.update",
+				nodeId: node.id,
+				kind: "rich-text",
+				patch: {
+					width: measuredWidth,
+					bounds: { ...node.bounds, width: measuredWidth },
+				},
 			},
-			measureGlyphWidth,
-		),
-	);
+			`auto-width:${node.id}`,
+		);
+	}, [autoWidth, ctx, node.id, node.bounds, measuredWidth]);
+
+	// FR-081 vertical alignment: offset the whole block within its box height.
+	const verticalAlign = node.verticalAlign ?? "top";
+	const boxHeight = node.height ?? node.bounds.height;
+	const verticalOffset =
+		verticalAlign !== "top" && boxHeight > measured.height
+			? verticalAlign === "middle"
+				? (boxHeight - measured.height) / 2
+				: boxHeight - measured.height
+			: 0;
+
+	const effectiveWidth = autoWidth ? measuredWidth : node.width;
 
 	return (
-		<Group {...commonProps(node)} {...richTextClipProps(node, measured.height)}>
+		<Group
+			{...commonProps(node)}
+			{...richTextClipProps(node, measured.height, effectiveWidth)}
+		>
 			{measured.lines.flatMap((line) =>
 				line.runs.map((run) => {
 					const paragraph = node.paragraphs[line.paragraphIndex];
@@ -623,7 +701,7 @@ function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 						<Text
 							key={`${line.paragraphIndex}-${run.spanIndex}-${run.start}`}
 							x={line.x + run.x}
-							y={line.y}
+							y={line.y + verticalOffset}
 							text={applyRichTextTransform(run.text, style.textTransform)}
 							{...(fontFamily !== undefined ? { fontFamily } : {})}
 							fontSize={style.fontSize}
