@@ -18,6 +18,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const stageInstances: Array<{
 	toDataURL: ReturnType<typeof vi.fn>;
 	destroy: ReturnType<typeof vi.fn>;
+	scaleX: ReturnType<typeof vi.fn>;
+	scaleY: ReturnType<typeof vi.fn>;
 }> = [];
 const onReadyCalls: Array<Konva.Stage> = [];
 /** Props of every <Group> rendered into the rasterize tree (frames included). */
@@ -69,6 +71,8 @@ vi.mock("../../stage/CanvasStage.js", () => ({
 					`data:${opts?.mimeType ?? "image/png"};base64,STUB`,
 			),
 			destroy: vi.fn(),
+			scaleX: vi.fn(),
+			scaleY: vi.fn(),
 		};
 		stageInstances.push(instance);
 		if (onReady) {
@@ -364,5 +368,42 @@ describe("rasterizePage", () => {
 			(p) => p.width === 10 && p.height === 10,
 		);
 		expect(tokenRectCall?.fill).toBeUndefined();
+	});
+
+	// Bug 1 (FR-153 custom size): an unlocked, non-proportional width × height
+	// pair must actually reach the rasterizer instead of being silently
+	// collapsed to a single width-derived ratio.
+	describe("independent x/y pixelRatio (FR-153 custom size, Bug 1)", () => {
+		it("uses a single Konva pixelRatio when x and y match", async () => {
+			const page = buildPage();
+			await rasterizePage({ page, pixelRatio: { x: 4, y: 4 } });
+			const stage = stageInstances[0];
+			if (!stage) throw new Error("stage was not created");
+			expect(stage.scaleX).not.toHaveBeenCalled();
+			expect(stage.scaleY).not.toHaveBeenCalled();
+			const callArgs = stage.toDataURL.mock.calls[0]?.[0] as
+				| { pixelRatio?: number }
+				| undefined;
+			expect(callArgs?.pixelRatio).toBe(4);
+		});
+
+		it("stretches non-proportionally via stage.scaleX/scaleY when x and y differ", async () => {
+			const page = buildPage();
+			const result = await rasterizePage({
+				page,
+				pixelRatio: { x: 3, y: 5 },
+			});
+			const stage = stageInstances[0];
+			if (!stage) throw new Error("stage was not created");
+			expect(stage.scaleX).toHaveBeenCalledWith(3);
+			expect(stage.scaleY).toHaveBeenCalledWith(5);
+			const callArgs = stage.toDataURL.mock.calls[0]?.[0] as
+				| { pixelRatio?: number }
+				| undefined;
+			// The x/y stretch already encodes the full target scale via Konva's
+			// own axis scale — no additional uniform pixelRatio multiplier.
+			expect(callArgs?.pixelRatio).toBe(1);
+			expect(result.url.startsWith("data:")).toBe(true);
+		});
 	});
 });

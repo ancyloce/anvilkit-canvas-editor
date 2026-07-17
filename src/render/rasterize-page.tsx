@@ -33,8 +33,15 @@ export interface RasterizePageInput {
 	 * degrades to its neutral fallback, never throws).
 	 */
 	readonly brandKit?: BrandKit;
-	/** Defaults to 2 (retina-quality preview). */
-	readonly pixelRatio?: number;
+	/**
+	 * Defaults to 2 (retina-quality preview). Pass an `{x, y}` pair for
+	 * independent horizontal/vertical scale — FR-153's custom width × height
+	 * export, where an unlocked aspect ratio stretches non-proportionally.
+	 * Implemented via Konva's own `stage.scaleX`/`scaleY` (no custom pixel
+	 * resampling): the off-screen stage this function builds is torn down
+	 * immediately after, so mutating its scale here is safe.
+	 */
+	readonly pixelRatio?: number | { readonly x: number; readonly y: number };
 	/** Defaults to `"image/png"`. */
 	readonly mimeType?: "image/png" | "image/jpeg" | "image/webp";
 	/** Only honored for image/jpeg + image/webp. Defaults to 0.92. */
@@ -70,7 +77,11 @@ export async function rasterizePage(
 	input: RasterizePageInput,
 ): Promise<RasterizePageResult> {
 	const { page } = input;
-	const pixelRatio = input.pixelRatio ?? 2;
+	const pixelRatioInput = input.pixelRatio ?? 2;
+	const pixelRatioX =
+		typeof pixelRatioInput === "number" ? pixelRatioInput : pixelRatioInput.x;
+	const pixelRatioY =
+		typeof pixelRatioInput === "number" ? pixelRatioInput : pixelRatioInput.y;
 	const mimeType = input.mimeType ?? "image/png";
 	const quality = input.quality ?? 0.92;
 	const assets = input.assets ?? {};
@@ -133,11 +144,23 @@ export async function rasterizePage(
 		if (!stage) {
 			throw new Error("rasterizePage: stage was not initialized");
 		}
-		const url = (stage as Konva.Stage).toDataURL({
-			pixelRatio,
-			mimeType,
-			quality,
-		});
+		const readyStage = stage as Konva.Stage;
+		let url: string;
+		if (pixelRatioX === pixelRatioY) {
+			url = readyStage.toDataURL({
+				pixelRatio: pixelRatioX,
+				mimeType,
+				quality,
+			});
+		} else {
+			// FR-153 non-proportional custom size (Bug 1): stretch via Konva's own
+			// independent-axis stage scale rather than a uniform `pixelRatio` — the
+			// stage is short-lived/off-screen (torn down in `finally` below), so
+			// mutating its scale here has no side effects outside this call.
+			readyStage.scaleX(pixelRatioX);
+			readyStage.scaleY(pixelRatioY);
+			url = readyStage.toDataURL({ pixelRatio: 1, mimeType, quality });
+		}
 		return { url, mimeType };
 	} finally {
 		root?.unmount();
