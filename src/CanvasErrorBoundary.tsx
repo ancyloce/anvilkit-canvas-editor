@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, type ErrorInfo, type ReactNode, Suspense } from "react";
 
 /** Localizable labels for the default fallback (FR-172). */
 export interface CanvasErrorBoundaryLabels {
@@ -8,6 +8,29 @@ export interface CanvasErrorBoundaryLabels {
 	reloadDocument?: string;
 	exportRecovery?: string;
 	copyErrorId?: string;
+	/** FR-171 "View details": opens the full error-details dialog. */
+	viewDetails?: string;
+}
+
+/**
+ * FR-171: everything a caller-supplied `renderErrorDetails` needs to render
+ * the full error-details dialog. `CanvasErrorBoundary` is a leaf module (see
+ * this file's module doc below) — it cannot import the dialog itself, so it
+ * hands this bundle to whichever ancestor CAN legally reach dialog-class UI.
+ */
+export interface CanvasErrorDetailsInfo {
+	error: Error;
+	errorId: string | null;
+	/** React's component stack, captured by `componentDidCatch` (may lag one render). */
+	componentStack: string | null;
+	/** Closes the details dialog only — the inline boundary fallback stays up. */
+	onClose: () => void;
+	/** Present only when the boundary itself received `onReloadDocument`. */
+	onReloadDocument?: () => void;
+	/** Present only when the boundary itself received `onExportRecovery`. */
+	onExportRecovery?: () => void;
+	/** Present only while an error id exists. */
+	onCopyErrorId?: () => void;
 }
 
 export interface CanvasErrorBoundaryProps {
@@ -44,12 +67,32 @@ export interface CanvasErrorBoundaryProps {
 	 * pass the active page / panel id so navigating away recovers automatically.
 	 */
 	resetKey?: unknown;
+	/**
+	 * FR-171 "View details": renders the full error-details dialog when the
+	 * boundary's "View details" action is triggered. `CanvasErrorBoundary` is
+	 * a leaf module (see this file's module doc) and cannot import dialog-class
+	 * UI itself, so the actual dialog is composed by whichever ancestor CAN
+	 * legally reach it (e.g. `<CanvasWorkspace>` / `<TabPanel>`, which import
+	 * `ErrorDetailsDialog` and hand it down through this prop). Omit it and the
+	 * "View details" button itself is hidden — there is nothing dead to click
+	 * (e.g. a headless `<CanvasStudio>` mounted without `<CanvasWorkspace>`'s
+	 * shell has no dialog surface to open one into).
+	 */
+	renderErrorDetails?: (info: CanvasErrorDetailsInfo) => ReactNode;
 }
 
 interface CanvasErrorBoundaryState {
 	error: Error | null;
 	/** FR-172: correlates a user report with host telemetry (see `onError`). */
 	errorId: string | null;
+	/**
+	 * React's component stack (FR-171 detail dialog). `getDerivedStateFromError`
+	 * doesn't receive it, so it starts null and is filled in by
+	 * `componentDidCatch` one render later.
+	 */
+	componentStack: string | null;
+	/** FR-171: the full-detail error dialog is open. */
+	detailsOpen: boolean;
 }
 
 /** Short, copyable error identifier (FR-172). */
@@ -78,21 +121,37 @@ export class CanvasErrorBoundary extends Component<
 	CanvasErrorBoundaryProps,
 	CanvasErrorBoundaryState
 > {
-	state: CanvasErrorBoundaryState = { error: null, errorId: null };
+	state: CanvasErrorBoundaryState = {
+		error: null,
+		errorId: null,
+		componentStack: null,
+		detailsOpen: false,
+	};
 
 	static getDerivedStateFromError(error: Error): CanvasErrorBoundaryState {
-		return { error, errorId: mintErrorId() };
+		return {
+			error,
+			errorId: mintErrorId(),
+			componentStack: null,
+			detailsOpen: false,
+		};
 	}
 
 	componentDidUpdate(prev: CanvasErrorBoundaryProps): void {
 		// Auto-recover when the caller's reset key changes (e.g. page/panel switch).
 		if (this.state.error && prev.resetKey !== this.props.resetKey) {
-			this.setState({ error: null, errorId: null });
+			this.setState({
+				error: null,
+				errorId: null,
+				componentStack: null,
+				detailsOpen: false,
+			});
 		}
 	}
 
 	componentDidCatch(error: Error, info: ErrorInfo): void {
 		this.props.onError?.(error, info);
+		this.setState({ componentStack: info.componentStack ?? null });
 		console.error(
 			`[canvas-editor]${this.props.label ? ` ${this.props.label}` : ""} render error (${this.state.errorId ?? "?"})`,
 			error,
@@ -101,7 +160,12 @@ export class CanvasErrorBoundary extends Component<
 	}
 
 	private readonly reset = (): void => {
-		this.setState({ error: null, errorId: null });
+		this.setState({
+			error: null,
+			errorId: null,
+			componentStack: null,
+			detailsOpen: false,
+		});
 	};
 
 	private readonly reloadDocument = (): void => {
@@ -115,72 +179,118 @@ export class CanvasErrorBoundary extends Component<
 		void navigator.clipboard?.writeText(id).catch(() => undefined);
 	};
 
+	/** FR-171: opens the full error-details dialog. Only reachable from the
+	 * fallback UI below, which itself only renders while an error is active —
+	 * there is no route to the dialog with nothing to show. */
+	private readonly openDetails = (): void => {
+		this.setState({ detailsOpen: true });
+	};
+
+	private readonly closeDetails = (): void => {
+		this.setState({ detailsOpen: false });
+	};
+
 	render(): ReactNode {
-		const { error, errorId } = this.state;
+		const { error, errorId, componentStack, detailsOpen } = this.state;
 		if (!error) return this.props.children;
 		if (this.props.fallback) return this.props.fallback(error, this.reset);
 		const labels = this.props.labels ?? {};
 		const buttonClass =
 			"rounded-md border border-border px-2 py-1 text-foreground hover:bg-muted";
 		return (
-			<div
-				role="alert"
-				data-testid="canvas-error-boundary"
-				className="flex h-full min-h-0 flex-col items-start gap-2 p-4 text-xs text-destructive"
-			>
-				<p className="font-medium">
-					{this.props.label ?? "Something went wrong."}
-				</p>
-				<p className="break-words text-muted-foreground">{error.message}</p>
-				{errorId ? (
-					<p
-						data-testid="canvas-error-id"
-						className="font-mono text-muted-foreground"
-					>
-						{errorId}
+			<>
+				<div
+					role="alert"
+					data-testid="canvas-error-boundary"
+					className="flex h-full min-h-0 flex-col items-start gap-2 p-4 text-xs text-destructive"
+				>
+					<p className="font-medium">
+						{this.props.label ?? "Something went wrong."}
 					</p>
-				) : null}
-				<div className="flex flex-wrap gap-1.5">
-					<button
-						type="button"
-						data-testid="canvas-error-retry"
-						onClick={this.reset}
-						className={buttonClass}
-					>
-						{labels.retry ?? "Try again"}
-					</button>
-					{this.props.onReloadDocument ? (
-						<button
-							type="button"
-							data-testid="canvas-error-reload"
-							onClick={this.reloadDocument}
-							className={buttonClass}
-						>
-							{labels.reloadDocument ?? "Reload document"}
-						</button>
-					) : null}
-					{this.props.onExportRecovery ? (
-						<button
-							type="button"
-							data-testid="canvas-error-export-recovery"
-							onClick={this.props.onExportRecovery}
-							className={buttonClass}
-						>
-							{labels.exportRecovery ?? "Export recovery JSON"}
-						</button>
-					) : null}
+					<p className="break-words text-muted-foreground">{error.message}</p>
 					{errorId ? (
+						<p
+							data-testid="canvas-error-id"
+							className="font-mono text-muted-foreground"
+						>
+							{errorId}
+						</p>
+					) : null}
+					<div className="flex flex-wrap gap-1.5">
 						<button
 							type="button"
-							data-testid="canvas-error-copy-id"
-							onClick={this.copyErrorId}
+							data-testid="canvas-error-retry"
+							onClick={this.reset}
 							className={buttonClass}
 						>
-							{labels.copyErrorId ?? "Copy error ID"}
+							{labels.retry ?? "Try again"}
 						</button>
-					) : null}
+						{this.props.onReloadDocument ? (
+							<button
+								type="button"
+								data-testid="canvas-error-reload"
+								onClick={this.reloadDocument}
+								className={buttonClass}
+							>
+								{labels.reloadDocument ?? "Reload document"}
+							</button>
+						) : null}
+						{this.props.onExportRecovery ? (
+							<button
+								type="button"
+								data-testid="canvas-error-export-recovery"
+								onClick={this.props.onExportRecovery}
+								className={buttonClass}
+							>
+								{labels.exportRecovery ?? "Export recovery JSON"}
+							</button>
+						) : null}
+						{errorId ? (
+							<button
+								type="button"
+								data-testid="canvas-error-copy-id"
+								onClick={this.copyErrorId}
+								className={buttonClass}
+							>
+								{labels.copyErrorId ?? "Copy error ID"}
+							</button>
+						) : null}
+						{/* FR-171: full-detail dialog. Always alongside the inline summary
+						    above (never a replacement for it), and — since this button only
+						    exists inside the `!error` early-return above — never reachable
+						    with nothing to show. Hidden entirely when no ancestor supplied
+						    `renderErrorDetails` (see this component's module doc): there is
+						    no dead trigger, it just doesn't exist. */}
+						{this.props.renderErrorDetails ? (
+							<button
+								type="button"
+								data-testid="canvas-error-view-details"
+								onClick={this.openDetails}
+								className={buttonClass}
+							>
+								{labels.viewDetails ?? "View details"}
+							</button>
+						) : null}
+					</div>
 				</div>
-			</div>
+				{detailsOpen && this.props.renderErrorDetails ? (
+					<Suspense fallback={null}>
+						{this.props.renderErrorDetails({
+							error,
+							errorId,
+							componentStack,
+							onClose: this.closeDetails,
+							...(this.props.onReloadDocument
+								? { onReloadDocument: this.reloadDocument }
+								: {}),
+							...(this.props.onExportRecovery
+								? { onExportRecovery: this.props.onExportRecovery }
+								: {}),
+							...(errorId ? { onCopyErrorId: this.copyErrorId } : {}),
+						})}
+					</Suspense>
+				) : null}
+			</>
 		);
 	}
 }
