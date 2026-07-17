@@ -10,6 +10,7 @@ export {
 	type WorkspaceUiStoreProviderProps,
 } from "./WorkspaceUiStoreProvider.js";
 export {
+	type CanvasWorkspaceState,
 	type CreateWorkspaceUiStoreOptions,
 	createWorkspaceUiStore,
 	WORKSPACE_UI_STORE_PERSIST_VERSION,

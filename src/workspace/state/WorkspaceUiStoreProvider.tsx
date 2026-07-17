@@ -9,6 +9,7 @@
  * supplies it via context (cf. core's SSR-gated `EditorUiStoreProvider`).
  */
 
+import * as React from "react";
 import {
 	createContext,
 	type ReactNode,
@@ -22,6 +23,7 @@ import {
 	RecentTemplatesContext,
 } from "../../context/recent-templates-context.js";
 import {
+	type CanvasWorkspaceState,
 	createWorkspaceUiStore,
 	type WorkspaceUiStoreApi,
 } from "./workspace-ui-store.js";
@@ -31,16 +33,25 @@ const WorkspaceUiStoreContext = createContext<WorkspaceUiStoreApi | null>(null);
 export interface WorkspaceUiStoreProviderProps {
 	/** Namespaces the persisted slice (`anvilkit-canvas-workspace-${storeId}`). */
 	readonly storeId: string;
+	/** PRD §11.1 seed — see `createWorkspaceUiStore`'s
+	 * `CreateWorkspaceUiStoreOptions.initialWorkspaceState` for the full
+	 * precedence rule against a persisted value. Read only on first render,
+	 * like `storeId`. */
+	readonly initialWorkspaceState?: Partial<CanvasWorkspaceState>;
 	readonly children: ReactNode;
 }
 
 export function WorkspaceUiStoreProvider({
 	storeId,
+	initialWorkspaceState,
 	children,
 }: WorkspaceUiStoreProviderProps): React.JSX.Element {
-	// Lazy-create once per mount. `storeId` is read only on first render; hosts
-	// that need to re-target should re-key the provider (`key={storeId}`).
-	const [store] = useState(() => createWorkspaceUiStore({ storeId }));
+	// Lazy-create once per mount. `storeId`/`initialWorkspaceState` are read
+	// only on first render; hosts that need to re-target should re-key the
+	// provider (`key={storeId}`).
+	const [store] = useState(() =>
+		createWorkspaceUiStore({ storeId, initialWorkspaceState }),
+	);
 	return (
 		<WorkspaceUiStoreContext value={store}>{children}</WorkspaceUiStoreContext>
 	);

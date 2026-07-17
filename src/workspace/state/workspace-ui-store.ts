@@ -46,6 +46,25 @@ export interface WorkspaceUiState {
 	reset(): void;
 }
 
+/**
+ * Plain data slice of {@link WorkspaceUiState} — action methods stripped.
+ * Public export (PRD §11.1) for `CanvasWorkspaceProps.initialWorkspaceState`,
+ * a host seed for a freshly-mounted workspace (FR-002 territory: distinct
+ * from `restoreLayout()`'s hardcoded default — see
+ * {@link CreateWorkspaceUiStoreOptions.initialWorkspaceState}).
+ */
+export type CanvasWorkspaceState = Omit<
+	WorkspaceUiState,
+	| "setActiveDockId"
+	| "addRecentTemplate"
+	| "setPanelOpen"
+	| "setInspectorCollapsed"
+	| "setPanelWidth"
+	| "restoreLayout"
+	| "setPanelSearch"
+	| "reset"
+>;
+
 export const PANEL_WIDTH_MIN = 200;
 export const PANEL_WIDTH_MAX = 420;
 export const PANEL_WIDTH_DEFAULT = 280;
@@ -123,8 +142,46 @@ function migratePersistedState(persisted: unknown): unknown {
 	} satisfies WorkspaceUiPersistedSlice;
 }
 
+/**
+ * Resolve a host-supplied {@link CanvasWorkspaceState} seed into a full data
+ * slice, sanitized the same way a persisted `localStorage` payload is
+ * (reuses {@link migratePersistedState} for the 4 PERSISTED fields — clamped
+ * `panelWidth`, capped `recentTemplateIds`, validated `activeDockId` — rather
+ * than duplicating that coercion). The 2 transient fields
+ * (`panelOpen`/`panelSearch`) aren't covered by `migratePersistedState`
+ * (never persisted), so they're merged in directly.
+ */
+function initialStateFrom(
+	initialWorkspaceState: Partial<CanvasWorkspaceState> | undefined,
+): CanvasWorkspaceState {
+	const persistedSlice = migratePersistedState(
+		initialWorkspaceState ?? {},
+	) as WorkspaceUiPersistedSlice;
+	return {
+		...persistedSlice,
+		panelOpen: initialWorkspaceState?.panelOpen ?? INITIAL_STATE.panelOpen,
+		panelSearch:
+			initialWorkspaceState?.panelSearch ?? INITIAL_STATE.panelSearch,
+	};
+}
+
 export interface CreateWorkspaceUiStoreOptions {
 	readonly storeId: string;
+	/**
+	 * PRD §11.1 seed for a host embedding a FRESH workspace (`storeId` with no
+	 * prior `localStorage` value).
+	 *
+	 * Precedence: this seed is the store's baseline; persist's own rehydrate
+	 * `merge` (below) always lets an EXISTING persisted value win over it for
+	 * the 4 persisted fields (`activeDockId`/`inspectorCollapsed`/
+	 * `panelWidth`/`recentTemplateIds`) — so a returning user's saved layout
+	 * is never clobbered by a host's seed. The 2 transient fields
+	 * (`panelOpen`/`panelSearch`) are never persisted, so this seed (or the
+	 * hardcoded default) always applies for them. This is an ADDITIONAL seam:
+	 * `restoreLayout()` (FR-002 "restore default layout") still resets to the
+	 * hardcoded {@link INITIAL_STATE}, never to this seed.
+	 */
+	readonly initialWorkspaceState?: Partial<CanvasWorkspaceState>;
 }
 
 export type WorkspaceUiStoreApi = StoreApi<WorkspaceUiState>;
@@ -136,11 +193,12 @@ export type WorkspaceUiStoreApi = StoreApi<WorkspaceUiState>;
 export function createWorkspaceUiStore(
 	options: CreateWorkspaceUiStoreOptions,
 ): WorkspaceUiStoreApi {
-	const { storeId } = options;
+	const { storeId, initialWorkspaceState } = options;
+	const seed = initialStateFrom(initialWorkspaceState);
 	return createStore<WorkspaceUiState>()(
 		persist(
 			(set) => ({
-				...INITIAL_STATE,
+				...seed,
 				setActiveDockId(activeDockId) {
 					set({ activeDockId });
 				},
@@ -188,9 +246,17 @@ export function createWorkspaceUiStore(
 				// `migrate` only runs for OLD versions; `merge` sanitizes every
 				// rehydrate, so a hand-edited/corrupt same-version payload (e.g. an
 				// out-of-range width) is coerced instead of trusted (B-14).
+				//
+				// zustand calls `merge` on EVERY hydrate, even for a `storeId` with
+				// NOTHING ever persisted (`persisted` is `undefined` then) — only
+				// sanitize/apply it when something was actually stored; otherwise
+				// `current` already carries this store's `seed` (`initialWorkspaceState`,
+				// defaulting to `INITIAL_STATE`), which nothing here should clobber.
 				merge: (persisted, current) => ({
 					...current,
-					...(migratePersistedState(persisted) as WorkspaceUiPersistedSlice),
+					...(persisted !== undefined
+						? (migratePersistedState(persisted) as WorkspaceUiPersistedSlice)
+						: {}),
 				}),
 			},
 		),
