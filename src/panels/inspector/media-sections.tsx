@@ -30,7 +30,13 @@ import {
 	resetFrameCrop,
 	wellImage,
 } from "../../selection/frame-image-actions.js";
-import { type CommitPatch, FieldRow, NumberField, Section } from "../fields.js";
+import {
+	type CommitPatch,
+	FieldRow,
+	NumberField,
+	Section,
+	TextField,
+} from "../fields.js";
 import { FillAndShadowFields } from "../fill-shadow-fields.js";
 import { CornerRadiiFields } from "./stroke-section.js";
 
@@ -106,6 +112,16 @@ export function renderImageFields(
 						</SelectContent>
 					</Select>
 				</FieldRow>
+			</Section>
+			<Section title={t("canvas.inspector.accessibility", "Accessibility")}>
+				<TextField
+					label={t("canvas.inspector.altText", "Alt text")}
+					value={node.alt ?? ""}
+					dataTestId="prop-image-alt"
+					onCommit={(v) =>
+						commitPatch(node, { alt: v.trim() === "" ? undefined : v })
+					}
+				/>
 			</Section>
 			<Section title={t("canvas.inspector.crop", "Crop")}>
 				<Button

@@ -330,6 +330,32 @@ export function renderRichTextFields(
 						</option>
 					</select>
 				</FieldRow>
+				<FieldRow label={t("canvas.inspector.verticalAlign", "Vertical align")}>
+					<select
+						aria-label={t("canvas.inspector.verticalAlign", "Vertical align")}
+						data-testid="prop-rich-text-vertical-align"
+						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
+						value={node.verticalAlign ?? "top"}
+						onChange={(e) =>
+							commitPatch(node, {
+								verticalAlign:
+									e.currentTarget.value === "top"
+										? undefined
+										: (e.currentTarget.value as "middle" | "bottom"),
+							})
+						}
+					>
+						<option value="top">
+							{t("canvas.inspector.vAlignTop", "Top")}
+						</option>
+						<option value="middle">
+							{t("canvas.inspector.vAlignMiddle", "Middle")}
+						</option>
+						<option value="bottom">
+							{t("canvas.inspector.vAlignBottom", "Bottom")}
+						</option>
+					</select>
+				</FieldRow>
 			</Section>
 			<Section title={t("canvas.inspector.paragraph", "Paragraph")}>
 				<FieldRow label={t("canvas.inspector.align", "Align")}>

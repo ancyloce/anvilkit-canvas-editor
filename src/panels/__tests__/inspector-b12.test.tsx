@@ -4,6 +4,7 @@ import {
 	createImage,
 	createPage,
 	createRect,
+	createRichText,
 } from "@anvilkit/canvas-core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -308,5 +309,49 @@ describe("Fill controls (FR-074)", () => {
 		expect(
 			(screen.getByTestId("prop-fill-type") as HTMLSelectElement).value,
 		).toBe("none");
+	});
+});
+
+describe("Rich text vertical align (FR-081)", () => {
+	function richTextIR(): CanvasIR {
+		const ir = createCanvasIR({
+			id: "ir-rt",
+			pages: [createPage({ id: "p1" })],
+			now: () => NOW,
+		});
+		const page = ir.pages[0];
+		if (!page) throw new Error("no page");
+		page.root.children = [
+			createRichText({
+				id: "rt",
+				bounds: { width: 200, height: 120 },
+				paragraphs: [{ spans: [{ text: "hi" }] }],
+				now: () => NOW,
+			}),
+		];
+		return ir;
+	}
+
+	it("commits verticalAlign when changed", () => {
+		const h = mount(richTextIR(), ["rt"]);
+		fireEvent.change(screen.getByTestId("prop-rich-text-vertical-align"), {
+			target: { value: "middle" },
+		});
+		expect(
+			(h.commits[0] as { patch: { verticalAlign?: string } }).patch
+				.verticalAlign,
+		).toBe("middle");
+	});
+});
+
+describe("Image alt text (§12 item 11)", () => {
+	it("commits alt text on the image node", () => {
+		const h = mount(imageIR(), ["img1"]);
+		const input = screen.getByTestId("prop-image-alt") as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "A cat" } });
+		fireEvent.blur(input);
+		expect((h.commits[0] as { patch: { alt?: string } }).patch.alt).toBe(
+			"A cat",
+		);
 	});
 });
