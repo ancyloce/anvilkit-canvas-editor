@@ -39,6 +39,40 @@ function resolveT(ctx: CanvasStudioContextValue) {
 }
 
 /**
+ * FR-170 "system clipboard unavailable" notice. `system-clipboard.ts`
+ * degrades every failure mode (missing API, permission denied, insecure
+ * context) SILENTLY to `false`/`null` by design — that adapter must never
+ * break copy/paste. The gap this closes is one level up: nothing told the
+ * user their copy/paste was quietly running on the internal-only fallback.
+ * Firing an info toast on every copy/paste would be noisy for a workflow
+ * that repeats every few seconds, so this fires ONCE per editor-instance
+ * lifetime (module-level flag — mirrors the module-singleton posture
+ * `stores/clipboard-store.ts` already uses for the internal clipboard
+ * itself) — the first time either the system read or write fails.
+ */
+let systemClipboardUnavailableNotified = false;
+
+function notifySystemClipboardUnavailable(
+	toaster: CanvasToaster,
+	t: (key: string, fallback?: string) => string,
+): void {
+	if (systemClipboardUnavailableNotified) return;
+	systemClipboardUnavailableNotified = true;
+	toaster.add({
+		type: "info",
+		title: t(
+			"canvas.toast.systemClipboardUnavailable",
+			"Using the built-in clipboard — system copy/paste isn't available here",
+		),
+	});
+}
+
+/** Test seam: reset the once-per-session dedup flag between cases. */
+export function resetSystemClipboardNoticeForTests(): void {
+	systemClipboardUnavailableNotified = false;
+}
+
+/**
  * Top-level selected subtrees in selection order: page roots are excluded,
  * and a node whose ancestor is also selected is folded into that ancestor's
  * subtree (copying both would duplicate it on paste).
@@ -129,11 +163,17 @@ function buildClipboardPayload(
  */
 export async function copySelectionImpl(
 	ctx: CanvasStudioContextValue,
+	toaster: CanvasToaster = NOOP_CANVAS_TOASTER,
 ): Promise<number> {
 	const payload = buildClipboardPayload(ctx);
 	if (!payload) return 0;
 	internalClipboardStore.getState().setPayload(payload);
-	await writeSystemClipboard(JSON.stringify(payload));
+	const wroteToSystemClipboard = await writeSystemClipboard(
+		JSON.stringify(payload),
+	);
+	if (!wroteToSystemClipboard) {
+		notifySystemClipboardUnavailable(toaster, resolveT(ctx));
+	}
 	return payload.nodes.length;
 }
 
@@ -145,8 +185,9 @@ export async function copySelectionImpl(
 export async function cutSelectionImpl(
 	ctx: CanvasStudioContextValue,
 	deleteSelection: () => string[],
+	toaster: CanvasToaster = NOOP_CANVAS_TOASTER,
 ): Promise<string[]> {
-	const copied = await copySelectionImpl(ctx);
+	const copied = await copySelectionImpl(ctx, toaster);
 	if (copied === 0) return [];
 	return deleteSelection();
 }
@@ -166,7 +207,12 @@ export async function pasteImpl(
 ): Promise<string[]> {
 	let payload: CanvasClipboardPayload | null = null;
 	const text = await readSystemClipboard();
-	if (text) {
+	// `null` means the read genuinely failed (missing API, permission denied,
+	// insecure context) — distinct from `""` (system clipboard IS available,
+	// just empty). Only the former is "system clipboard unavailable".
+	if (text === null) {
+		notifySystemClipboardUnavailable(toaster, resolveT(ctx));
+	} else if (text) {
 		try {
 			payload = parseClipboardPayload(text);
 		} catch (err) {

@@ -18,6 +18,7 @@ import {
 	duplicateSelectionImpl,
 	PASTE_OFFSET,
 	pasteImpl,
+	resetSystemClipboardNoticeForTests,
 } from "../clipboard-actions.js";
 import { createCanvasEditorActions } from "../editor-actions.js";
 
@@ -64,6 +65,7 @@ function setup() {
 
 beforeEach(() => {
 	internalClipboardStore.getState().setPayload(null);
+	resetSystemClipboardNoticeForTests();
 });
 
 afterEach(() => {
@@ -230,5 +232,73 @@ describe("duplicateSelectionImpl", () => {
 		const group = cmd.node as { children: { id: string }[] };
 		expect(cmd.node.id).not.toBe("g");
 		expect(group.children[0]?.id).not.toBe("gc");
+	});
+});
+
+describe("system clipboard unavailable notice (FR-170)", () => {
+	// jsdom ships no `navigator.clipboard` implementation, so every copy/paste
+	// in these tests genuinely fails the system round-trip unless a test
+	// stubs `navigator` itself — exactly the "unavailable" case this notice
+	// covers.
+	it("fires a one-time info toast the first time the system clipboard write fails", async () => {
+		const { h, toasts } = setup();
+		h.studioCtx.selectionStore.getState().setSelection(["a"]);
+		await copySelectionImpl(h.studioCtx, {
+			add: (input) => toasts.push(input),
+		});
+		expect(toasts).toHaveLength(1);
+		expect(toasts[0]?.type).toBe("info");
+		expect(toasts[0]?.title).toContain("built-in clipboard");
+	});
+
+	it("does not repeat the notice on a second failed copy in the same session", async () => {
+		const { h, toasts } = setup();
+		h.studioCtx.selectionStore.getState().setSelection(["a"]);
+		await copySelectionImpl(h.studioCtx, {
+			add: (input) => toasts.push(input),
+		});
+		await copySelectionImpl(h.studioCtx, {
+			add: (input) => toasts.push(input),
+		});
+		expect(
+			toasts.filter((t) => t.title.includes("built-in clipboard")),
+		).toHaveLength(1);
+	});
+
+	it("also covers a failed paste read (not just copy) within the same one-time budget", async () => {
+		const { h, toasts } = setup();
+		const result = await pasteImpl(h.studioCtx, {
+			add: (input) => toasts.push(input),
+		});
+		expect(result).toEqual([]);
+		expect(toasts.some((t) => t.title.includes("built-in clipboard"))).toBe(
+			true,
+		);
+	});
+
+	it("does not fire when the system clipboard IS available", async () => {
+		const { h, toasts } = setup();
+		vi.stubGlobal("navigator", {
+			clipboard: {
+				writeText: async () => undefined,
+				readText: async () => "",
+			},
+		});
+		h.studioCtx.selectionStore.getState().setSelection(["a"]);
+		await copySelectionImpl(h.studioCtx, {
+			add: (input) => toasts.push(input),
+		});
+		expect(toasts).toHaveLength(0);
+	});
+
+	it("does not fire on a paste that reads real (empty) system clipboard text", async () => {
+		const { h, toasts } = setup();
+		vi.stubGlobal("navigator", {
+			clipboard: { readText: async () => "" },
+		});
+		await pasteImpl(h.studioCtx, { add: (input) => toasts.push(input) });
+		expect(toasts.some((t) => t.title.includes("built-in clipboard"))).toBe(
+			false,
+		);
 	});
 });

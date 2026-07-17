@@ -315,9 +315,9 @@ export function createCanvasEditorActions(
 		toggleLockSelection: () => toggleLockSelectionImpl(ctx),
 		toggleVisibilitySelection: () =>
 			toggleVisibilitySelectionImpl(ctx, toaster),
-		copySelection: () => copySelectionImpl(ctx),
+		copySelection: () => copySelectionImpl(ctx, toaster),
 		cutSelection: () =>
-			cutSelectionImpl(ctx, () => deleteSelectionImpl(ctx, toaster)),
+			cutSelectionImpl(ctx, () => deleteSelectionImpl(ctx, toaster), toaster),
 		paste: () => pasteImpl(ctx, toaster),
 		duplicateSelection: () => duplicateSelectionImpl(ctx),
 		reorderSelection: (direction) => reorderSelectionImpl(ctx, direction),
@@ -368,10 +368,14 @@ export function useCanvasActions(): CanvasEditorActions {
 			toggleLockSelection: () => toggleLockSelectionImpl(liveCtx()),
 			toggleVisibilitySelection: () =>
 				toggleVisibilitySelectionImpl(liveCtx(), toaster),
-			copySelection: () => copySelectionImpl(liveCtx()),
+			copySelection: () => copySelectionImpl(liveCtx(), toaster),
 			cutSelection: () => {
 				const ctx = liveCtx();
-				return cutSelectionImpl(ctx, () => deleteSelectionImpl(ctx, toaster));
+				return cutSelectionImpl(
+					ctx,
+					() => deleteSelectionImpl(ctx, toaster),
+					toaster,
+				);
 			},
 			paste: () => pasteImpl(liveCtx(), toaster),
 			duplicateSelection: () => duplicateSelectionImpl(liveCtx()),
