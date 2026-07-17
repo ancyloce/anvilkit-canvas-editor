@@ -8,11 +8,12 @@ import {
 	DialogTitle,
 } from "@anvilkit/ui/dialog";
 import { Input } from "@anvilkit/ui/input";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useCanvasT } from "../../context/canvas-studio-context.js";
 import {
 	type CanvasShortcutBinding,
 	type CanvasShortcutOptions,
+	type CanvasShortcutPlatform,
 	detectShortcutPlatform,
 	formatShortcut,
 	resolveShortcutBindings,
@@ -33,6 +34,8 @@ const CATEGORY_LABELS: Record<string, [string, string]> = {
 	tools: ["canvas.shortcutHelp.categoryTools", "Tools"],
 };
 
+const subscribeToPlatform = (): (() => void) => () => {};
+
 /**
  * FR-042 shortcut help (AC-004): searchable, category-grouped, with
  * platform-specific key labels GENERATED from the registry (§8.7 — never
@@ -45,7 +48,11 @@ export default function ShortcutHelpDialog({
 }: ShortcutHelpDialogProps): React.JSX.Element {
 	const t = useCanvasT();
 	const [query, setQuery] = useState("");
-	const platform = useMemo(() => detectShortcutPlatform(navigator), []);
+	const platform = useSyncExternalStore(
+		subscribeToPlatform,
+		detectShortcutPlatform,
+		(): CanvasShortcutPlatform => "other",
+	);
 	const bindings = useMemo(() => resolveShortcutBindings(options), [options]);
 
 	const groups = useMemo(() => {

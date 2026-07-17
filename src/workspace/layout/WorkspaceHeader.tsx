@@ -38,6 +38,20 @@ import { useRestoreLayout } from "../state/hooks.js";
 const ShortcutHelpDialog = lazy(
 	() => import("../dialogs/ShortcutHelpDialog.js"),
 );
+const INTEGER_DIMENSION_FORMATTER = new Intl.NumberFormat(undefined, {
+	maximumFractionDigits: 0,
+});
+const FRACTIONAL_DIMENSION_FORMATTER = new Intl.NumberFormat(undefined, {
+	maximumFractionDigits: 2,
+});
+const SAVE_LABELS: Record<string, [string, string]> = {
+	clean: ["canvas.save.clean", "All changes saved"],
+	dirty: ["canvas.save.dirty", "Unsaved changes"],
+	saving: ["canvas.save.saving", "Saving…"],
+	saved: ["canvas.save.saved", "Saved"],
+	error: ["canvas.save.error", "Save failed — click to retry"],
+	offline: ["canvas.save.offline", "Offline"],
+};
 
 /**
  * Format a page dimension for the header (§8.7): locale-grouped, integers shown
@@ -45,9 +59,11 @@ const ShortcutHelpDialog = lazy(
  * handles the locale separators.
  */
 function formatDimension(value: number): string {
-	return new Intl.NumberFormat(undefined, {
-		maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
-	}).format(value);
+	return (
+		Number.isInteger(value)
+			? INTEGER_DIMENSION_FORMATTER
+			: FRACTIONAL_DIMENSION_FORMATTER
+	).format(value);
 }
 
 export interface WorkspaceHeaderProps {
@@ -144,15 +160,6 @@ export function WorkspaceHeader({
 				activePage.size.height,
 			)} ${activePage.size.unit ?? "px"}`
 		: null;
-	const SAVE_LABELS: Record<string, [string, string]> = {
-		clean: ["canvas.save.clean", "All changes saved"],
-		dirty: ["canvas.save.dirty", "Unsaved changes"],
-		saving: ["canvas.save.saving", "Saving…"],
-		saved: ["canvas.save.saved", "Saved"],
-		error: ["canvas.save.error", "Save failed — click to retry"],
-		offline: ["canvas.save.offline", "Offline"],
-	};
-
 	const displayTitle =
 		title ?? ctx.ir.title ?? t("canvas.header.untitled", "Untitled");
 	const editable = typeof onTitleChange === "function";

@@ -196,6 +196,7 @@ function WorkspaceBody({
 	const overlay = useMediaQuery(OVERLAY_PANEL_QUERY);
 	const narrow = useMediaQuery(COLLAPSE_INSPECTOR_QUERY);
 	const [, setInspectorCollapsed] = useInspectorCollapsed();
+	const t = useCanvasT();
 
 	// Auto-collapse the inspector when ENTERING the narrow range; expanding
 	// again is the user's call (no auto-expand on widen).
@@ -214,9 +215,12 @@ function WorkspaceBody({
 					<WorkspaceFooter className="absolute inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur" />
 					{overlay && panelOpen ? (
 						<>
-							<div
+							<Button
+								type="button"
+								variant="ghost"
+								aria-label={t("canvas.panel.closeOverlay", "Close panel")}
 								data-testid="panel-overlay-backdrop"
-								className="absolute inset-0 z-30 bg-black/20"
+								className="absolute inset-0 z-30 h-auto w-auto rounded-none bg-black/20 hover:bg-black/20"
 								onClick={() => setPanelOpen(false)}
 							/>
 							<div

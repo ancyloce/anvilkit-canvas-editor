@@ -17,6 +17,7 @@ const ZOOM_STEP = 0.1;
 
 const clampZoom = (z: number): number =>
 	Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
+const formatRounded = (value: number): string => String(Math.round(value));
 
 export interface WorkspaceFooterProps {
 	className?: string;
@@ -159,7 +160,6 @@ function SelectionSummary({
 		if (n.locked) locked += 1;
 		if (n.visible === false) hidden += 1;
 	}
-	const fmt = (v: number): string => String(Math.round(v));
 	return (
 		<span
 			data-testid="workspace-selection-summary"
@@ -175,7 +175,7 @@ function SelectionSummary({
 				data-testid="selection-summary-bbox"
 				className="font-mono tabular-nums"
 			>
-				{`${fmt(minX)}, ${fmt(minY)} · ${fmt(maxX - minX)}×${fmt(maxY - minY)}`}
+				{`${formatRounded(minX)}, ${formatRounded(minY)} · ${formatRounded(maxX - minX)}×${formatRounded(maxY - minY)}`}
 			</span>
 			{locked > 0 ? (
 				<span data-testid="selection-summary-locked">

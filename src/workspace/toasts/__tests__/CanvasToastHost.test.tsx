@@ -6,6 +6,7 @@ import {
 	createRect,
 } from "@anvilkit/canvas-core";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	type CanvasEditorActions,
@@ -43,7 +44,11 @@ function ToasterProbe({
 		actions: CanvasEditorActions;
 	}) => void;
 }) {
-	capture({ toast: useCanvasToaster(), actions: useCanvasActions() });
+	const toast = useCanvasToaster();
+	const actions = useCanvasActions();
+	useEffect(() => {
+		capture({ toast, actions });
+	}, [actions, capture, toast]);
 	return null;
 }
 

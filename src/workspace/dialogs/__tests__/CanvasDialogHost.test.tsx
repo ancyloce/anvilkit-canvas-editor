@@ -7,6 +7,7 @@ import {
 	waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { useEffect } from "react";
 import {
 	type CanvasDialogs,
 	useCanvasDialogs,
@@ -16,7 +17,10 @@ import { CanvasDialogHost } from "../CanvasDialogHost.js";
 afterEach(cleanup);
 
 function Probe({ capture }: { capture: (d: CanvasDialogs) => void }) {
-	capture(useCanvasDialogs());
+	const dialogs = useCanvasDialogs();
+	useEffect(() => {
+		capture(dialogs);
+	}, [capture, dialogs]);
 	return null;
 }
 

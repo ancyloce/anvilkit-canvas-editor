@@ -276,7 +276,6 @@ export function CanvasRulers({
 			<canvas
 				ref={hRef}
 				data-testid="canvas-ruler-horizontal"
-				role="presentation"
 				aria-label={t("canvas.rulers.horizontal", "Horizontal ruler")}
 				className="pointer-events-auto absolute top-0 right-0 left-5 h-5 cursor-row-resize touch-none border-b border-border"
 				onPointerDown={(e) => beginGuideDrag("horizontal", e)}
@@ -284,7 +283,6 @@ export function CanvasRulers({
 			<canvas
 				ref={vRef}
 				data-testid="canvas-ruler-vertical"
-				role="presentation"
 				aria-label={t("canvas.rulers.vertical", "Vertical ruler")}
 				className="pointer-events-auto absolute top-5 bottom-0 left-0 w-5 cursor-col-resize touch-none border-r border-border"
 				onPointerDown={(e) => beginGuideDrag("vertical", e)}
