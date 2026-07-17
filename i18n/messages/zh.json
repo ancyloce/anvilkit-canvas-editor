@@ -515,5 +515,13 @@
 	"canvas.inspector.fillNone": "无",
 	"canvas.inspector.fillAlpha": "填充透明度",
 	"canvas.inspector.recentColors": "最近",
-	"canvas.richText.font": "字体"
+	"canvas.richText.font": "字体",
+	"canvas.inspector.verticalAlign": "垂直对齐",
+	"canvas.inspector.vAlignTop": "顶部",
+	"canvas.inspector.vAlignMiddle": "居中",
+	"canvas.inspector.vAlignBottom": "底部",
+	"canvas.inspector.accessibility": "无障碍",
+	"canvas.inspector.altText": "替代文本",
+	"canvas.cornerRadius.handle": "圆角半径",
+	"canvas.panel.closeOverlay": "关闭面板"
 }

@@ -515,5 +515,13 @@
 	"canvas.inspector.fillNone": "None",
 	"canvas.inspector.fillAlpha": "Fill alpha",
 	"canvas.inspector.recentColors": "Recent",
-	"canvas.richText.font": "Font"
+	"canvas.richText.font": "Font",
+	"canvas.inspector.verticalAlign": "Vertical align",
+	"canvas.inspector.vAlignTop": "Top",
+	"canvas.inspector.vAlignMiddle": "Middle",
+	"canvas.inspector.vAlignBottom": "Bottom",
+	"canvas.inspector.accessibility": "Accessibility",
+	"canvas.inspector.altText": "Alt text",
+	"canvas.cornerRadius.handle": "Corner radius",
+	"canvas.panel.closeOverlay": "Close panel"
 }

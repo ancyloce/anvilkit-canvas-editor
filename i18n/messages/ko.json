@@ -515,5 +515,13 @@
 	"canvas.inspector.fillNone": "없음",
 	"canvas.inspector.fillAlpha": "채우기 불투명도",
 	"canvas.inspector.recentColors": "최근",
-	"canvas.richText.font": "글꼴"
+	"canvas.richText.font": "글꼴",
+	"canvas.inspector.verticalAlign": "세로 정렬",
+	"canvas.inspector.vAlignTop": "위",
+	"canvas.inspector.vAlignMiddle": "가운데",
+	"canvas.inspector.vAlignBottom": "아래",
+	"canvas.inspector.accessibility": "접근성",
+	"canvas.inspector.altText": "대체 텍스트",
+	"canvas.cornerRadius.handle": "모서리 반경",
+	"canvas.panel.closeOverlay": "패널 닫기"
 }

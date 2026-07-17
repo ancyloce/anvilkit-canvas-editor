@@ -515,5 +515,13 @@
 	"canvas.inspector.fillNone": "なし",
 	"canvas.inspector.fillAlpha": "塗りの不透明度",
 	"canvas.inspector.recentColors": "最近",
-	"canvas.richText.font": "フォント"
+	"canvas.richText.font": "フォント",
+	"canvas.inspector.verticalAlign": "垂直方向の配置",
+	"canvas.inspector.vAlignTop": "上",
+	"canvas.inspector.vAlignMiddle": "中央",
+	"canvas.inspector.vAlignBottom": "下",
+	"canvas.inspector.accessibility": "アクセシビリティ",
+	"canvas.inspector.altText": "代替テキスト",
+	"canvas.cornerRadius.handle": "角の半径",
+	"canvas.panel.closeOverlay": "パネルを閉じる"
 }
