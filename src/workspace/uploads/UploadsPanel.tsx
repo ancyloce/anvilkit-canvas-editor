@@ -2,7 +2,10 @@
 
 import { Button } from "@anvilkit/ui/button";
 import { useRef, useSyncExternalStore } from "react";
-import { uploadFilesImpl } from "../../assets/upload-actions.js";
+import {
+	retryUploadImpl,
+	uploadFilesImpl,
+} from "../../assets/upload-actions.js";
 import {
 	useCanvasStudio,
 	useCanvasT,
@@ -36,6 +39,10 @@ export function UploadsPanel(): React.JSX.Element {
 		// `CanvasDropZone`, which anchors to the real cursor position — FR-092).
 		// Page-center insertion is the correct semantic here.
 		void uploadFilesImpl(ctx, Array.from(list), undefined, toaster);
+	};
+
+	const handleRetry = (taskId: string): void => {
+		void retryUploadImpl(ctx, taskId, toaster);
 	};
 
 	return (
@@ -111,6 +118,16 @@ export function UploadsPanel(): React.JSX.Element {
 										onClick={() => uploadStore.getState().cancel(task.id)}
 									>
 										×
+									</button>
+								) : null}
+								{task.status === "failed" && hasUploader ? (
+									<button
+										type="button"
+										data-testid={`upload-retry-${task.id}`}
+										className="rounded px-1 hover:bg-background"
+										onClick={() => handleRetry(task.id)}
+									>
+										{t("canvas.upload.retry", "Retry")}
 									</button>
 								) : null}
 							</span>
