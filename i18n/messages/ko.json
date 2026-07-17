@@ -423,6 +423,7 @@
 	"canvas.upload.done": "완료",
 	"canvas.upload.cancelled": "취소됨",
 	"canvas.upload.failed": "업로드 실패",
+	"canvas.upload.retry": "다시 시도",
 	"canvas.pages.rename": "페이지 이름 바꾸기",
 	"canvas.pageSettings.title": "페이지 설정",
 	"canvas.pageSettings.apply": "적용",

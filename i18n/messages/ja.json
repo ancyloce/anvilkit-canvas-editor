@@ -423,6 +423,7 @@
 	"canvas.upload.done": "完了",
 	"canvas.upload.cancelled": "キャンセルしました",
 	"canvas.upload.failed": "アップロードに失敗しました",
+	"canvas.upload.retry": "再試行",
 	"canvas.pages.rename": "ページ名を変更",
 	"canvas.pageSettings.title": "ページ設定",
 	"canvas.pageSettings.apply": "適用",

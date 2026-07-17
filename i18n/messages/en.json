@@ -423,6 +423,7 @@
 	"canvas.upload.done": "Done",
 	"canvas.upload.cancelled": "Cancelled",
 	"canvas.upload.failed": "Upload failed",
+	"canvas.upload.retry": "Retry",
 	"canvas.pages.rename": "Rename page",
 	"canvas.pageSettings.title": "Page settings",
 	"canvas.pageSettings.apply": "Apply",

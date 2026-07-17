@@ -423,6 +423,7 @@
 	"canvas.upload.done": "完成",
 	"canvas.upload.cancelled": "已取消",
 	"canvas.upload.failed": "上传失败",
+	"canvas.upload.retry": "重试",
 	"canvas.pages.rename": "重命名页面",
 	"canvas.pageSettings.title": "页面设置",
 	"canvas.pageSettings.apply": "应用",
