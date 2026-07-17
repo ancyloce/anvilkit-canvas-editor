@@ -18,9 +18,10 @@ import {
 import type { CanvasT } from "../../context/canvas-studio-context.js";
 import {
 	ColorField,
-	type CommitPatch,
+	type CommitPatchAll,
 	FieldRow,
 	NumberField,
+	sharedFieldValue,
 	TextField,
 } from "../fields.js";
 
@@ -28,7 +29,14 @@ import {
  * B-03a stroke-style fields (B-12, FR-074/075): color, width, opacity, dash,
  * cap, join — shared by every stroke-bearing shape section — plus arrowhead
  * pickers for line/path kinds. Continuous fields follow the §10 field-input
- * contract (`contract` prop); discrete pickers commit directly.
+ * contract (`contract` prop); discrete pickers commit via `commitPatchAll`
+ * (a `commitBatch` for a multi-node selection, a plain `commit` for one).
+ *
+ * FR-070 (B-12 multi-kind sections): `nodes` is the whole same-kind selection.
+ * Display values read from the FIRST node; a differing value across the
+ * selection renders "Mixed" — `NumberField`/`TextField` via their `mixed`
+ * prop, the cap/join/arrow pickers via `EnumSelect`'s own `mixed` prop
+ * (mirrors `AppearanceSection`'s blend-mode picker).
  */
 
 /** A stroke-bearing node: rect/ellipse/polygon/star/line/path. */
@@ -57,25 +65,35 @@ const ARROWS: readonly CanvasArrowHead[] = ["none", "arrow"];
 function EnumSelect<T extends string>({
 	label,
 	value,
+	mixed = false,
 	options,
 	dataTestId,
 	onChange,
+	t,
 }: {
 	label: string;
 	value: T;
+	/** FR-070: renders no selection + a "Mixed" placeholder, like the
+	 * Appearance section's blend-mode picker. */
+	mixed?: boolean;
 	options: readonly T[];
 	dataTestId: string;
 	onChange: (next: T) => void;
+	t: CanvasT;
 }): React.JSX.Element {
 	return (
 		<FieldRow label={label}>
 			<Select
 				items={options.map((o) => ({ value: o, label: o }))}
-				value={value}
+				value={mixed ? undefined : value}
 				onValueChange={(next) => next && onChange(next as T)}
 			>
 				<SelectTrigger data-testid={dataTestId} className="h-7.5 flex-1">
-					<SelectValue />
+					<SelectValue
+						placeholder={
+							mixed ? t("canvas.inspector.mixed", "Mixed") : undefined
+						}
+					/>
 				</SelectTrigger>
 				<SelectContent>
 					{options.map((o) => (
@@ -90,89 +108,134 @@ function EnumSelect<T extends string>({
 }
 
 export function StrokeFields({
-	node,
-	commitPatch,
+	nodes,
+	commitPatchAll,
 	t,
 	arrows = false,
 }: {
-	node: StrokeStyledNode;
-	commitPatch: CommitPatch;
+	nodes: readonly StrokeStyledNode[];
+	commitPatchAll: CommitPatchAll;
 	t: CanvasT;
 	/** Show arrowhead pickers (line/path kinds, FR-075). */
 	arrows?: boolean;
 }): React.JSX.Element {
-	const arrowNode = node as StrokeStyledNode & {
-		arrowStart?: CanvasArrowHead;
-		arrowEnd?: CanvasArrowHead;
-	};
+	const arrowNodes = nodes as ReadonlyArray<
+		StrokeStyledNode & {
+			arrowStart?: CanvasArrowHead;
+			arrowEnd?: CanvasArrowHead;
+		}
+	>;
+	const stroke = sharedFieldValue(nodes, (n) => (n as StrokeStyledNode).stroke);
+	const strokeWidth = sharedFieldValue(
+		nodes,
+		(n) => (n as StrokeStyledNode).strokeWidth ?? 0,
+	);
+	const strokeOpacity = sharedFieldValue(
+		nodes,
+		(n) => (n as StrokeStyledNode).strokeOpacity ?? 1,
+	);
+	const strokeDash = sharedFieldValue(nodes, (n) =>
+		formatDashPattern((n as StrokeStyledNode).strokeDash),
+	);
+	const strokeCap = sharedFieldValue(
+		nodes,
+		(n) => (n as StrokeStyledNode).strokeCap ?? "butt",
+	);
+	const strokeJoin = sharedFieldValue(
+		nodes,
+		(n) => (n as StrokeStyledNode).strokeJoin ?? "miter",
+	);
+	const arrowStart = sharedFieldValue(
+		arrowNodes,
+		(n) => (n as (typeof arrowNodes)[number]).arrowStart ?? "none",
+	);
+	const arrowEnd = sharedFieldValue(
+		arrowNodes,
+		(n) => (n as (typeof arrowNodes)[number]).arrowEnd ?? "none",
+	);
 	return (
 		<>
 			<ColorField
 				label={t("canvas.inspector.stroke", "Stroke")}
-				value={node.stroke}
+				value={stroke.value}
 				dataTestId="prop-stroke"
-				contract={{ nodes: [node], buildPatch: (_n, v) => ({ stroke: v }) }}
+				contract={{ nodes, buildPatch: (_n, v) => ({ stroke: v }) }}
 			/>
 			<NumberField
 				label={t("canvas.inspector.strokeWidth", "Stroke W")}
-				value={node.strokeWidth ?? 0}
+				value={strokeWidth.value}
+				mixed={strokeWidth.mixed}
 				min={0}
 				dataTestId="prop-stroke-width"
 				contract={{
-					nodes: [node],
+					nodes,
 					buildPatch: (_n, v) => ({ strokeWidth: v }),
 				}}
 			/>
 			<NumberField
 				label={t("canvas.inspector.strokeOpacity", "Stroke opacity")}
-				value={node.strokeOpacity ?? 1}
+				value={strokeOpacity.value}
+				mixed={strokeOpacity.mixed}
 				min={0}
 				max={1}
 				step={0.05}
 				dataTestId="prop-stroke-opacity"
 				contract={{
-					nodes: [node],
+					nodes,
 					buildPatch: (_n, v) => ({ strokeOpacity: v }),
 				}}
 			/>
 			<TextField
 				label={t("canvas.inspector.strokeDash", "Dash")}
-				value={formatDashPattern(node.strokeDash)}
+				value={strokeDash.value}
+				mixed={strokeDash.mixed}
 				dataTestId="prop-stroke-dash"
 				contract={{
-					nodes: [node],
+					nodes,
 					buildPatch: (_n, v) => ({ strokeDash: parseDashPattern(v) }),
 				}}
 			/>
 			<EnumSelect
 				label={t("canvas.inspector.strokeCap", "Cap")}
-				value={node.strokeCap ?? "butt"}
+				value={strokeCap.value}
+				mixed={strokeCap.mixed}
 				options={CAPS}
 				dataTestId="prop-stroke-cap"
-				onChange={(v) => commitPatch(node, { strokeCap: v })}
+				onChange={(v) => commitPatchAll(nodes, () => ({ strokeCap: v }))}
+				t={t}
 			/>
 			<EnumSelect
 				label={t("canvas.inspector.strokeJoin", "Join")}
-				value={node.strokeJoin ?? "miter"}
+				value={strokeJoin.value}
+				mixed={strokeJoin.mixed}
 				options={JOINS}
 				dataTestId="prop-stroke-join"
-				onChange={(v) => commitPatch(node, { strokeJoin: v })}
+				onChange={(v) => commitPatchAll(nodes, () => ({ strokeJoin: v }))}
+				t={t}
 			/>
 			{arrows ? (
 				<>
 					<EnumSelect
 						label={t("canvas.inspector.arrowStart", "Arrow start")}
-						value={arrowNode.arrowStart ?? "none"}
+						value={arrowStart.value}
+						mixed={arrowStart.mixed}
 						options={ARROWS}
 						dataTestId="prop-arrow-start"
-						onChange={(v) => commitPatch(node, { arrowStart: v })}
+						onChange={(v) =>
+							commitPatchAll(arrowNodes, () => ({ arrowStart: v }))
+						}
+						t={t}
 					/>
 					<EnumSelect
 						label={t("canvas.inspector.arrowEnd", "Arrow end")}
-						value={arrowNode.arrowEnd ?? "none"}
+						value={arrowEnd.value}
+						mixed={arrowEnd.mixed}
 						options={ARROWS}
 						dataTestId="prop-arrow-end"
-						onChange={(v) => commitPatch(node, { arrowEnd: v })}
+						onChange={(v) =>
+							commitPatchAll(arrowNodes, () => ({ arrowEnd: v }))
+						}
+						t={t}
 					/>
 				</>
 			) : null}
@@ -182,42 +245,56 @@ export function StrokeFields({
 
 /**
  * B-03b per-corner radius fields (rect/frame). Each corner writes the full
- * `cornerRadii` object, seeded from the current radii (or the uniform
- * `radius`) so a single-corner edit never zeroes the others.
+ * `cornerRadii` object, seeded from that NODE's OWN current radii (or its own
+ * uniform `radius`) — a batch edit of one corner across a multi-selection
+ * never zeroes another selected node's OTHER corners.
  */
 export function CornerRadiiFields({
-	node,
+	nodes,
 	t,
 }: {
-	node: CanvasNode & {
+	nodes: ReadonlyArray<
+		CanvasNode & { radius?: number; cornerRadii?: CanvasCornerRadii }
+	>;
+	t: CanvasT;
+}): React.JSX.Element {
+	type RadiiNode = CanvasNode & {
 		radius?: number;
 		cornerRadii?: CanvasCornerRadii;
 	};
-	t: CanvasT;
-}): React.JSX.Element {
-	const uniform = node.radius ?? 0;
-	const radii = node.cornerRadii ?? {
-		topLeft: uniform,
-		topRight: uniform,
-		bottomRight: uniform,
-		bottomLeft: uniform,
+	const radiiOf = (n: RadiiNode): CanvasCornerRadii => {
+		const uniform = n.radius ?? 0;
+		return (
+			n.cornerRadii ?? {
+				topLeft: uniform,
+				topRight: uniform,
+				bottomRight: uniform,
+				bottomLeft: uniform,
+			}
+		);
 	};
 	const corner = (
-		key: keyof typeof radii,
+		key: keyof CanvasCornerRadii,
 		label: string,
 		testId: string,
-	): React.JSX.Element => (
-		<NumberField
-			label={label}
-			value={radii[key]}
-			min={0}
-			dataTestId={testId}
-			contract={{
-				nodes: [node],
-				buildPatch: (_n, v) => ({ cornerRadii: { ...radii, [key]: v } }),
-			}}
-		/>
-	);
+	): React.JSX.Element => {
+		const shared = sharedFieldValue(nodes, (n) => radiiOf(n as RadiiNode)[key]);
+		return (
+			<NumberField
+				label={label}
+				value={shared.value}
+				mixed={shared.mixed}
+				min={0}
+				dataTestId={testId}
+				contract={{
+					nodes,
+					buildPatch: (n, v) => ({
+						cornerRadii: { ...radiiOf(n as RadiiNode), [key]: v },
+					}),
+				}}
+			/>
+		);
+	};
 	return (
 		<>
 			{corner(

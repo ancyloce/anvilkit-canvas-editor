@@ -31,10 +31,11 @@ import {
 	wellImage,
 } from "../../selection/frame-image-actions.js";
 import {
-	type CommitPatch,
+	type CommitPatchAll,
 	FieldRow,
 	NumberField,
 	Section,
+	sharedFieldValue,
 	TextField,
 } from "../fields.js";
 import { FillAndShadowFields } from "../fill-shadow-fields.js";
@@ -43,6 +44,13 @@ import { CornerRadiiFields } from "./stroke-section.js";
 /**
  * Image / frame inspector sections (M0-07 split from `PropertyInspector.tsx`).
  * Dispatch lives in `./type-sections.tsx`.
+ *
+ * FR-070 (B-12 multi-kind sections): `nodes` is the whole same-kind
+ * selection. Continuous fields (crop rect, adjustments, radius) and discrete
+ * pickers (fit mode, adjustment preset, well/clip switches, brand logo) patch
+ * every node in ONE batch; asset-replace/crop-begin/reset-crop stay
+ * single-node interactive workflows (an async picker, an on-stage editing
+ * mode) and act on the FIRST selected node, same as `path`'s "Edit points".
  */
 
 /** FR-094 image fit modes (B-02); `stretch` is the schema default. */
@@ -55,16 +63,34 @@ const FIT_MODES: readonly CanvasImageFitMode[] = [
 ];
 
 export function renderImageFields(
-	node: CanvasImageNode,
-	commitPatch: CommitPatch,
+	nodes: readonly CanvasImageNode[],
 	ctx: CanvasStudioContextValue,
+	commitPatchAll: CommitPatchAll,
 	t: CanvasT,
 ): React.JSX.Element {
-	const crop = node.crop;
-	const c = crop ?? { x: 0, y: 0, width: 0, height: 0 };
-	const cropPatch = (patch: Partial<typeof c>) => ({
-		crop: { ...c, ...patch },
-	});
+	const node = nodes[0] as CanvasImageNode;
+	const assetId = sharedFieldValue(
+		nodes,
+		(n) => (n as CanvasImageNode).assetId,
+	);
+	const fitMode = sharedFieldValue(
+		nodes,
+		(n) => (n as CanvasImageNode).fitMode ?? "stretch",
+	);
+	const alt = sharedFieldValue(nodes, (n) => (n as CanvasImageNode).alt ?? "");
+	const cropOf = (n: CanvasImageNode) =>
+		n.crop ?? { x: 0, y: 0, width: 0, height: 0 };
+	const cropX = sharedFieldValue(nodes, (n) => cropOf(n as CanvasImageNode).x);
+	const cropY = sharedFieldValue(nodes, (n) => cropOf(n as CanvasImageNode).y);
+	const cropW = sharedFieldValue(
+		nodes,
+		(n) => cropOf(n as CanvasImageNode).width,
+	);
+	const cropH = sharedFieldValue(
+		nodes,
+		(n) => cropOf(n as CanvasImageNode).height,
+	);
+	const anyCrop = nodes.some((n) => (n as CanvasImageNode).crop);
 	return (
 		<>
 			<Section title={t("canvas.inspector.image", "Image")}>
@@ -73,7 +99,9 @@ export function renderImageFields(
 						data-testid="prop-asset-id"
 						className="truncate text-xs text-foreground"
 					>
-						{node.assetId}
+						{assetId.mixed
+							? t("canvas.inspector.mixed", "Mixed")
+							: assetId.value}
 					</span>
 				</FieldRow>
 				<Button
@@ -91,17 +119,23 @@ export function renderImageFields(
 				<FieldRow label={t("canvas.inspector.fitMode", "Fit")}>
 					<Select
 						items={FIT_MODES.map((m) => ({ value: m, label: m }))}
-						value={node.fitMode ?? "stretch"}
+						value={fitMode.mixed ? undefined : fitMode.value}
 						onValueChange={(next) =>
 							next &&
-							commitPatch(node, {
+							commitPatchAll(nodes, () => ({
 								fitMode:
 									next === "stretch" ? undefined : (next as CanvasImageFitMode),
-							})
+							}))
 						}
 					>
 						<SelectTrigger data-testid="prop-fit-mode" className="h-7.5 flex-1">
-							<SelectValue />
+							<SelectValue
+								placeholder={
+									fitMode.mixed
+										? t("canvas.inspector.mixed", "Mixed")
+										: undefined
+								}
+							/>
 						</SelectTrigger>
 						<SelectContent>
 							{FIT_MODES.map((m) => (
@@ -116,11 +150,15 @@ export function renderImageFields(
 			<Section title={t("canvas.inspector.accessibility", "Accessibility")}>
 				<TextField
 					label={t("canvas.inspector.altText", "Alt text")}
-					value={node.alt ?? ""}
+					value={alt.value}
+					mixed={alt.mixed}
 					dataTestId="prop-image-alt"
-					onCommit={(v) =>
-						commitPatch(node, { alt: v.trim() === "" ? undefined : v })
-					}
+					contract={{
+						nodes,
+						buildPatch: (_n, v) => ({
+							alt: v.trim() === "" ? undefined : v,
+						}),
+					}}
 				/>
 			</Section>
 			<Section title={t("canvas.inspector.crop", "Crop")}>
@@ -136,58 +174,70 @@ export function renderImageFields(
 				</Button>
 				<NumberField
 					label={t("canvas.inspector.cropX", "Crop X")}
-					value={c.x}
+					value={cropX.value}
+					mixed={cropX.mixed}
 					min={0}
 					dataTestId="prop-crop-x"
 					contract={{
-						nodes: [node],
-						buildPatch: (_n, v) => cropPatch({ x: v }),
+						nodes,
+						buildPatch: (n, v) => ({
+							crop: { ...cropOf(n as CanvasImageNode), x: v },
+						}),
 					}}
 				/>
 				<NumberField
 					label={t("canvas.inspector.cropY", "Crop Y")}
-					value={c.y}
+					value={cropY.value}
+					mixed={cropY.mixed}
 					min={0}
 					dataTestId="prop-crop-y"
 					contract={{
-						nodes: [node],
-						buildPatch: (_n, v) => cropPatch({ y: v }),
+						nodes,
+						buildPatch: (n, v) => ({
+							crop: { ...cropOf(n as CanvasImageNode), y: v },
+						}),
 					}}
 				/>
 				<NumberField
 					label={t("canvas.inspector.cropW", "Crop W")}
-					value={c.width}
+					value={cropW.value}
+					mixed={cropW.mixed}
 					min={0}
 					dataTestId="prop-crop-width"
 					contract={{
-						nodes: [node],
-						buildPatch: (_n, v) => cropPatch({ width: v }),
+						nodes,
+						buildPatch: (n, v) => ({
+							crop: { ...cropOf(n as CanvasImageNode), width: v },
+						}),
 					}}
 				/>
 				<NumberField
 					label={t("canvas.inspector.cropH", "Crop H")}
-					value={c.height}
+					value={cropH.value}
+					mixed={cropH.mixed}
 					min={0}
 					dataTestId="prop-crop-height"
 					contract={{
-						nodes: [node],
-						buildPatch: (_n, v) => cropPatch({ height: v }),
+						nodes,
+						buildPatch: (n, v) => ({
+							crop: { ...cropOf(n as CanvasImageNode), height: v },
+						}),
 					}}
 				/>
-				{crop ? (
+				{anyCrop ? (
 					<Button
 						type="button"
 						variant="ghost"
 						size="sm"
 						className="w-full"
 						data-testid="prop-crop-clear"
-						onClick={() => commitPatch(node, { crop: undefined })}
+						onClick={() => commitPatchAll(nodes, () => ({ crop: undefined }))}
 					>
 						{t("canvas.inspector.clearCrop", "Clear crop")}
 					</Button>
 				) : null}
 			</Section>
-			{renderAdjustmentFields(node, commitPatch, t)}
+			{renderAdjustmentFields(nodes, commitPatchAll, t)}
 		</>
 	);
 }
@@ -291,10 +341,11 @@ function normalizeAdjustments(
  * contract. Non-destructive — only `node.adjustments` ever changes.
  */
 function renderAdjustmentFields(
-	node: CanvasImageNode,
-	commitPatch: CommitPatch,
+	nodes: readonly CanvasImageNode[],
+	commitPatchAll: CommitPatchAll,
 	t: CanvasT,
 ): React.JSX.Element {
+	const node = nodes[0] as CanvasImageNode;
 	const adjustments = node.adjustments ?? {};
 	const presetIds = Object.keys(
 		CANVAS_IMAGE_ADJUSTMENT_PRESETS,
@@ -317,9 +368,9 @@ function renderAdjustmentFields(
 							CANVAS_IMAGE_ADJUSTMENT_PRESETS[
 								next as CanvasImageAdjustmentPresetId
 							];
-						commitPatch(node, {
+						commitPatchAll(nodes, () => ({
 							adjustments: normalizeAdjustments(preset),
-						});
+						}));
 					}}
 				>
 					<SelectTrigger
@@ -339,26 +390,33 @@ function renderAdjustmentFields(
 					</SelectContent>
 				</Select>
 			</FieldRow>
-			{ADJUSTMENT_FIELDS.map((field) => (
-				<NumberField
-					key={field.key}
-					label={t(field.labelKey, field.fallback)}
-					value={adjustments[field.key] ?? 0}
-					min={field.min}
-					max={field.max}
-					step={field.step}
-					dataTestId={`prop-adjust-${field.key}`}
-					contract={{
-						nodes: [node],
-						buildPatch: (_n, v) => ({
-							adjustments: normalizeAdjustments({
-								...adjustments,
-								[field.key]: v,
+			{ADJUSTMENT_FIELDS.map((field) => {
+				const shared = sharedFieldValue(
+					nodes,
+					(n) => (n as CanvasImageNode).adjustments?.[field.key] ?? 0,
+				);
+				return (
+					<NumberField
+						key={field.key}
+						label={t(field.labelKey, field.fallback)}
+						value={shared.value}
+						mixed={shared.mixed}
+						min={field.min}
+						max={field.max}
+						step={field.step}
+						dataTestId={`prop-adjust-${field.key}`}
+						contract={{
+							nodes,
+							buildPatch: (n, v) => ({
+								adjustments: normalizeAdjustments({
+									...(n as CanvasImageNode).adjustments,
+									[field.key]: v,
+								}),
 							}),
-						}),
-					}}
-				/>
-			))}
+						}}
+					/>
+				);
+			})}
 		</Section>
 	);
 }
@@ -371,16 +429,31 @@ function renderAdjustmentFields(
  * field at all, so the shadow controls are hidden.
  */
 export function renderFrameFields(
-	node: CanvasFrameNode,
-	commitPatch: CommitPatch,
+	nodes: readonly CanvasFrameNode[],
 	ctx: CanvasStudioContextValue,
+	commitPatchAll: CommitPatchAll,
 	brandKit: BrandKit,
 	t: CanvasT,
 ): React.JSX.Element {
+	const node = nodes[0] as CanvasFrameNode;
 	// Only an image WELL (a frame carrying a placeholder) gets image controls; a
-	// plain frame is just a container and has no single image to replace.
+	// plain frame is just a container and has no single image to replace. For a
+	// multi-selection, the FIRST node's well status gates the well-only UI —
+	// mirrors every other kind-specific section's "representative node" choice.
 	const well = isImageWell(node) ? wellImage(node) : undefined;
 	const logos = brandKit.logos ?? [];
+	const radius = sharedFieldValue(
+		nodes,
+		(n) => (n as CanvasFrameNode).radius ?? 0,
+	);
+	const clip = sharedFieldValue(
+		nodes,
+		(n) => (n as CanvasFrameNode).clip ?? false,
+	);
+	const children = sharedFieldValue(
+		nodes,
+		(n) => (n as CanvasFrameNode).children.length,
+	);
 	return (
 		<Section title={t("canvas.inspector.frame", "Frame")}>
 			<FieldRow label={t("canvas.inspector.imageWell", "Image well")}>
@@ -389,9 +462,9 @@ export function renderFrameFields(
 					onCheckedChange={(checked) =>
 						// Turning a well off is non-destructive: any image already inside
 						// stays as an ordinary child of a now-plain frame.
-						commitPatch(node, {
+						commitPatchAll(nodes, () => ({
 							placeholder: checked ? { kind: "image" } : undefined,
-						})
+						}))
 					}
 					aria-label={t("canvas.inspector.imageWell", "Image well")}
 					data-testid="prop-frame-well"
@@ -439,9 +512,9 @@ export function renderFrameFields(
 								}
 								onValueChange={(next) => {
 									if (!next) return;
-									commitPatch(node, {
+									commitPatchAll(nodes, (n) => ({
 										placeholder: {
-											...node.placeholder,
+											...(n as CanvasFrameNode).placeholder,
 											kind: "logo",
 											assetToken: {
 												type: "brand-token",
@@ -449,7 +522,7 @@ export function renderFrameFields(
 												id: next,
 											},
 										},
-									});
+									}));
 								}}
 							>
 								<SelectTrigger
@@ -477,29 +550,31 @@ export function renderFrameFields(
 			) : null}
 			<FieldRow label={t("canvas.inspector.clip", "Clip")}>
 				<Switch
-					checked={node.clip ?? false}
-					onCheckedChange={(checked) => commitPatch(node, { clip: checked })}
+					checked={clip.value}
+					onCheckedChange={(checked) =>
+						commitPatchAll(nodes, () => ({ clip: checked }))
+					}
 					aria-label={t("canvas.inspector.clip", "Clip")}
 					data-testid="prop-frame-clip"
 				/>
 			</FieldRow>
 			<NumberField
 				label={t("canvas.inspector.radius", "Radius")}
-				value={node.radius ?? 0}
+				value={radius.value}
+				mixed={radius.mixed}
 				min={0}
 				dataTestId="prop-frame-radius"
 				contract={{
-					nodes: [node],
+					nodes,
 					buildPatch: (_n, v) => ({ radius: v, cornerRadii: undefined }),
 				}}
 			/>
-			<CornerRadiiFields node={node} t={t} />
+			<CornerRadiiFields nodes={nodes} t={t} />
 			<FillAndShadowFields
-				node={node}
-				fill={node.background}
+				nodes={nodes}
 				fillKey="background"
 				showShadow={false}
-				commitPatch={commitPatch}
+				commitPatchAll={commitPatchAll}
 				t={t}
 			/>
 			<FieldRow label={t("canvas.inspector.children", "Children")}>
@@ -507,7 +582,9 @@ export function renderFrameFields(
 					data-testid="prop-children-count"
 					className="text-xs text-foreground"
 				>
-					{node.children.length}
+					{children.mixed
+						? t("canvas.inspector.mixed", "Mixed")
+						: children.value}
 				</span>
 			</FieldRow>
 		</Section>

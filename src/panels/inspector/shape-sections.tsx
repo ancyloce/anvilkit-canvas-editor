@@ -8,7 +8,12 @@ import type {
 	CanvasStarNode,
 } from "@anvilkit/canvas-core";
 import type { CanvasT } from "../../context/canvas-studio-context.js";
-import { type CommitPatch, NumberField, Section } from "../fields.js";
+import {
+	type CommitPatchAll,
+	NumberField,
+	Section,
+	sharedFieldValue,
+} from "../fields.js";
 import { FillAndShadowFields } from "../fill-shadow-fields.js";
 import { CornerRadiiFields, StrokeFields } from "./stroke-section.js";
 
@@ -18,134 +23,155 @@ import { CornerRadiiFields, StrokeFields } from "./stroke-section.js";
  * `./type-sections.tsx`. B-12: stroke controls unified in `StrokeFields`
  * (B-03a), per-corner radii on rect (B-03b), and every continuous field
  * follows the §10 field-input contract via the `contract` prop.
+ *
+ * FR-070 (B-12 multi-kind sections): every render function takes the WHOLE
+ * same-kind selection as `nodes` (a single-node array for single-selection).
+ * Fields patch every node in ONE batch — continuous fields via the `contract`
+ * prop's `nodes`, discrete ones via `commitPatchAll` — with a differing value
+ * across the selection rendered as "Mixed" via `NumberField`'s `mixed` prop.
  */
 
 export function renderRectFields(
-	node: CanvasRectNode,
-	commitPatch: CommitPatch,
+	nodes: readonly CanvasRectNode[],
+	commitPatchAll: CommitPatchAll,
 	t: CanvasT,
 ): React.JSX.Element {
+	const radius = sharedFieldValue(
+		nodes,
+		(n) => (n as CanvasRectNode).radius ?? 0,
+	);
 	return (
 		<Section title={t("canvas.inspector.shape", "Shape")}>
 			<FillAndShadowFields
-				node={node}
-				fill={node.fill}
-				commitPatch={commitPatch}
+				nodes={nodes}
+				commitPatchAll={commitPatchAll}
 				t={t}
 			/>
-			<StrokeFields node={node} commitPatch={commitPatch} t={t} />
+			<StrokeFields nodes={nodes} commitPatchAll={commitPatchAll} t={t} />
 			<NumberField
 				label={t("canvas.inspector.radius", "Radius")}
-				value={node.radius ?? 0}
+				value={radius.value}
+				mixed={radius.mixed}
 				min={0}
 				dataTestId="prop-radius"
 				contract={{
-					nodes: [node],
+					nodes,
 					// A uniform radius edit supersedes any per-corner values.
 					buildPatch: (_n, v) => ({ radius: v, cornerRadii: undefined }),
 				}}
 			/>
-			<CornerRadiiFields node={node} t={t} />
+			<CornerRadiiFields nodes={nodes} t={t} />
 		</Section>
 	);
 }
 
 export function renderEllipseFields(
-	node: CanvasEllipseNode,
-	commitPatch: CommitPatch,
+	nodes: readonly CanvasEllipseNode[],
+	commitPatchAll: CommitPatchAll,
 	t: CanvasT,
 ): React.JSX.Element {
 	return (
 		<Section title={t("canvas.inspector.shape", "Shape")}>
 			<FillAndShadowFields
-				node={node}
-				fill={node.fill}
-				commitPatch={commitPatch}
+				nodes={nodes}
+				commitPatchAll={commitPatchAll}
 				t={t}
 			/>
-			<StrokeFields node={node} commitPatch={commitPatch} t={t} />
+			<StrokeFields nodes={nodes} commitPatchAll={commitPatchAll} t={t} />
 		</Section>
 	);
 }
 
 export function renderPolygonFields(
-	node: CanvasPolygonNode,
-	commitPatch: CommitPatch,
+	nodes: readonly CanvasPolygonNode[],
+	commitPatchAll: CommitPatchAll,
 	t: CanvasT,
 ): React.JSX.Element {
+	const sides = sharedFieldValue(nodes, (n) => (n as CanvasPolygonNode).sides);
 	return (
 		<Section title={t("canvas.inspector.shape", "Shape")}>
 			<NumberField
 				label={t("canvas.inspector.sides", "Sides")}
-				value={node.sides}
+				value={sides.value}
+				mixed={sides.mixed}
 				min={3}
 				step={1}
 				dataTestId="prop-polygon-sides"
 				contract={{
-					nodes: [node],
+					nodes,
 					buildPatch: (_n, v) => ({ sides: Math.round(v) }),
 				}}
 			/>
 			<FillAndShadowFields
-				node={node}
-				fill={node.fill}
-				commitPatch={commitPatch}
+				nodes={nodes}
+				commitPatchAll={commitPatchAll}
 				t={t}
 			/>
-			<StrokeFields node={node} commitPatch={commitPatch} t={t} />
+			<StrokeFields nodes={nodes} commitPatchAll={commitPatchAll} t={t} />
 		</Section>
 	);
 }
 
 export function renderStarFields(
-	node: CanvasStarNode,
-	commitPatch: CommitPatch,
+	nodes: readonly CanvasStarNode[],
+	commitPatchAll: CommitPatchAll,
 	t: CanvasT,
 ): React.JSX.Element {
+	const points = sharedFieldValue(nodes, (n) => (n as CanvasStarNode).points);
+	const innerRadiusRatio = sharedFieldValue(
+		nodes,
+		(n) => (n as CanvasStarNode).innerRadiusRatio,
+	);
 	return (
 		<Section title={t("canvas.inspector.shape", "Shape")}>
 			<NumberField
 				label={t("canvas.inspector.points", "Points")}
-				value={node.points}
+				value={points.value}
+				mixed={points.mixed}
 				min={3}
 				step={1}
 				dataTestId="prop-star-points"
 				contract={{
-					nodes: [node],
+					nodes,
 					buildPatch: (_n, v) => ({ points: Math.round(v) }),
 				}}
 			/>
 			<NumberField
 				label={t("canvas.inspector.innerRadiusRatio", "Inner radius")}
-				value={node.innerRadiusRatio}
+				value={innerRadiusRatio.value}
+				mixed={innerRadiusRatio.mixed}
 				min={0}
 				max={1}
 				step={0.05}
 				dataTestId="prop-star-inner-radius"
 				contract={{
-					nodes: [node],
+					nodes,
 					buildPatch: (_n, v) => ({ innerRadiusRatio: v }),
 				}}
 			/>
 			<FillAndShadowFields
-				node={node}
-				fill={node.fill}
-				commitPatch={commitPatch}
+				nodes={nodes}
+				commitPatchAll={commitPatchAll}
 				t={t}
 			/>
-			<StrokeFields node={node} commitPatch={commitPatch} t={t} />
+			<StrokeFields nodes={nodes} commitPatchAll={commitPatchAll} t={t} />
 		</Section>
 	);
 }
 
 export function renderLineFields(
-	node: CanvasLineNode,
-	commitPatch: CommitPatch,
+	nodes: readonly CanvasLineNode[],
+	commitPatchAll: CommitPatchAll,
 	t: CanvasT,
 ): React.JSX.Element {
 	return (
 		<Section title={t("canvas.inspector.line", "Line")}>
-			<StrokeFields node={node} commitPatch={commitPatch} t={t} arrows />
+			<StrokeFields
+				nodes={nodes}
+				commitPatchAll={commitPatchAll}
+				t={t}
+				arrows
+			/>
 		</Section>
 	);
 }

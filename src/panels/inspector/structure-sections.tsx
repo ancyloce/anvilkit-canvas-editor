@@ -7,35 +7,53 @@ import type {
 	CanvasT,
 } from "../../context/canvas-studio-context.js";
 import { beginPathEdit } from "../../selection/path-edit-actions.js";
-import { type CommitPatch, FieldRow, Section, TextField } from "../fields.js";
+import {
+	type CommitPatchAll,
+	FieldRow,
+	Section,
+	sharedFieldValue,
+	TextField,
+} from "../fields.js";
 import { FillAndShadowFields } from "../fill-shadow-fields.js";
 import { StrokeFields } from "./stroke-section.js";
 
 /**
  * Path / group inspector sections (M0-07 split from `PropertyInspector.tsx`,
  * verbatim). Dispatch lives in `./type-sections.tsx`.
+ *
+ * FR-070 (B-12 multi-kind sections): `nodes` is the whole same-kind
+ * selection; fields patch every node in ONE batch (see `shape-sections.tsx`
+ * for the general pattern). "Edit points" is inherently single-node
+ * interactive path editing — it acts on the FIRST selected node.
  */
 
 export function renderPathFields(
-	node: CanvasPathNode,
-	commitPatch: CommitPatch,
+	nodes: readonly CanvasPathNode[],
+	commitPatchAll: CommitPatchAll,
 	ctx: CanvasStudioContextValue,
 	t: CanvasT,
 ): React.JSX.Element {
+	const node = nodes[0] as CanvasPathNode;
+	const d = sharedFieldValue(nodes, (n) => (n as CanvasPathNode).d);
 	return (
 		<Section title={t("canvas.inspector.path", "Path")}>
 			<FillAndShadowFields
-				node={node}
-				fill={node.fill}
-				commitPatch={commitPatch}
+				nodes={nodes}
+				commitPatchAll={commitPatchAll}
 				t={t}
 			/>
-			<StrokeFields node={node} commitPatch={commitPatch} t={t} arrows />
+			<StrokeFields
+				nodes={nodes}
+				commitPatchAll={commitPatchAll}
+				t={t}
+				arrows
+			/>
 			<TextField
 				label={t("canvas.inspector.pathD", "Path d")}
-				value={node.d}
+				value={d.value}
+				mixed={d.mixed}
 				dataTestId="prop-path-d"
-				contract={{ nodes: [node], buildPatch: (_n, v) => ({ d: v }) }}
+				contract={{ nodes, buildPatch: (_n, v) => ({ d: v }) }}
 			/>
 			<Button
 				type="button"
@@ -52,9 +70,13 @@ export function renderPathFields(
 }
 
 export function renderGroupFields(
-	node: CanvasGroupNode,
+	nodes: readonly CanvasGroupNode[],
 	t: CanvasT,
 ): React.JSX.Element {
+	const children = sharedFieldValue(
+		nodes,
+		(n) => (n as CanvasGroupNode).children.length,
+	);
 	return (
 		<Section title={t("canvas.inspector.group", "Group")}>
 			<FieldRow label={t("canvas.inspector.children", "Children")}>
@@ -62,7 +84,9 @@ export function renderGroupFields(
 					data-testid="prop-children-count"
 					className="text-xs text-foreground"
 				>
-					{node.children.length}
+					{children.mixed
+						? t("canvas.inspector.mixed", "Mixed")
+						: children.value}
 				</span>
 			</FieldRow>
 		</Section>

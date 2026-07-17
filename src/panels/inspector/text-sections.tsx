@@ -23,12 +23,15 @@ import { getCachedLayout } from "../../text/layout-cache.js";
 import { layoutRichText } from "../../text/rich-text-layout.js";
 import { DEFAULT_RICH_TEXT_STYLE } from "../../text/rich-text-style.js";
 import {
-	type CommitPatch,
+	type CommitPatchAll,
 	FieldRow,
 	NumberField,
 	Section,
+	sharedFieldValue,
 	TextField,
+	useFieldContract,
 } from "../fields.js";
+import { FillAndShadowFields } from "../fill-shadow-fields.js";
 import {
 	TokenAwareColorField,
 	TokenAwareFontField,
@@ -37,30 +40,103 @@ import {
 /**
  * Text-kind inspector sections (M0-07 split from `PropertyInspector.tsx`,
  * verbatim). Dispatch lives in `./type-sections.tsx`.
+ *
+ * FR-070 (B-12 multi-kind sections): both render functions take the WHOLE
+ * same-kind selection as `nodes` (a single-node array for single-selection).
+ * Continuous fields patch every node in ONE batch via the `contract` prop;
+ * discrete controls (selects, switches) via `commitPatchAll`.
  */
 
+/** Native `<select>`-backed align field, wired through the §10 field contract
+ * (FR-081): reuses the exact select markup rich-text's paragraph-align field
+ * already renders below, just committing through `useFieldContract` directly
+ * since there is no packaged contract-aware Select component. */
+function TextAlignField({
+	nodes,
+	t,
+}: {
+	nodes: readonly CanvasTextNode[];
+	t: CanvasT;
+}): React.JSX.Element {
+	const shared = sharedFieldValue(
+		nodes,
+		(n) => (n as CanvasTextNode).align ?? "left",
+	);
+	const field = useFieldContract<CanvasTextAlign>(
+		{ nodes, buildPatch: (_n, v) => ({ align: v }) },
+		"prop-text-align",
+	);
+	return (
+		<FieldRow label={t("canvas.inspector.align", "Align")}>
+			<select
+				aria-label={t("canvas.inspector.align", "Align")}
+				data-testid="prop-text-align"
+				className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
+				value={shared.mixed ? "" : shared.value}
+				onChange={(e) => field.commit(e.currentTarget.value as CanvasTextAlign)}
+			>
+				{shared.mixed ? (
+					<option value="" disabled>
+						{t("canvas.inspector.mixed", "Mixed")}
+					</option>
+				) : null}
+				<option value="left">{t("canvas.inspector.alignLeft", "Left")}</option>
+				<option value="center">
+					{t("canvas.inspector.alignCenter", "Center")}
+				</option>
+				<option value="right">
+					{t("canvas.inspector.alignRight", "Right")}
+				</option>
+			</select>
+		</FieldRow>
+	);
+}
+
+/**
+ * FR-081: exposes exactly the plain-`text` node's own Core schema fields —
+ * content, font family/size/weight, fill, align, shadow — nothing rich-text
+ * only (no letter-spacing/line-height/vertical-align/strikethrough). Weight
+ * reuses rich-text's `TextField`-based Weight control (same contract
+ * pattern); Align reuses rich-text's align `<select>` markup, wired through
+ * the field contract; Shadow reuses the SAME `FillAndShadowFields` shape/path
+ * kinds already use — `showFill={false}` keeps this node's own dedicated
+ * Color field as the only fill control (no duplicate "Fill type" picker).
+ */
 export function renderTextFields(
-	node: CanvasTextNode,
-	commitPatch: CommitPatch,
+	nodes: readonly CanvasTextNode[],
+	commitPatchAll: CommitPatchAll,
 	brandKit: BrandKit,
 	t: CanvasT,
 ): React.JSX.Element {
+	const node = nodes[0] as CanvasTextNode;
 	// fontFamily/fill may be a brand-token ref (canvas-m1-013): resolve for
 	// display so a token never crashes a `string`-typed field. Token-aware
 	// picker UI (choose literal or brand token, explicit detach) lands in
 	// canvas-m2-007 (FR-033) via `TokenAwareFontField`/`TokenAwareColorField`.
+	// Display values read from the FIRST node (representative); "Mixed" shows
+	// via `NumberField`/`TextField`'s `mixed` prop where a value differs.
 	const fontFamilyResolved = resolveFontFamilyForDisplay(
 		node.fontFamily,
 		brandKit,
 	);
 	const fillResolved = resolveFillForDisplay(node.fill, brandKit);
+	const text = sharedFieldValue(nodes, (n) => (n as CanvasTextNode).text);
+	const fontSize = sharedFieldValue(
+		nodes,
+		(n) => (n as CanvasTextNode).fontSize,
+	);
+	const fontWeight = sharedFieldValue(
+		nodes,
+		(n) => (n as CanvasTextNode).fontWeight ?? "",
+	);
 	return (
 		<Section title={t("canvas.inspector.text", "Text")}>
 			<TextField
 				label={t("canvas.inspector.content", "Content")}
-				value={node.text}
+				value={text.value}
+				mixed={text.mixed}
 				dataTestId="prop-text"
-				contract={{ nodes: [node], buildPatch: (_n, v) => ({ text: v }) }}
+				contract={{ nodes, buildPatch: (_n, v) => ({ text: v }) }}
 			/>
 			<TokenAwareFontField
 				label={t("canvas.inspector.font", "Font")}
@@ -69,17 +145,26 @@ export function renderTextFields(
 				unresolved={fontFamilyResolved.unresolved}
 				fonts={brandKit.fonts}
 				dataTestId="prop-font-family"
-				onCommit={(v) => commitPatch(node, { fontFamily: v })}
-				contract={{ nodes: [node], buildPatch: (_n, v) => ({ fontFamily: v }) }}
+				onCommit={(v) => commitPatchAll(nodes, () => ({ fontFamily: v }))}
+				contract={{ nodes, buildPatch: (_n, v) => ({ fontFamily: v }) }}
 				t={t}
 			/>
 			<NumberField
 				label={t("canvas.inspector.size", "Size")}
-				value={node.fontSize}
+				value={fontSize.value}
+				mixed={fontSize.mixed}
 				min={1}
 				dataTestId="prop-font-size"
-				contract={{ nodes: [node], buildPatch: (_n, v) => ({ fontSize: v }) }}
+				contract={{ nodes, buildPatch: (_n, v) => ({ fontSize: v }) }}
 			/>
+			<TextField
+				label={t("canvas.inspector.fontWeight", "Weight")}
+				value={fontWeight.value}
+				mixed={fontWeight.mixed}
+				dataTestId="prop-font-weight"
+				contract={{ nodes, buildPatch: (_n, v) => ({ fontWeight: v }) }}
+			/>
+			<TextAlignField nodes={nodes} t={t} />
 			<TokenAwareColorField
 				label={t("canvas.inspector.color", "Color")}
 				rawValue={node.fill}
@@ -91,9 +176,15 @@ export function renderTextFields(
 				unresolved={fillResolved.unresolved}
 				colors={brandKit.colors}
 				dataTestId="prop-text-fill"
-				onCommit={(v) => commitPatch(node, { fill: v })}
-				contract={{ nodes: [node], buildPatch: (_n, v) => ({ fill: v }) }}
+				onCommit={(v) => commitPatchAll(nodes, () => ({ fill: v }))}
+				contract={{ nodes, buildPatch: (_n, v) => ({ fill: v }) }}
 				t={t}
+			/>
+			<FillAndShadowFields
+				nodes={nodes}
+				commitPatchAll={commitPatchAll}
+				t={t}
+				showFill={false}
 			/>
 		</Section>
 	);
@@ -103,15 +194,18 @@ export function renderTextFields(
  * Rich-text controls. MVP scope (canvas-m1-009): paragraph align/lineHeight
  * and span styling apply UNIFORMLY to every paragraph/span on the node —
  * there is no per-paragraph or per-span selection UI. Field values read from
- * the first paragraph's first span as the representative "current" value;
- * committing a field rewrites that field on every paragraph/span.
+ * the REPRESENTATIVE node's (nodes[0]) first paragraph's first span as the
+ * "current" value; committing a field rewrites that field on every
+ * paragraph/span of EVERY selected node (FR-070), each node keeping its own
+ * paragraph/span structure — only the edited field changes.
  */
 export function renderRichTextFields(
-	node: CanvasRichTextNode,
-	commitPatch: CommitPatch,
+	nodes: readonly CanvasRichTextNode[],
+	commitPatchAll: CommitPatchAll,
 	brandKit: BrandKit,
 	t: CanvasT,
 ): React.JSX.Element {
+	const node = nodes[0] as CanvasRichTextNode;
 	const firstParagraph = node.paragraphs[0];
 	const style = resolveSpanStyle(
 		firstParagraph?.spans[0] ?? { text: "" },
@@ -127,12 +221,39 @@ export function renderRichTextFields(
 	const fontFamily = fontFamilyResolved.value;
 	const fill = fillResolved.value;
 	const align = firstParagraph?.align ?? DEFAULT_RICH_TEXT_STYLE.align;
-	const lineHeight =
-		firstParagraph?.lineHeight ?? DEFAULT_RICH_TEXT_STYLE.lineHeight;
 	const wrap = node.wrap ?? "word";
 	const overflow = node.overflow ?? "visible";
 
+	/** Every selected node's own first-paragraph-first-span style, for mixed
+	 * indication on the span-style fields. */
+	const spanStyleOf = (n: CanvasRichTextNode) =>
+		resolveSpanStyle(
+			n.paragraphs[0]?.spans[0] ?? { text: "" },
+			DEFAULT_RICH_TEXT_STYLE,
+		);
+	const fontSizeShared = sharedFieldValue(
+		nodes,
+		(n) => spanStyleOf(n as CanvasRichTextNode).fontSize,
+	);
+	const fontWeightShared = sharedFieldValue(
+		nodes,
+		(n) => spanStyleOf(n as CanvasRichTextNode).fontWeight,
+	);
+	const letterSpacingShared = sharedFieldValue(
+		nodes,
+		(n) => spanStyleOf(n as CanvasRichTextNode).letterSpacing,
+	);
+	const lineHeightShared = sharedFieldValue(
+		nodes,
+		(n) =>
+			(n as CanvasRichTextNode).paragraphs[0]?.lineHeight ??
+			DEFAULT_RICH_TEXT_STYLE.lineHeight,
+	);
+
 	// FR-083 (C-11): passive font state; FR-084: overflow warning + fixes.
+	// Layout/overflow measurement is inherently a REPRESENTATIVE-node concern
+	// (it depends on that node's own paragraphs/bounds) — shrink-to-fit/expand
+	// act on the first selected node only, same as `path`'s "Edit points".
 	const fontStatus = observeFontFamily(fontFamilyResolved.value);
 	const measured = getCachedLayout(node.paragraphs, node.width, wrap, () =>
 		layoutRichText(
@@ -151,7 +272,7 @@ export function renderRichTextFields(
 		node.bounds.height > 0;
 	const shrinkToFit = (): void => {
 		const factor = node.bounds.height / measured.height;
-		commitPatch(node, {
+		commitPatchAll([node], () => ({
 			paragraphs: node.paragraphs.map((p) => ({
 				...p,
 				spans: p.spans.map((s) => ({
@@ -164,48 +285,30 @@ export function renderRichTextFields(
 					),
 				})),
 			})),
-		});
+		}));
 	};
 	const expandBox = (): void => {
-		commitPatch(node, {
+		commitPatchAll([node], () => ({
 			bounds: { ...node.bounds, height: Math.ceil(measured.height) },
-		});
+		}));
 	};
 
 	const allParagraphsPatch = (
+		n: CanvasRichTextNode,
 		patch: Pick<
 			CanvasRichTextNode["paragraphs"][number],
 			"align" | "lineHeight"
 		>,
-	) => ({ paragraphs: node.paragraphs.map((p) => ({ ...p, ...patch })) });
+	) => ({ paragraphs: n.paragraphs.map((p) => ({ ...p, ...patch })) });
 	const allSpansPatch = (
+		n: CanvasRichTextNode,
 		patch: Partial<CanvasRichTextNode["paragraphs"][number]["spans"][number]>,
 	) => ({
-		paragraphs: node.paragraphs.map((p) => ({
+		paragraphs: n.paragraphs.map((p) => ({
 			...p,
 			spans: p.spans.map((s) => ({ ...s, ...patch })),
 		})),
 	});
-	const commitAllParagraphs = (
-		patch: Pick<
-			CanvasRichTextNode["paragraphs"][number],
-			"align" | "lineHeight"
-		>,
-	): void => {
-		commitPatch(node, {
-			paragraphs: node.paragraphs.map((p) => ({ ...p, ...patch })),
-		});
-	};
-	const commitAllSpans = (
-		patch: Partial<CanvasRichTextNode["paragraphs"][number]["spans"][number]>,
-	): void => {
-		commitPatch(node, {
-			paragraphs: node.paragraphs.map((p) => ({
-				...p,
-				spans: p.spans.map((s) => ({ ...s, ...patch })),
-			})),
-		});
-	};
 
 	return (
 		<>
@@ -217,9 +320,9 @@ export function renderRichTextFields(
 						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
 						value={wrap}
 						onChange={(e) =>
-							commitPatch(node, {
+							commitPatchAll(nodes, () => ({
 								wrap: e.currentTarget.value as RichTextWrap,
-							})
+							}))
 						}
 					>
 						<option value="word">
@@ -240,9 +343,9 @@ export function renderRichTextFields(
 						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
 						value={overflow}
 						onChange={(e) =>
-							commitPatch(node, {
+							commitPatchAll(nodes, () => ({
 								overflow: e.currentTarget.value as RichTextOverflow,
-							})
+							}))
 						}
 					>
 						<option value="visible">
@@ -314,12 +417,12 @@ export function renderRichTextFields(
 						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
 						value={node.sizing ?? "fixed"}
 						onChange={(e) =>
-							commitPatch(node, {
+							commitPatchAll(nodes, () => ({
 								sizing:
 									e.currentTarget.value === "fixed"
 										? undefined
 										: (e.currentTarget.value as "auto-width"),
-							})
+							}))
 						}
 					>
 						<option value="fixed">
@@ -337,12 +440,12 @@ export function renderRichTextFields(
 						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
 						value={node.verticalAlign ?? "top"}
 						onChange={(e) =>
-							commitPatch(node, {
+							commitPatchAll(nodes, () => ({
 								verticalAlign:
 									e.currentTarget.value === "top"
 										? undefined
 										: (e.currentTarget.value as "middle" | "bottom"),
-							})
+							}))
 						}
 					>
 						<option value="top">
@@ -365,9 +468,11 @@ export function renderRichTextFields(
 						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
 						value={align}
 						onChange={(e) =>
-							commitAllParagraphs({
-								align: e.currentTarget.value as CanvasTextAlign,
-							})
+							commitPatchAll(nodes, (n) =>
+								allParagraphsPatch(n as CanvasRichTextNode, {
+									align: e.currentTarget.value as CanvasTextAlign,
+								}),
+							)
 						}
 					>
 						<option value="left">
@@ -383,13 +488,15 @@ export function renderRichTextFields(
 				</FieldRow>
 				<NumberField
 					label={t("canvas.inspector.lineHeight", "Line height")}
-					value={lineHeight}
+					value={lineHeightShared.value}
+					mixed={lineHeightShared.mixed}
 					step={0.1}
 					min={0}
 					dataTestId="prop-rich-text-line-height"
 					contract={{
-						nodes: [node],
-						buildPatch: (_n, v) => allParagraphsPatch({ lineHeight: v }),
+						nodes,
+						buildPatch: (n, v) =>
+							allParagraphsPatch(n as CanvasRichTextNode, { lineHeight: v }),
 					}}
 				/>
 			</Section>
@@ -401,40 +508,51 @@ export function renderRichTextFields(
 					unresolved={fontFamilyResolved.unresolved}
 					fonts={brandKit.fonts}
 					dataTestId="prop-rich-text-font-family"
-					onCommit={(v) => commitAllSpans({ fontFamily: v })}
+					onCommit={(v) =>
+						commitPatchAll(nodes, (n) =>
+							allSpansPatch(n as CanvasRichTextNode, { fontFamily: v }),
+						)
+					}
 					contract={{
-						nodes: [node],
-						buildPatch: (_n, v) => allSpansPatch({ fontFamily: v }),
+						nodes,
+						buildPatch: (n, v) =>
+							allSpansPatch(n as CanvasRichTextNode, { fontFamily: v }),
 					}}
 					t={t}
 				/>
 				<NumberField
 					label={t("canvas.inspector.size", "Size")}
-					value={style.fontSize}
+					value={fontSizeShared.value}
+					mixed={fontSizeShared.mixed}
 					min={1}
 					dataTestId="prop-rich-text-font-size"
 					contract={{
-						nodes: [node],
-						buildPatch: (_n, v) => allSpansPatch({ fontSize: v }),
+						nodes,
+						buildPatch: (n, v) =>
+							allSpansPatch(n as CanvasRichTextNode, { fontSize: v }),
 					}}
 				/>
 				<TextField
 					label={t("canvas.inspector.fontWeight", "Weight")}
-					value={style.fontWeight}
+					value={fontWeightShared.value ?? ""}
+					mixed={fontWeightShared.mixed}
 					dataTestId="prop-rich-text-font-weight"
 					contract={{
-						nodes: [node],
-						buildPatch: (_n, v) => allSpansPatch({ fontWeight: v }),
+						nodes,
+						buildPatch: (n, v) =>
+							allSpansPatch(n as CanvasRichTextNode, { fontWeight: v }),
 					}}
 				/>
 				<NumberField
 					label={t("canvas.inspector.letterSpacing", "Letter spacing")}
-					value={style.letterSpacing}
+					value={letterSpacingShared.value ?? 0}
+					mixed={letterSpacingShared.mixed}
 					step={0.1}
 					dataTestId="prop-rich-text-letter-spacing"
 					contract={{
-						nodes: [node],
-						buildPatch: (_n, v) => allSpansPatch({ letterSpacing: v }),
+						nodes,
+						buildPatch: (n, v) =>
+							allSpansPatch(n as CanvasRichTextNode, { letterSpacing: v }),
 					}}
 				/>
 				<TokenAwareColorField
@@ -444,17 +562,26 @@ export function renderRichTextFields(
 					unresolved={fillResolved.unresolved}
 					colors={brandKit.colors}
 					dataTestId="prop-rich-text-fill"
-					onCommit={(v) => commitAllSpans({ fill: v })}
+					onCommit={(v) =>
+						commitPatchAll(nodes, (n) =>
+							allSpansPatch(n as CanvasRichTextNode, { fill: v }),
+						)
+					}
 					contract={{
-						nodes: [node],
-						buildPatch: (_n, v) => allSpansPatch({ fill: v }),
+						nodes,
+						buildPatch: (n, v) =>
+							allSpansPatch(n as CanvasRichTextNode, { fill: v }),
 					}}
 					t={t}
 				/>
 				<FieldRow label={t("canvas.inspector.italic", "Italic")}>
 					<Switch
 						checked={style.italic}
-						onCheckedChange={(checked) => commitAllSpans({ italic: checked })}
+						onCheckedChange={(checked) =>
+							commitPatchAll(nodes, (n) =>
+								allSpansPatch(n as CanvasRichTextNode, { italic: checked }),
+							)
+						}
 						aria-label={t("canvas.inspector.italic", "Italic")}
 						data-testid="prop-rich-text-italic"
 					/>
@@ -463,7 +590,9 @@ export function renderRichTextFields(
 					<Switch
 						checked={style.underline}
 						onCheckedChange={(checked) =>
-							commitAllSpans({ underline: checked })
+							commitPatchAll(nodes, (n) =>
+								allSpansPatch(n as CanvasRichTextNode, { underline: checked }),
+							)
 						}
 						aria-label={t("canvas.inspector.underline", "Underline")}
 						data-testid="prop-rich-text-underline"
@@ -473,7 +602,11 @@ export function renderRichTextFields(
 					<Switch
 						checked={style.strikethrough}
 						onCheckedChange={(checked) =>
-							commitAllSpans({ strikethrough: checked })
+							commitPatchAll(nodes, (n) =>
+								allSpansPatch(n as CanvasRichTextNode, {
+									strikethrough: checked,
+								}),
+							)
 						}
 						aria-label={t("canvas.inspector.strikethrough", "Strikethrough")}
 						data-testid="prop-rich-text-strikethrough"
@@ -486,9 +619,11 @@ export function renderRichTextFields(
 						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
 						value={style.textTransform}
 						onChange={(e) =>
-							commitAllSpans({
-								textTransform: e.currentTarget.value as RichTextTransform,
-							})
+							commitPatchAll(nodes, (n) =>
+								allSpansPatch(n as CanvasRichTextNode, {
+									textTransform: e.currentTarget.value as RichTextTransform,
+								}),
+							)
 						}
 					>
 						<option value="none">
