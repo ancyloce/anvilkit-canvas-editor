@@ -14,6 +14,8 @@
 
 // ── a11y ─────────────────────────────────────────────────────────────────────
 export { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
+// ── Clipboard adapter contract (§11.1) ────────────────────────────────────────
+export type { CanvasClipboardAdapter } from "./actions/clipboard-adapter.js";
 // ── Editor action layer (§11.2 stable high-level actions) ─────────────────────
 // The unified action facade behind every editor mutation. Hosts drive common
 // operations (copy/cut/paste/duplicate/delete, group/ungroup, align/distribute,
@@ -31,6 +33,7 @@ export {
 export type {
 	CanvasAssetPicker,
 	CanvasAssetUploader,
+	CanvasPickedAsset,
 } from "./assets/adapter-types.js";
 // ── Brand kit ────────────────────────────────────────────────────────────────
 export type { BrandColor, BrandKit } from "./brand/brand-kit.js";

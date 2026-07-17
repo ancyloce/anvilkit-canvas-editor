@@ -24,6 +24,7 @@ import { SceneAccessibilityTree } from "./a11y/SceneAccessibilityTree.js";
 import { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
 import { CanvasKeyboardLayer } from "./a11y/useCanvasKeyboard.js";
 import { ZoomAnnouncer } from "./a11y/ZoomAnnouncer.js";
+import type { CanvasClipboardAdapter } from "./actions/clipboard-adapter.js";
 import type {
 	CanvasAssetPicker,
 	CanvasAssetUploader,
@@ -235,6 +236,14 @@ export interface CanvasStudioProps {
 	assetPicker?: CanvasAssetPicker;
 	/** FR-091 upload adapter (B-10) — enables drag-and-drop + the Uploads panel. */
 	assetUploader?: CanvasAssetUploader;
+	/**
+	 * §11.1 clipboard adapter override. When present, `clipboard-actions.ts`
+	 * uses it instead of `system-clipboard.ts`'s `navigator.clipboard`
+	 * wrapper — e.g. for an Electron/native bridge where the Web Clipboard API
+	 * isn't available or isn't the right transport. Omit to use the built-in
+	 * system clipboard (with its existing internal-clipboard fallback).
+	 */
+	clipboard?: CanvasClipboardAdapter;
 	/**
 	 * Shared brand colors + fonts (I3-4). Hosts map their Studio config to a
 	 * {@link BrandKit} and pass it here; the editor surfaces it via
@@ -703,6 +712,7 @@ export function CanvasStudio({
 	onExport,
 	assetPicker,
 	assetUploader,
+	clipboard,
 	children,
 }: CanvasStudioProps): React.JSX.Element {
 	const {
@@ -893,6 +903,14 @@ export function CanvasStudio({
 	const onPickAssetRef = useHostCallbackRef(onPickAsset);
 	const onAiIntentRef = useHostCallbackRef(onAiIntent);
 
+	/**
+	 * FR-011: whether the Image tool can actually pick an asset — either
+	 * wiring makes it usable. Drives the Tool Strip's disabled state for
+	 * "image" (`ToolStrip.tsx`) so a misconfigured host shows an inert
+	 * button instead of throwing on first click.
+	 */
+	const hasImagePicker = Boolean(assetPicker) || Boolean(onPickAsset);
+
 	const pickAsset = useCallback(async () => {
 		// FR-090 (B-10): a full assetPicker adapter supersedes the legacy
 		// single-uri callback; `onPickAsset` keeps working unchanged.
@@ -910,6 +928,19 @@ export function CanvasStudio({
 		}
 		return fn();
 	}, [onPickAssetRef, assetPicker]);
+
+	/**
+	 * FR-090 (B-10) multi-select pick: only meaningful with a full assetPicker
+	 * adapter — the legacy `onPickAsset` single-uri callback has no
+	 * multi-select concept, so this is omitted from context entirely when
+	 * `assetPicker` is absent (see the `pickAssets` spread below).
+	 */
+	const pickAssets = useCallback(
+		() =>
+			assetPicker?.pick({ multiple: true, kind: "image" }) ??
+			Promise.resolve([]),
+		[assetPicker],
+	);
 
 	// Stable seam for the AI tools (I1-7). Always defined; a no-op when no host
 	// wired `onAiIntent`. The AI tools call it on gesture completion.
@@ -1006,6 +1037,7 @@ export function CanvasStudio({
 			layerRenameStore,
 			replaceDocument,
 			pickAsset,
+			hasImagePicker,
 			requestAiIntent,
 			brandKit,
 			templates,
@@ -1022,8 +1054,9 @@ export function CanvasStudio({
 			...(persistenceAdapter ? { saveStatusStore } : {}),
 			save,
 			canLeave,
-			...(assetPicker ? { assetPicker } : {}),
+			...(assetPicker ? { assetPicker, pickAssets } : {}),
 			...(assetUploader ? { assetUploader } : {}),
+			...(clipboard ? { clipboard } : {}),
 			uploadStore,
 		}),
 		[
@@ -1052,6 +1085,7 @@ export function CanvasStudio({
 			layerRenameStore,
 			replaceDocument,
 			pickAsset,
+			hasImagePicker,
 			requestAiIntent,
 			brandKit,
 			templates,
@@ -1068,7 +1102,9 @@ export function CanvasStudio({
 			save,
 			canLeave,
 			assetPicker,
+			pickAssets,
 			assetUploader,
+			clipboard,
 			uploadStore,
 		],
 	);
