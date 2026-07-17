@@ -19,7 +19,11 @@ function resolveT(ctx: CanvasStudioContextValue) {
 /**
  * Insert already-uploaded/picked assets into the active page as ONE undo
  * entry: `asset.put` for each ref plus an image node per asset, arranged in a
- * simple grid around the drop position (page center when none — FR-092).
+ * simple grid around the drop position — falling back to the page center
+ * when no position is given, OR when the given position falls outside the
+ * active page's bounds (FR-092 "out-of-page drops are centered"; drops are
+ * only ever anchored to a real point once they've already landed on the
+ * page).
  * Returns the created node ids and selects them.
  */
 export function insertAssetsImpl(
@@ -32,12 +36,20 @@ export function insertAssetsImpl(
 	const activePageId = ctx.pagesStore.getState().activePageId;
 	const page = ir.pages.find((p) => p.id === activePageId);
 	if (!page) return [];
+	const anchor =
+		position &&
+		position.x >= 0 &&
+		position.x <= page.size.width &&
+		position.y >= 0 &&
+		position.y <= page.size.height
+			? position
+			: undefined;
 	const cmds: CanvasCommand[] = [];
 	const newIds: string[] = [];
 	for (const [index, asset] of assets.entries()) {
 		const width = asset.width ?? DEFAULT_W;
 		const height = asset.height ?? DEFAULT_H;
-		const base = position ?? {
+		const base = anchor ?? {
 			x: (page.size.width - width) / 2,
 			y: (page.size.height - height) / 2,
 		};

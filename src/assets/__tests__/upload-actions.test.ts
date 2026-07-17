@@ -59,6 +59,47 @@ describe("insertAssetsImpl (B-10)", () => {
 		expect(secondNode.node.transform.x).toBeGreaterThan((800 - 240) / 2);
 		expect(h.studioCtx.selectionStore.getState().selectedIds).toEqual(ids);
 	});
+
+	it("anchors to the given position when it falls within the active page", () => {
+		const { h } = setup();
+		insertAssetsImpl(
+			h.studioCtx,
+			[{ id: "a1", uri: "https://x/1.png", width: 100, height: 50 }],
+			{ x: 40, y: 60 },
+		);
+		const node = h.commits[1] as CanvasNodeCreateCommand;
+		expect(node.node.transform).toMatchObject({ x: 40, y: 60 });
+	});
+
+	it("falls back to centering when the given position is outside the page", () => {
+		const { h } = setup();
+		// Page is 800x600; (-50, 900) is outside on both axes.
+		insertAssetsImpl(
+			h.studioCtx,
+			[{ id: "a1", uri: "https://x/1.png", width: 100, height: 50 }],
+			{ x: -50, y: 900 },
+		);
+		const node = h.commits[1] as CanvasNodeCreateCommand;
+		// Centered: (800-100)/2 = 350, (600-50)/2 = 275.
+		expect(node.node.transform).toMatchObject({ x: 350, y: 275 });
+	});
+
+	it("grid-arranges multiple assets around the real (in-page) anchor, not page center", () => {
+		const { h } = setup();
+		insertAssetsImpl(
+			h.studioCtx,
+			[
+				{ id: "a1", uri: "https://x/1.png", width: 100, height: 50 },
+				{ id: "a2", uri: "https://x/2.png", width: 100, height: 50 },
+			],
+			{ x: 40, y: 60 },
+		);
+		const first = h.commits[1] as CanvasNodeCreateCommand;
+		const second = h.commits[3] as CanvasNodeCreateCommand;
+		expect(first.node.transform).toMatchObject({ x: 40, y: 60 });
+		// GRID_STEP = 24, GRID_COLUMNS = 3: second item offsets on x only.
+		expect(second.node.transform).toMatchObject({ x: 64, y: 60 });
+	});
 });
 
 describe("uploadFilesImpl (B-10, FR-091/092)", () => {
