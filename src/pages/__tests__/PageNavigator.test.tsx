@@ -7,14 +7,38 @@ import {
 	createCanvasIR,
 	createPage,
 } from "@anvilkit/canvas-core";
-import { fireEvent, render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
 } from "@/context/canvas-studio-context.js";
+import { createExportRequestStore } from "@/stores/export-request-store.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { PageNavigator } from "../PageNavigator.js";
+
+afterEach(cleanup);
+
+/** Opens the FR-032 row context menu for `pageId` and waits for its portal. */
+async function openPageMenu(pageId: string): Promise<void> {
+	fireEvent.contextMenu(screen.getByTestId(`page-tab-${pageId}`));
+	await waitFor(() => {
+		expect(screen.getByTestId(`page-menu-${pageId}`)).toBeTruthy();
+	});
+}
+
+function isMenuItemDisabled(el: HTMLElement): boolean {
+	return (
+		el.getAttribute("data-disabled") !== null ||
+		el.getAttribute("aria-disabled") === "true"
+	);
+}
 
 // I2-5: PageNavigator now rasterizes non-active pages into thumbnails. Stub the
 // off-screen rasterizer (a real Konva mount won't run under jsdom) so these
@@ -371,5 +395,145 @@ describe("PageNavigator — rename", () => {
 		const cmd = h.commits[0] as CanvasPageRenameCommand;
 		expect(cmd.from).toBe("First");
 		expect(cmd.to).toBeUndefined();
+	});
+});
+
+// FR-032: PageNavigator previously had toolbar-only page actions with no
+// Resize/Export access. This suite covers the added row context menu, which
+// mirrors PagesCanvas.tsx's row menu (same @anvilkit/ui primitive, same
+// page-actions.js call sites).
+describe("PageNavigator — context menu (FR-032)", () => {
+	it("renders all seven FR-032 entries", async () => {
+		const h = makeHarness({ ir: multiPage() });
+		mount(h.studioCtx);
+		await openPageMenu("p1");
+		for (const suffix of [
+			"duplicate",
+			"rename",
+			"settings",
+			"move-left",
+			"move-right",
+			"export",
+			"delete",
+		]) {
+			expect(screen.getByTestId(`page-menu-${suffix}-p1`)).toBeTruthy();
+		}
+	});
+
+	it("Duplicate fires page.create with an index and clone name", async () => {
+		const h = makeHarness({ ir: multiPage() });
+		mount(h.studioCtx);
+		await openPageMenu("p1");
+		fireEvent.click(screen.getByTestId("page-menu-duplicate-p1"));
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasPageCreateCommand;
+		expect(cmd.type).toBe("page.create");
+		expect(cmd.index).toBe(1);
+		expect(cmd.page.name).toBe("First copy");
+	});
+
+	it("Rename opens the rename input for that page", async () => {
+		const h = makeHarness({ ir: multiPage() });
+		mount(h.studioCtx);
+		await openPageMenu("p2");
+		fireEvent.click(screen.getByTestId("page-menu-rename-p2"));
+		expect(await screen.findByTestId("page-rename-input-p2")).toBeTruthy();
+	});
+
+	it("Resize opens the (lazy) page settings dialog", async () => {
+		const h = makeHarness({ ir: multiPage() });
+		mount(h.studioCtx);
+		await openPageMenu("p1");
+		fireEvent.click(screen.getByTestId("page-menu-settings-p1"));
+		expect(await screen.findByTestId("page-settings-dialog")).toBeTruthy();
+	});
+
+	it("Move left is disabled on the first row regardless of which page is active", async () => {
+		const h = makeHarness({ ir: multiPage() }); // p1 (index 0) is active
+		mount(h.studioCtx);
+		await openPageMenu("p1");
+		expect(
+			isMenuItemDisabled(screen.getByTestId("page-menu-move-left-p1")),
+		).toBe(true);
+		expect(
+			isMenuItemDisabled(screen.getByTestId("page-menu-move-right-p1")),
+		).toBe(false);
+	});
+
+	it("Move right is disabled on the last row even when it is not the active page", async () => {
+		const h = makeHarness({ ir: multiPage() }); // p1 active, p2 (index 1) is not
+		mount(h.studioCtx);
+		await openPageMenu("p2");
+		expect(
+			isMenuItemDisabled(screen.getByTestId("page-menu-move-right-p2")),
+		).toBe(true);
+		expect(
+			isMenuItemDisabled(screen.getByTestId("page-menu-move-left-p2")),
+		).toBe(false);
+		fireEvent.click(screen.getByTestId("page-menu-move-left-p2"));
+		expect(h.commits).toHaveLength(1);
+		const cmd = h.commits[0] as CanvasPageReorderCommand;
+		expect(cmd.type).toBe("page.reorder");
+		expect(cmd.pageId).toBe("p2");
+		expect(cmd.from).toBe(1);
+		expect(cmd.to).toBe(0);
+	});
+
+	it("Export is disabled when no export UI is mounted (headless <CanvasStudio>)", async () => {
+		const h = makeHarness({ ir: multiPage() });
+		mount(h.studioCtx);
+		await openPageMenu("p1");
+		expect(isMenuItemDisabled(screen.getByTestId("page-menu-export-p1"))).toBe(
+			true,
+		);
+	});
+
+	it("Export switches to that page and requests scope 'current' when export UI is mounted", async () => {
+		const h = makeHarness({ ir: multiPage() });
+		const exportRequestStore = createExportRequestStore();
+		exportRequestStore.getState().setAvailable(true);
+		const ctx: CanvasStudioContextValue = {
+			...h.studioCtx,
+			exportRequestStore,
+		};
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<PageNavigator />
+			</CanvasStudioContext.Provider>,
+		);
+		await openPageMenu("p2");
+		const exportItem = screen.getByTestId("page-menu-export-p2");
+		expect(isMenuItemDisabled(exportItem)).toBe(false);
+		fireEvent.click(exportItem);
+		expect(ctx.pagesStore.getState().activePageId).toBe("p2");
+		expect(exportRequestStore.getState().pending).toEqual({
+			scope: "current",
+		});
+	});
+
+	it("Delete is disabled with an explanatory title on the only page, and does not commit", async () => {
+		const h = makeHarness({ ir: singlePage() });
+		mount(h.studioCtx);
+		await openPageMenu("only");
+		const del = screen.getByTestId("page-menu-delete-only");
+		expect(isMenuItemDisabled(del)).toBe(true);
+		expect(del.getAttribute("title")).toBe("Cannot delete the only page");
+		fireEvent.click(del);
+		expect(h.commits).toHaveLength(0);
+	});
+
+	it("Delete confirms then fires page.delete on a multi-page document", async () => {
+		const h = makeHarness({ ir: multiPage() });
+		mount(h.studioCtx);
+		await openPageMenu("p1");
+		const del = screen.getByTestId("page-menu-delete-p1");
+		expect(isMenuItemDisabled(del)).toBe(false);
+		fireEvent.click(del);
+		await waitFor(() => {
+			expect(h.commits).toHaveLength(1);
+		});
+		const cmd = h.commits[0] as CanvasPageDeleteCommand;
+		expect(cmd.type).toBe("page.delete");
+		expect(cmd.pageId).toBe("p1");
 	});
 });

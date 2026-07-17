@@ -7,6 +7,10 @@ import {
 	createPage,
 } from "@anvilkit/canvas-core";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
+import {
+	type CanvasToaster,
+	NOOP_CANVAS_TOASTER,
+} from "../context/toast-context.js";
 import { clonePage } from "./clone-page.js";
 
 export interface AddPageOptions {
@@ -60,19 +64,34 @@ export function duplicateCurrentPage(
 }
 
 /**
- * Delete a page. No-op when only one page remains (last-page guard — empty
- * IR would render the "no active page" fallback in `<CanvasStudio>`).
+ * Delete a page. Blocked when only one page remains (last-page guard — an
+ * empty IR would render the "no active page" fallback in `<CanvasStudio>`);
+ * FR-170 fires a warning toast so a blocked delete is never a silent no-op,
+ * regardless of which UI entry point (row button, context menu, toolbar
+ * icon) triggered it — every caller routes through this one guard, so the
+ * toast fires exactly once per attempt. Reuses the same copy as the
+ * disabled delete controls' tooltip (`canvas.nav.cannotDeleteOnly`).
  * If the deleted page was active, moves active to the page at the same index
  * (or the previous one if the deleted was last).
  */
 export function deletePage(
 	ctx: CanvasStudioContextValue,
 	pageId: string,
+	toaster: CanvasToaster = NOOP_CANVAS_TOASTER,
 ): void {
 	const ir = ctx.getIR();
 	const targetIndex = ir.pages.findIndex((p) => p.id === pageId);
 	if (targetIndex < 0) return;
-	if (ir.pages.length <= 1) return;
+	if (ir.pages.length <= 1) {
+		toaster.add({
+			type: "warning",
+			title: (ctx.t ?? ((_k: string, f?: string) => f ?? ""))(
+				"canvas.nav.cannotDeleteOnly",
+				"Cannot delete the only page",
+			),
+		});
+		return;
+	}
 	const wasActive = ctx.pagesStore.getState().activePageId === pageId;
 	const cmd: CanvasPageDeleteCommand = {
 		type: "page.delete",

@@ -136,6 +136,24 @@ describe("deletePage", () => {
 		expect(h.studioCtx.pagesStore.getState().activePageId).toBe("p1");
 	});
 
+	it("FR-170: the last-page guard fires exactly one warning toast reusing the nav tooltip copy", () => {
+		const h = makeHarness({ ir: singlePageWithRect() });
+		const toasts: { type?: string; title: string }[] = [];
+		deletePage(h.studioCtx, "p1", { add: (input) => toasts.push(input) });
+		expect(h.commits).toHaveLength(0);
+		expect(toasts).toHaveLength(1);
+		expect(toasts[0]?.type).toBe("warning");
+		expect(toasts[0]?.title).toBe("Cannot delete the only page");
+	});
+
+	it("does NOT toast when the delete actually succeeds", () => {
+		const h = makeHarness({ ir: multiPageIR() });
+		const toasts: { type?: string; title: string }[] = [];
+		deletePage(h.studioCtx, "p1", { add: (input) => toasts.push(input) });
+		expect(h.commits).toHaveLength(1);
+		expect(toasts).toHaveLength(0);
+	});
+
 	it("does not change active page when deleting a non-active page", () => {
 		const h = makeHarness({ ir: multiPageIR() });
 		// p1 is active; delete p2.
