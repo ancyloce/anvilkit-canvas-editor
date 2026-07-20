@@ -46,6 +46,7 @@ import type { ViewportStoreApi } from "../stores/viewport-store.js";
 import type { CanvasTemplateEntry } from "../templates/template-entry.js";
 import type { CanvasTemplateProvider } from "../templates/template-provider.js";
 import type { AiToolIntent } from "../tools/ai-intent.js";
+import type { ToolRegistry } from "../tools/tool-types.js";
 
 export type CanvasIRGetter = () => CanvasIR;
 
@@ -252,6 +253,14 @@ export interface CanvasStudioContextValue {
 	save?: () => Promise<boolean>;
 	canLeave?: () => boolean;
 	/**
+	 * FR-160/163: save-if-dirty for host routing guards. Unlike `save()`, the
+	 * save this starts is protected from teardown — `flush()` followed by
+	 * unmount cannot abort it — so hosts can `await flush()` in a route-leave
+	 * hook. Resolves `true` when nothing needed saving. Without a
+	 * `persistenceAdapter` it resolves `true`.
+	 */
+	flush?: () => Promise<boolean>;
+	/**
 	 * FR-090/091 asset adapters (B-10). Present when the host wires them;
 	 * `pickAsset` keeps its legacy single-uri contract for existing tools.
 	 */
@@ -292,6 +301,17 @@ export interface CanvasStudioContextValue {
 	 * rename. UI state only; optional for partial test contexts.
 	 */
 	layerRenameStore?: LayerRenameStoreApi;
+	/**
+	 * The EFFECTIVE tool registry (FR-010): default tools + extension-
+	 * contributed tools + the `toolRegistry` prop override — the SAME registry
+	 * `ToolInteractionLayer` dispatches through, so chrome surfaces (tool
+	 * strip, its "More tools" overflow, the Elements panel) list exactly the
+	 * tools that can actually run. Referentially stable (memoized by
+	 * `<CanvasStudio>`; changes only when `extensions`/`toolRegistry` change).
+	 * Optional for partial test contexts, where chrome falls back to the
+	 * built-in rail alone.
+	 */
+	toolRegistry?: ToolRegistry;
 	/** Konva.Stage instance — null until <CanvasStage>'s onReady fires. */
 	stage: Konva.Stage | null;
 	/**
