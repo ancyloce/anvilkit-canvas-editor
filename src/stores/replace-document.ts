@@ -12,6 +12,7 @@ import type { PathEditStoreApi } from "./path-edit-store.js";
 import type { PenStoreApi } from "./pen-store.js";
 import type { SceneStoreApi } from "./scene-store.js";
 import type { SelectionStoreApi } from "./selection-store.js";
+import type { UploadStoreApi } from "./upload-store.js";
 
 /**
  * Every store `replaceDocumentSnapshot` (P0-9) coordinates. A subset of
@@ -35,6 +36,13 @@ export interface DocumentStores {
 	readonly aiJobStore: AiJobStoreApi;
 	/** Optional so existing hand-built store bags keep compiling (B-12). */
 	readonly fieldPreviewStore?: FieldPreviewStoreApi;
+	/**
+	 * Optional for the same compatibility reason (FR-091): when present, a
+	 * document replacement aborts every in-flight upload and clears the task
+	 * list, so an upload started against the OLD document can never insert
+	 * nodes into the new one.
+	 */
+	readonly uploadStore?: UploadStoreApi;
 }
 
 /**
@@ -101,6 +109,7 @@ export function replaceDocumentSnapshot(
 		guidesStore,
 		aiJobStore,
 		fieldPreviewStore,
+		uploadStore,
 	} = stores;
 	// `options.source` is not yet branched on (see the type's doc comment) —
 	// referencing it keeps the parameter intentional rather than unused.
@@ -122,6 +131,7 @@ export function replaceDocumentSnapshot(
 	guidesStore.getState().clearGuides();
 	aiJobStore.getState().reset();
 	fieldPreviewStore?.getState().clearPreviews();
+	uploadStore?.getState().reset();
 
 	sceneStore.getState().setIR(ir);
 	pagesStore.getState().setActivePageId(nextActivePageId);

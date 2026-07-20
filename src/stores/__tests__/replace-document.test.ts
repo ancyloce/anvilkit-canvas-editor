@@ -20,6 +20,7 @@ import type { DocumentStores } from "../replace-document.js";
 import { replaceDocumentSnapshot } from "../replace-document.js";
 import { createSceneStore } from "../scene-store.js";
 import { createSelectionStore } from "../selection-store.js";
+import { createUploadStore } from "../upload-store.js";
 
 function twoPageIR(): CanvasIR {
 	const rect = createRect({ id: "rectA", bounds: { width: 10, height: 10 } });
@@ -49,6 +50,7 @@ function makeStores(initialIR: CanvasIR): DocumentStores {
 		pathEditStore: createPathEditStore(),
 		guidesStore: createGuidesStore(),
 		aiJobStore: createAiJobStore(),
+		uploadStore: createUploadStore(),
 	};
 }
 
@@ -121,6 +123,24 @@ describe("replaceDocumentSnapshot", () => {
 		});
 		expect(abort).toHaveBeenCalledOnce();
 		expect(stores.aiJobStore.getState().get("job-1")).toBeUndefined();
+	});
+
+	it("aborts every in-flight upload and clears the task list (FR-091)", () => {
+		const stores = makeStores(twoPageIR());
+		const uploadStore = stores.uploadStore;
+		if (!uploadStore) throw new Error("uploadStore missing");
+		const id = uploadStore
+			.getState()
+			.begin(new File(["x"], "a.png", { type: "image/png" }));
+		const abort = vi.fn();
+		uploadStore.getState().registerAbort(id, abort);
+		replaceDocumentSnapshot(stores, createCanvasIR({ id: "doc-2" }), {
+			source: "document-switch",
+		});
+		expect(abort).toHaveBeenCalledOnce();
+		expect(uploadStore.getState().tasks).toHaveLength(0);
+		// An upload resolving after the swap finds its task gone → inserts nothing.
+		expect(uploadStore.getState().has(id)).toBe(false);
 	});
 
 	it("keeps the active page when it still exists in the new document", () => {
