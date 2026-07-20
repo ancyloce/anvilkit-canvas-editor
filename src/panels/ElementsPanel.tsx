@@ -3,7 +3,10 @@
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { useSyncExternalStore } from "react";
-import { TOOL_RAIL_ITEMS, type ToolDescriptor } from "../chrome/icons.js";
+import {
+	type ToolDescriptor,
+	toolDescriptorsFromRegistry,
+} from "../chrome/icons.js";
 import {
 	useCanvasStudio,
 	useCanvasT,
@@ -12,20 +15,25 @@ import {
 export interface ElementsPanelProps {
 	/** Filter tools by label (driven by the Tab Panel search box). */
 	search?: string;
-	/** Tools to show, in order. Defaults to the full drawing-tool set. */
+	/**
+	 * Tools to show, in order. Defaults to the EFFECTIVE tool set (FR-010):
+	 * the built-in drawing tools plus every extension-registered tool from
+	 * `useCanvasStudio().toolRegistry`.
+	 */
 	tools?: readonly ToolDescriptor[];
 	className?: string;
 }
 
 /**
  * The Canva-shell "Elements" panel — the new home for the drawing tools.
- * Renders each {@link TOOL_RAIL_ITEMS} entry as a button bound to `toolStore`;
- * the active tool is highlighted. It is the drawing-tool surface for the
- * `CanvasWorkspace` shell (decision §1.3.2).
+ * Renders each effective tool (built-in rail + extension-registered tools,
+ * FR-010) as a button bound to `toolStore`; the active tool is highlighted.
+ * It is the drawing-tool surface for the `CanvasWorkspace` shell (decision
+ * §1.3.2). The `tools` prop still overrides the list entirely.
  */
 export function ElementsPanel({
 	search = "",
-	tools = TOOL_RAIL_ITEMS,
+	tools,
 	className,
 }: ElementsPanelProps): React.JSX.Element {
 	const ctx = useCanvasStudio();
@@ -38,11 +46,23 @@ export function ElementsPanel({
 
 	const query = search.trim().toLowerCase();
 	// Resolve the localized label once per tool so the search filter, button
-	// title, and visible caption all match what the user reads.
-	const resolved = tools.map((tool) => ({
-		...tool,
-		resolvedLabel: t(tool.labelKey, tool.label),
-	}));
+	// title, and visible caption all match what the user reads. Without a
+	// `tools` override the list derives from the effective registry — an
+	// absent registry (partial test contexts) yields the built-ins alone.
+	const resolved = tools
+		? tools.map((tool) => ({
+				id: tool.id,
+				icon: tool.icon,
+				resolvedLabel: t(tool.labelKey, tool.label),
+			}))
+		: toolDescriptorsFromRegistry(ctx.toolRegistry).map((tool) => ({
+				id: tool.id,
+				icon: tool.icon,
+				resolvedLabel:
+					tool.labelKey !== undefined
+						? t(tool.labelKey, tool.label)
+						: tool.label,
+			}));
 	const visible = query
 		? resolved.filter((tool) =>
 				tool.resolvedLabel.toLowerCase().includes(query),

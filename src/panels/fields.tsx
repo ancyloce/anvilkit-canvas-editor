@@ -11,6 +11,7 @@ import {
 	CanvasStudioContext,
 	CanvasStudioStableContext,
 	useCanvasStores,
+	useCanvasT,
 } from "../context/canvas-studio-context.js";
 
 /**
@@ -349,6 +350,70 @@ export interface ColorFieldProps {
 	contract?: FieldContractTarget<string>;
 	/** Native tooltip, e.g. flagging an unresolved brand-token value (canvas-m1-013). */
 	title?: string;
+	/** FR-074: hide the R/G/B numeric inputs for space-constrained hosts. */
+	rgb?: boolean;
+	/**
+	 * FR-074 eyedropper adapter seam. Resolve to a hex color, or `null` when
+	 * the user cancelled. Defaults to the platform `EyeDropper` API when the
+	 * browser provides it; when neither an adapter nor platform support
+	 * exists, no eyedropper button renders (graceful fallback).
+	 */
+	eyeDropper?: () => Promise<string | null>;
+}
+
+/**
+ * FR-074 hex parsing. Accepts `rgb`, `rrggbb`, or `rrggbbaa` with or without
+ * a leading `#`; returns the normalized lowercase `#…` form or `null`.
+ */
+export function normalizeHexColor(input: string): string | null {
+	const raw = input.trim().replace(/^#/, "").toLowerCase();
+	if (/^[0-9a-f]{3}$/.test(raw)) {
+		return `#${raw[0]}${raw[0]}${raw[1]}${raw[1]}${raw[2]}${raw[2]}`;
+	}
+	if (/^[0-9a-f]{6}$/.test(raw) || /^[0-9a-f]{8}$/.test(raw)) return `#${raw}`;
+	return null;
+}
+
+/** Split a `#rrggbb`/`#rrggbbaa` color into 0-255 channels (+ alpha suffix). */
+export function hexColorChannels(
+	value: string,
+): { r: number; g: number; b: number; alphaSuffix: string } | null {
+	if (!/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value)) return null;
+	return {
+		r: Number.parseInt(value.slice(1, 3), 16),
+		g: Number.parseInt(value.slice(3, 5), 16),
+		b: Number.parseInt(value.slice(5, 7), 16),
+		alphaSuffix: value.slice(7).toLowerCase(),
+	};
+}
+
+function channelsToHex(
+	r: number,
+	g: number,
+	b: number,
+	alphaSuffix: string,
+): string {
+	const c = (n: number): string =>
+		Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+	return `#${c(r)}${c(g)}${c(b)}${alphaSuffix}`;
+}
+
+type EyeDropperCtor = new () => { open(): Promise<{ sRGBHex: string }> };
+
+/** Feature-detected platform eyedropper (Chromium-only API; never a hard dep). */
+function platformEyeDropper(): (() => Promise<string | null>) | undefined {
+	if (typeof window === "undefined") return undefined;
+	const ctor = (window as { EyeDropper?: EyeDropperCtor }).EyeDropper;
+	if (!ctor) return undefined;
+	return async () => {
+		try {
+			const result = await new ctor().open();
+			return result.sRGBHex;
+		} catch {
+			// AbortError on user cancel — treated as "no pick".
+			return null;
+		}
+	};
 }
 
 export function ColorField({
@@ -358,46 +423,185 @@ export function ColorField({
 	onCommit,
 	contract,
 	title,
+	rgb = true,
+	eyeDropper,
 }: ColorFieldProps): React.JSX.Element {
+	const t = useCanvasT();
 	// See NumberField: re-key uncontrolled input on external change, frozen
 	// while focused (W3).
 	const fk = useFrozenKey(value ?? "#000000");
 	const field = useFieldContract(contract, dataTestId);
+	const commitValue = (next: string): void => {
+		if (next !== value) {
+			if (field.enabled) field.commit(next);
+			else onCommit?.(next);
+		} else field.cancel();
+	};
+	const channels = hexColorChannels(value ?? "");
+	const dropper = eyeDropper ?? platformEyeDropper();
+	const channelLabels = {
+		r: t("canvas.color.r", "R"),
+		g: t("canvas.color.g", "G"),
+		b: t("canvas.color.b", "B"),
+	} as const;
 	return (
 		<FieldRow label={label} title={title}>
-			<div className="flex items-center gap-2">
-				<span
-					className="size-5 shrink-0 rounded-sm ring-1 ring-border"
-					style={{ backgroundColor: value ?? "#000000" }}
-					aria-hidden
-				/>
-				<Input
-					key={fk.key}
-					type="color"
-					aria-label={label}
-					defaultValue={value ?? "#000000"}
-					className="h-7.5 flex-1 p-0.5"
-					data-testid={dataTestId}
-					onFocus={fk.onFocus}
-					onChange={(e) => field.preview(e.currentTarget.value)}
-					onKeyDown={(e) => {
-						if (e.key === "Enter") {
-							e.currentTarget.blur();
-						} else if (e.key === "Escape") {
-							e.stopPropagation();
-							e.currentTarget.value = value ?? "#000000";
-							field.cancel();
-						}
-					}}
-					onBlur={(e) => {
-						fk.onBlur();
-						const next = e.currentTarget.value;
-						if (next !== value) {
-							if (field.enabled) field.commit(next);
-							else onCommit?.(next);
-						} else field.cancel();
-					}}
-				/>
+			<div className="flex flex-col gap-1">
+				<div className="flex items-center gap-2">
+					<span
+						className="size-5 shrink-0 rounded-sm ring-1 ring-border"
+						style={{ backgroundColor: value ?? "#000000" }}
+						aria-hidden
+					/>
+					{/* FR-074: explicit editable hex input. */}
+					<Input
+						key={`hex-${fk.key}`}
+						type="text"
+						inputMode="text"
+						spellCheck={false}
+						maxLength={9}
+						aria-label={`${label} — ${t("canvas.color.hex", "Hex")}`}
+						defaultValue={value ?? "#000000"}
+						className="h-7.5 min-w-0 flex-1 font-mono text-xs"
+						data-testid={`${dataTestId}-hex`}
+						onFocus={fk.onFocus}
+						onChange={(e) => {
+							const next = normalizeHexColor(e.currentTarget.value);
+							if (next) field.preview(next);
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") {
+								e.currentTarget.blur();
+							} else if (e.key === "Escape") {
+								e.stopPropagation();
+								e.currentTarget.value = value ?? "#000000";
+								field.cancel();
+							}
+						}}
+						onBlur={(e) => {
+							fk.onBlur();
+							const next = normalizeHexColor(e.currentTarget.value);
+							if (next) commitValue(next);
+							else {
+								e.currentTarget.value = value ?? "#000000";
+								field.cancel();
+							}
+						}}
+					/>
+					<Input
+						key={fk.key}
+						type="color"
+						aria-label={label}
+						defaultValue={channels ? (value ?? "#000000").slice(0, 7) : "#000000"}
+						className="h-7.5 w-9 shrink-0 p-0.5"
+						data-testid={dataTestId}
+						onFocus={fk.onFocus}
+						onChange={(e) => field.preview(e.currentTarget.value)}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") {
+								e.currentTarget.blur();
+							} else if (e.key === "Escape") {
+								e.stopPropagation();
+								e.currentTarget.value = value ?? "#000000";
+								field.cancel();
+							}
+						}}
+						onBlur={(e) => {
+							fk.onBlur();
+							commitValue(e.currentTarget.value);
+						}}
+					/>
+					{dropper ? (
+						<button
+							type="button"
+							className="flex size-7 shrink-0 items-center justify-center rounded-sm ring-1 ring-border hover:bg-accent"
+							aria-label={`${label} — ${t("canvas.color.eyedropper", "Pick color from screen")}`}
+							title={t("canvas.color.eyedropper", "Pick color from screen")}
+							data-testid={`${dataTestId}-eyedropper`}
+							onClick={() => {
+								void dropper().then((picked) => {
+									if (picked) {
+										const next = normalizeHexColor(picked);
+										if (next) commitValue(next);
+									}
+								});
+							}}
+						>
+							<svg
+								aria-hidden
+								width="12"
+								height="12"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
+								<path d="m2 22 1-1h3l9-9" />
+								<path d="M3 21v-3l9-9" />
+								<path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z" />
+							</svg>
+						</button>
+					) : null}
+				</div>
+				{/* FR-074: RGB channel inputs (0-255), hidden for non-hex values. */}
+				{rgb && channels ? (
+					<div className="flex items-center gap-1">
+						{(["r", "g", "b"] as const).map((channel) => (
+							<Input
+								key={`${channel}-${fk.key}`}
+								type="number"
+								min={0}
+								max={255}
+								step={1}
+								aria-label={`${label} — ${channelLabels[channel]}`}
+								defaultValue={channels[channel]}
+								className="h-6.5 min-w-0 flex-1 px-1 text-xs"
+								data-testid={`${dataTestId}-${channel}`}
+								onFocus={fk.onFocus}
+								onChange={(e) => {
+									const n = Number(e.currentTarget.value);
+									if (!Number.isFinite(n)) return;
+									field.preview(
+										channelsToHex(
+											channel === "r" ? n : channels.r,
+											channel === "g" ? n : channels.g,
+											channel === "b" ? n : channels.b,
+											channels.alphaSuffix,
+										),
+									);
+								}}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.currentTarget.blur();
+									} else if (e.key === "Escape") {
+										e.stopPropagation();
+										e.currentTarget.value = String(channels[channel]);
+										field.cancel();
+									}
+								}}
+								onBlur={(e) => {
+									fk.onBlur();
+									const n = Number(e.currentTarget.value);
+									if (!Number.isFinite(n)) {
+										e.currentTarget.value = String(channels[channel]);
+										field.cancel();
+										return;
+									}
+									commitValue(
+										channelsToHex(
+											channel === "r" ? n : channels.r,
+											channel === "g" ? n : channels.g,
+											channel === "b" ? n : channels.b,
+											channels.alphaSuffix,
+										),
+									);
+								}}
+							/>
+						))}
+					</div>
+				) : null}
 			</div>
 		</FieldRow>
 	);
