@@ -18,6 +18,10 @@ vi.mock("react-konva", () => ({
 }));
 
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import {
+	FALLBACK_PAGE_BACKGROUND,
+	pageBackgroundFill,
+} from "@/render/page-background.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { DesignBackground } from "../DesignBackground.js";
 
@@ -38,7 +42,10 @@ function irWithBackground(background: CanvasPageBackground): CanvasIR {
 /**
  * The exact Rect the thumbnail rasterizer draws for the page background
  * (render/rasterize-page.tsx) — the live stage must stay in lockstep with it
- * so the canvas and page navigator never disagree (M0-04 regression).
+ * so the canvas and page navigator never disagree (M0-04 regression). Both
+ * resolve the fill through `pageBackgroundFill` (FR-063): solid renders its
+ * value; reserved gradient/image kinds render the neutral fallback rather
+ * than leaking a raw non-color string into Konva.
  */
 function rasterizerRectProps(ir: CanvasIR) {
 	const page = ir.pages[0];
@@ -48,7 +55,7 @@ function rasterizerRectProps(ir: CanvasIR) {
 		y: 0,
 		width: page.size.width,
 		height: page.size.height,
-		fill: page.background.value,
+		fill: pageBackgroundFill(page.background),
 	};
 }
 
@@ -85,5 +92,15 @@ describe("DesignBackground (live stage page background, M0-04)", () => {
 		const ir = irWithBackground({ kind: "solid", value: "#123456" });
 		renderBackground(ir, "not-a-page");
 		expect(calls).toHaveLength(0);
+	});
+
+	it("never passes a raw non-solid value into the Konva fill (FR-063 narrowing)", () => {
+		const ir = irWithBackground({
+			kind: "gradient",
+			value: "linear-gradient(#000, #fff)",
+		});
+		renderBackground(ir);
+		expect(calls[0]?.props.fill).toBe(FALLBACK_PAGE_BACKGROUND);
+		expect(calls[0]?.props.fill).not.toContain("linear-gradient");
 	});
 });
