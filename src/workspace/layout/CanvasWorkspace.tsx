@@ -45,7 +45,11 @@ import {
 	PANEL_WIDTH_MIN,
 } from "../state/workspace-ui-store.js";
 import { CanvasToastHost } from "../toasts/CanvasToastHost.js";
-import { ToolStrip } from "../toolstrip/ToolStrip.js";
+// Relative (not @/): CanvasToolStripOptions surfaces in the emitted .d.ts.
+import {
+	type CanvasToolStripOptions,
+	ToolStrip,
+} from "../toolstrip/ToolStrip.js";
 import { CanvasDropZone } from "../uploads/CanvasDropZone.js";
 import type { DockItem } from "../workspace-config.js";
 import { CanvasToolbar } from "./CanvasToolbar.js";
@@ -135,9 +139,14 @@ export interface CanvasWorkspaceProps
 	shortcuts?: boolean | CanvasShortcutOptions;
 	/**
 	 * The floating tool strip (B-06, FR-010). Default `true`; `false` hides it
-	 * (hosts with their own tool chrome keep the pre-M2 canvas untouched).
+	 * (hosts with their own tool chrome keep the pre-M2 canvas untouched). An
+	 * options object keeps the strip but composes it — mirroring `shortcuts`:
+	 * `items` filters/reorders the rail (extension tool ids may be promoted
+	 * into it); `renderer` replaces the rendering entirely while the
+	 * workspace still positions the cluster. Extension-registered tools not
+	 * in the rail surface under the strip's "More tools" overflow.
 	 */
-	toolStrip?: boolean;
+	toolStrip?: boolean | CanvasToolStripOptions;
 }
 
 /**
@@ -240,7 +249,7 @@ function WorkspaceBody({
 	dockItems?: readonly DockItem[];
 	registry: CanvasPanelRegistry;
 	inspector: boolean;
-	toolStrip: boolean;
+	toolStrip: boolean | CanvasToolStripOptions;
 	elementActions?: ElementActions;
 }): React.JSX.Element {
 	const [panelWidth] = usePanelWidth();
@@ -261,7 +270,9 @@ function WorkspaceBody({
 			<CanvasAreaContextMenu>
 				<CanvasDropZone>
 					{/* Fixed overlays — float over the canvas, never shift it. */}
-					{toolStrip ? <ToolStrip /> : null}
+					{toolStrip !== false ? (
+						<ToolStrip {...(toolStrip === true ? {} : toolStrip)} />
+					) : null}
 					<CanvasToolbar />
 					<PagesCanvas stage={stage} elementActions={elementActions} />
 					<WorkspaceFooter className="absolute inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur" />

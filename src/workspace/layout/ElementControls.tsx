@@ -2,7 +2,6 @@
 
 import {
 	type AlignEdge,
-	type CanvasAnyNodeUpdateCommand,
 	type CanvasNode,
 	findNode,
 } from "@anvilkit/canvas-core";
@@ -171,6 +170,11 @@ export function ElementControls({
 		() => ctx.selectionStore.getState().selectedIds,
 		() => ctx.selectionStore.getState().selectedIds,
 	);
+	const editingNodeId = useSyncExternalStore(
+		ctx.editingStore.subscribe,
+		() => ctx.editingStore.getState().editingNodeId,
+		() => ctx.editingStore.getState().editingNodeId,
+	);
 	// Subscribe to viewport changes so we re-render (and re-measure the
 	// canvas-pixel rect via `getClientRect`) on every zoom/pan tick.
 	useSyncExternalStore(
@@ -220,6 +224,9 @@ export function ElementControls({
 		};
 	}, [stage, draftStore, selectionStore]);
 
+	// While inline text editing is active the RichTextToolbar owns the floating
+	// chrome — both selection toolbars stay hidden (FR-180).
+	if (editingNodeId !== null) return null;
 	if (selectedIds.length === 0) return null;
 	const irNodes = selectedIds
 		.map((id) => findNode(ctx.ir, id)?.node)
@@ -238,21 +245,13 @@ export function ElementControls({
 
 	const allLocked = irNodes.every((n) => n.locked === true);
 
+	// FR-180: one batched undo entry for the whole selection via the unified
+	// action layer (was a per-node commit loop → N entries). The action also
+	// drops the selection on lock — a locked element can't be resized/rotated/
+	// dragged and is un-hittable by `findHitNodeId` and the marquee, so unlock
+	// happens from the layer panel; on unlock the selection is kept.
 	const toggleLock = () => {
-		const nextLocked = !allLocked;
-		for (const n of irNodes) {
-			ctx.commit({
-				type: "node.update",
-				nodeId: n.id,
-				kind: n.type,
-				patch: { locked: nextLocked },
-			} as CanvasAnyNodeUpdateCommand);
-		}
-		// On lock: drop the selection so the element can't be resized/rotated/
-		// dragged. Locked nodes are also un-hittable by `findHitNodeId` and the
-		// marquee, so the canvas can't re-select them — unlock from the layer
-		// panel. On unlock: keep the selection so the user can keep editing.
-		if (nextLocked) ctx.selectionStore.getState().clearSelection();
+		editorActions.toggleLockSelection();
 	};
 
 	// Unified action layer (M0-02): one undo entry for multi-delete, locked
@@ -306,6 +305,9 @@ export function ElementControls({
 				size="icon-sm"
 				variant="ghost"
 				data-testid="element-controls-duplicate"
+				// FR-024/FR-180: an all-locked selection keeps only Unlock live —
+				// every mutating control disables instead of silently no-op'ing.
+				disabled={allLocked}
 				aria-label={t("canvas.element.duplicate", "Duplicate")}
 				title={t("canvas.element.duplicate", "Duplicate")}
 				onClick={() => {
@@ -322,6 +324,7 @@ export function ElementControls({
 				size="icon-sm"
 				variant="ghost"
 				data-testid="element-controls-delete"
+				disabled={allLocked}
 				aria-label={t("canvas.element.delete", "Delete")}
 				title={t("canvas.element.delete", "Delete")}
 				onClick={deleteSelection}
@@ -332,6 +335,7 @@ export function ElementControls({
 			<DropdownMenu>
 				<DropdownMenuTrigger
 					data-testid="element-controls-more"
+					disabled={allLocked}
 					aria-label={t("canvas.element.more", "More")}
 					title={t("canvas.element.more", "More")}
 					className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}

@@ -148,3 +148,67 @@ describe("CanvasWorkspace shell", () => {
 		).toBe("true");
 	});
 });
+
+describe("CanvasWorkspace toolStrip prop (FR-010)", () => {
+	it("renders the default strip by default and none with toolStrip={false}", () => {
+		const first = render(
+			<CanvasWorkspace initialIR={ir()} initialActivePageId="p1" storeId="ts-a" />,
+		);
+		expect(
+			first.container.querySelector("[data-testid='tool-strip']"),
+		).not.toBeNull();
+		first.unmount();
+		const second = render(
+			<CanvasWorkspace
+				initialIR={ir()}
+				initialActivePageId="p1"
+				storeId="ts-b"
+				toolStrip={false}
+			/>,
+		);
+		expect(
+			second.container.querySelector("[data-testid='tool-strip']"),
+		).toBeNull();
+		expect(
+			second.container.querySelector("[data-testid='tool-strip-custom']"),
+		).toBeNull();
+	});
+
+	it("threads CanvasToolStripOptions: items filter and renderer replacement", () => {
+		const first = render(
+			<CanvasWorkspace
+				initialIR={ir()}
+				initialActivePageId="p1"
+				storeId="ts-c"
+				toolStrip={{ items: ["select", "rect"] }}
+			/>,
+		);
+		const strip = first.container.querySelector("[data-testid='tool-strip']");
+		expect(strip).not.toBeNull();
+		expect(
+			strip?.querySelector("[data-testid='tool-strip-select']"),
+		).not.toBeNull();
+		expect(
+			strip?.querySelector("[data-testid='tool-strip-text']"),
+		).toBeNull();
+		first.unmount();
+		const second = render(
+			<CanvasWorkspace
+				initialIR={ir()}
+				initialActivePageId="p1"
+				storeId="ts-d"
+				toolStrip={{
+					renderer: ({ descriptors }) => (
+						<nav data-testid="host-strip">{descriptors.length}</nav>
+					),
+				}}
+			/>,
+		);
+		expect(
+			second.container.querySelector("[data-testid='host-strip']"),
+		).not.toBeNull();
+		expect(
+			second.container.querySelector("[data-testid='tool-strip']"),
+		).toBeNull();
+	});
+});
