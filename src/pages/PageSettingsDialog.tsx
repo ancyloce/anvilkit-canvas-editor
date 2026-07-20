@@ -19,6 +19,7 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
+import { CampaignResizePanel } from "../panels/CampaignResizePanel.js";
 import { SizePresetPicker } from "./SizePresetPicker.js";
 
 export interface PageSettingsDialogProps {
@@ -56,6 +57,7 @@ export default function PageSettingsDialog({
 	const [background, setBackground] = useState(
 		page.background.kind === "solid" ? page.background.value : "#ffffff",
 	);
+	const [variantsOpen, setVariantsOpen] = useState(false);
 
 	const apply = (): void => {
 		const w = Math.max(1, Math.round(Number(width) || page.size.width));
@@ -166,6 +168,26 @@ export default function PageSettingsDialog({
 								setHeight(String(preset.height));
 							}}
 						/>
+					</div>
+					{/* FR-063: campaign-size variant creation, reachable from Page
+					    Settings. The panel commits its own single undo batch (one new
+					    page per selected preset) independently of Apply. */}
+					<div className="rounded border border-border">
+						<button
+							type="button"
+							className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium hover:bg-accent"
+							aria-expanded={variantsOpen}
+							data-testid="page-settings-variants-toggle"
+							onClick={() => setVariantsOpen((open) => !open)}
+						>
+							{t("canvas.pageSettings.campaignVariants", "Campaign size variants")}
+							<span aria-hidden>{variantsOpen ? "▾" : "▸"}</span>
+						</button>
+						{variantsOpen ? (
+							<div className="max-h-56 overflow-y-auto border-t border-border">
+								<CampaignResizePanel />
+							</div>
+						) : null}
 					</div>
 				</div>
 				<DialogFooter>

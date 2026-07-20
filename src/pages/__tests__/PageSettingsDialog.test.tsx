@@ -117,4 +117,18 @@ describe("PageSettingsDialog (B-11, FR-063)", () => {
 			}),
 		);
 	});
+
+	it("campaign-size variant creation is reachable from Page Settings (FR-063)", () => {
+		setup();
+		expect(screen.queryByTestId("campaign-resize-panel")).toBeNull();
+		fireEvent.click(screen.getByTestId("page-settings-variants-toggle"));
+		expect(screen.getByTestId("campaign-resize-panel")).toBeDefined();
+		// The panel's own controls are live inside the dialog.
+		const preset = CANVAS_SIZE_PRESETS[0];
+		if (!preset) throw new Error("no presets");
+		expect(
+			screen.getByTestId(`campaign-resize-preset-${preset.id}`),
+		).toBeDefined();
+		expect(screen.getByTestId("campaign-resize-create")).toBeDefined();
+	});
 });
