@@ -11,9 +11,10 @@ export interface PointSnapResult {
 
 /**
  * Snap a single point (used by draw tools — width/height = 0 collapses every
- * candidate edge to the same coord). Honors viewportStore's grid + object-snap
- * toggles. Pass `excludeIds` to ignore specific nodes (e.g. the node being
- * dragged in select mode).
+ * candidate edge to the same coord). Honors viewportStore's snap-to-grid +
+ * object-snap toggles and its snap threshold; grid snap is INDEPENDENT of
+ * grid visibility (`gridEnabled`) per FR-112. Pass `excludeIds` to ignore
+ * specific nodes (e.g. the node being dragged in select mode).
  */
 export function snapPoint(
 	ctx: ToolContext,
@@ -25,7 +26,8 @@ export function snapPoint(
 	const result = computeSnap({
 		candidate: { x: point.x, y: point.y, width: 0, height: 0 },
 		others: vs.snapToObjectsEnabled ? others : [],
-		gridSize: vs.gridEnabled ? vs.gridSize : 0,
+		gridSize: vs.snapToGridEnabled ? vs.gridSize : 0,
+		threshold: vs.snapThreshold,
 	});
 	return {
 		x: point.x + result.dx,

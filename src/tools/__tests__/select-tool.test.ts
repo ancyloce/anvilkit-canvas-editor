@@ -198,6 +198,68 @@ describe("selectTool — drag-to-move", () => {
 		expect(h.ctx.draftStore.getState().draft).toBeNull();
 	});
 
+	it("grid-snaps the drop when snapToGridEnabled is on, even while the grid is HIDDEN (FR-112)", () => {
+		const h = makeHarness();
+		h.ctx.getIR = () => fixtureIR();
+		h.ctx.stage = fakeStageWithNodes({ rectA: { x: 10, y: 20 } });
+		const vs = h.ctx.viewportStore.getState();
+		expect(vs.gridEnabled).toBe(false); // harness default: grid not drawn
+		vs.setSnapToGridEnabled(true); // gridSize default 8
+		const target = fakeKonvaNodeWithName("rectA");
+		selectTool.onPointerDown?.(pointerEvent(15, 25, { target }), h.ctx);
+		selectTool.onPointerUp?.(pointerEvent(75, 25), h.ctx);
+		const cmd = h.commits[0] as CanvasNodeMoveCommand;
+		// Candidate (70, 20) → nearest 8px multiples (72, 24).
+		expect(cmd).toMatchObject({
+			type: "node.move",
+			nodeId: "rectA",
+			to: { x: 72, y: 24 },
+		});
+	});
+
+	it("showing the grid alone does NOT enable grid snap (FR-112 separation)", () => {
+		const h = makeHarness();
+		h.ctx.getIR = () => fixtureIR();
+		h.ctx.stage = fakeStageWithNodes({ rectA: { x: 10, y: 20 } });
+		const vs = h.ctx.viewportStore.getState();
+		vs.setGridEnabled(true);
+		expect(vs.snapToGridEnabled).toBe(false); // harness default
+		const target = fakeKonvaNodeWithName("rectA");
+		selectTool.onPointerDown?.(pointerEvent(15, 25, { target }), h.ctx);
+		selectTool.onPointerUp?.(pointerEvent(75, 25), h.ctx);
+		const cmd = h.commits[0] as CanvasNodeMoveCommand;
+		expect(cmd.to).toEqual({ x: 70, y: 20 });
+	});
+
+	it("passes the store's snapThreshold to the snap engine (FR-112)", () => {
+		// rectA's right edge lands 8px short of rectB's left edge (x=200): out of
+		// reach for the default threshold (6), inside a raised threshold (12).
+		const dragTo = (h: ReturnType<typeof makeHarness>): void => {
+			const target = fakeKonvaNodeWithName("rectA");
+			selectTool.onPointerDown?.(pointerEvent(15, 25, { target }), h.ctx);
+			selectTool.onPointerUp?.(pointerEvent(97, 25), h.ctx);
+		};
+
+		const base = makeHarness();
+		base.ctx.getIR = () => fixtureIR();
+		base.ctx.stage = fakeStageWithNodes({ rectA: { x: 10, y: 20 } });
+		dragTo(base);
+		expect((base.commits[0] as CanvasNodeMoveCommand).to).toEqual({
+			x: 92,
+			y: 20,
+		});
+
+		const raised = makeHarness();
+		raised.ctx.getIR = () => fixtureIR();
+		raised.ctx.stage = fakeStageWithNodes({ rectA: { x: 10, y: 20 } });
+		raised.ctx.viewportStore.getState().setSnapThreshold(12);
+		dragTo(raised);
+		expect((raised.commits[0] as CanvasNodeMoveCommand).to).toEqual({
+			x: 100,
+			y: 20,
+		});
+	});
+
 	it("multi-select drag commits ONE batch (not per-node) on pointerup", () => {
 		const h = makeHarness();
 		h.ctx.getIR = () => fixtureIR();

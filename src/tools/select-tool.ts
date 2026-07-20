@@ -114,10 +114,13 @@ function snapMoveDelta(
 		height: node.bounds.height,
 	};
 	const others = getOtherNodeRects(ir, ctx.activePageId, new Set([nodeId]));
+	// FR-112: grid snap is gated on the EXPLICIT snapToGridEnabled toggle, not
+	// on grid visibility (gridEnabled) — hiding the grid keeps snapping on.
 	const result = computeSnap({
 		candidate,
 		others: vs.snapToObjectsEnabled ? others : [],
-		gridSize: vs.gridEnabled ? vs.gridSize : 0,
+		gridSize: vs.snapToGridEnabled ? vs.gridSize : 0,
+		threshold: vs.snapThreshold,
 	});
 	return {
 		dx: dx + result.dx,

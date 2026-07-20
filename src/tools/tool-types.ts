@@ -1,5 +1,7 @@
 import type { CanvasCommand, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
+import type { LucideProps } from "lucide-react";
+import type { ComponentType } from "react";
 import type { CanvasPickedAsset } from "../assets/adapter-types.js";
 import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
@@ -76,10 +78,37 @@ export interface ToolPointerEvent {
 	shiftKey: boolean;
 }
 
+/**
+ * Icon component for a tool's chrome presentation (FR-010). Structurally
+ * identical to `chrome/icons.ts`'s `ChromeIcon` — re-declared here because
+ * `tools/` sits BELOW `chrome/` in `check-layering.mjs` and may not import
+ * from it. Any lucide icon (or props-compatible `<svg>` component) fits.
+ */
+export type ToolIcon = ComponentType<LucideProps>;
+
 export interface Tool {
 	id: ToolId;
 	/** CSS cursor value applied to the stage container while active. */
 	cursor: string;
+	/**
+	 * FR-010 presentation metadata (all optional — behavior-only tools stay
+	 * valid): how this tool appears in the workspace chrome (tool strip
+	 * overflow, Elements panel). English display name; falls back to `id`.
+	 */
+	label?: string;
+	/** `canvas.*` i18n key resolved before {@link label} via `t(labelKey, label)`. */
+	labelKey?: string;
+	/** Chrome icon. Extension tools without one get a generic fallback icon. */
+	icon?: ToolIcon;
+	/**
+	 * DISPLAY-ONLY shortcut hint (e.g. `"K"`), shown when no real key binding
+	 * exists for this tool. It does NOT register a binding — pair it with
+	 * `CanvasShortcutOptions.extraBindings` (id `tool-<id>`) to actually bind
+	 * the key; a real binding's derived label wins over this hint.
+	 */
+	shortcut?: string;
+	/** Consulted per render by chrome surfaces: `true` disables the button. */
+	disabled?: () => boolean;
 	onActivate?(ctx: ToolContext): void;
 	onDeactivate?(ctx: ToolContext): void;
 	onPointerDown?(e: ToolPointerEvent, ctx: ToolContext): void;

@@ -70,7 +70,13 @@ export function makeHarness(opts: MakeHarnessOptions = {}): TestHarness {
 	const historyStore = createHistoryStore();
 	const selectionStore = createSelectionStore();
 	const focusStore = createFocusStore();
-	const viewportStore = createViewportStore({ gridEnabled: false });
+	// Grid drawing AND grid snapping both off: tool tests assert exact
+	// coordinates. (Pre-FR-112 `gridEnabled: false` alone disabled grid snap;
+	// snapping is now gated on the explicit `snapToGridEnabled` toggle.)
+	const viewportStore = createViewportStore({
+		gridEnabled: false,
+		snapToGridEnabled: false,
+	});
 	const toolStore = createToolStore();
 	const guidesStore = createGuidesStore();
 	const draftStore = createDraftStore();
