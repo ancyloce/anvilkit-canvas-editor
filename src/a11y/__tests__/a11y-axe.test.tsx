@@ -136,6 +136,33 @@ describe("a11y — axe scans (canvas-m0-012)", () => {
 });
 
 describe("a11y — keyboard path parity (A11Y-2)", () => {
+	it("GridSettingsDialog has no axe violations (FR-112)", async () => {
+		const { default: GridSettingsDialog } = await import(
+			"@/workspace/dialogs/GridSettingsDialog.js"
+		);
+		const h = makeHarness();
+		const { container } = render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<GridSettingsDialog onClose={() => undefined} />
+			</CanvasStudioContext.Provider>,
+		);
+		await expectNoViolations(container);
+	});
+
+	it("the extended ColorField (hex/RGB/eyedropper) has no axe violations (FR-074)", async () => {
+		const { ColorField } = await import("@/panels/fields.js");
+		const { container } = render(
+			<ColorField
+				label="Fill"
+				value="#11aa33"
+				dataTestId="axe-color"
+				onCommit={() => undefined}
+				eyeDropper={() => Promise.resolve(null)}
+			/>,
+		);
+		await expectNoViolations(container);
+	});
+
 	it("an arrow nudge via CanvasKeyboardLayer dispatches EXACTLY the pure builder's command", () => {
 		const page = createPage({ id: "p1" });
 		page.root = createGroup({

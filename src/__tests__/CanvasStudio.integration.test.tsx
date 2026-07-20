@@ -161,15 +161,20 @@ describe("CanvasStudio integration", () => {
 
 		// The merged layers still expose their former sub-sections as named
 		// Groups, in the same paint order, so the pre-consolidation isolation
-		// (background under objects; guides under selection) is preserved.
+		// (background under objects; guides under selection) is preserved. The
+		// "grid" group (FR-112) sits between background and objects so grid
+		// lines paint above the page fill but under content — and its name is
+		// what `export-stage.ts` hides during live-stage serialization.
 		const groupsByName = dedupeByName(groupCalls());
 		expect(Array.from(groupsByName.keys())).toEqual([
 			"background",
+			"grid",
 			"objects",
 			"guides",
 			"selection",
 		]);
 		expect(groupsByName.get("background")?.props.listening).toBe(false);
+		expect(groupsByName.get("grid")?.props.listening).toBe(false);
 	});
 
 	it("routes a dragged node into the drag layer, leaving the rest in objects (I2-5)", () => {
