@@ -172,6 +172,7 @@ export type {
 	CanvasPersistenceAdapter,
 	CanvasSaveInput,
 	CanvasSaveResult,
+	CanvasUnloadSaveInput,
 } from "./persistence/types.js";
 // ── Render utilities (host export bridges) ───────────────────────────────────
 export type { ExportStageContentOptions } from "./render/export-stage.js";

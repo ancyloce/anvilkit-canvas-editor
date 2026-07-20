@@ -19,8 +19,17 @@ export {
 	useCanvasActions,
 } from "./actions/editor-actions.js";
 // ── chrome ───────────────────────────────────────────────────────────────────
-export type { ChromeIcon, ToolDescriptor } from "./chrome/icons.js";
-export { ChromeIcons, TOOL_RAIL_ITEMS } from "./chrome/icons.js";
+export type {
+	ChromeIcon,
+	RegistryToolDescriptor,
+	ToolDescriptor,
+} from "./chrome/icons.js";
+export {
+	ChromeIcons,
+	FALLBACK_TOOL_ICON,
+	TOOL_RAIL_ITEMS,
+	toolDescriptorsFromRegistry,
+} from "./chrome/icons.js";
 // ── toasts (A-09 feedback seam) ───────────────────────────────────────────────
 export {
 	CanvasToastContext,
@@ -229,6 +238,7 @@ export {
 export type {
 	Tool,
 	ToolContext,
+	ToolIcon,
 	ToolPointerEvent,
 	ToolRegistry,
 } from "./tools/tool-types.js";

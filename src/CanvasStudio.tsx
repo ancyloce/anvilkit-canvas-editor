@@ -798,6 +798,17 @@ export function CanvasStudio({
 		onChange,
 		onChanges,
 	);
+	// FR-091: created before `documentStores` so document replacement can abort
+	// in-flight uploads; unmount cleanup lives in the effect below.
+	const uploadStore = useMemo(() => createUploadStore(), []);
+	useEffect(
+		() => () => {
+			// Abort every in-flight upload on unmount so late responses can't
+			// leak work (their tasks are gone; insertion guards on `has()`).
+			uploadStore.getState().reset();
+		},
+		[uploadStore],
+	);
 	const documentStores = useMemo<DocumentStores>(
 		() => ({
 			sceneStore,
@@ -813,6 +824,7 @@ export function CanvasStudio({
 			guidesStore,
 			aiJobStore,
 			fieldPreviewStore,
+			uploadStore,
 		}),
 		[
 			sceneStore,
@@ -828,6 +840,7 @@ export function CanvasStudio({
 			guidesStore,
 			aiJobStore,
 			fieldPreviewStore,
+			uploadStore,
 		],
 	);
 	const replaceDocument = useReplaceDocument(documentStores);
@@ -836,7 +849,6 @@ export function CanvasStudio({
 	// stable `save`/`canLeave` wrappers go into context so consumers never
 	// re-render on controller recreation.
 	const saveStatusStore = useMemo(() => createSaveStatusStore(), []);
-	const uploadStore = useMemo(() => createUploadStore(), []);
 	const saveControllerRef = useRef<SaveController | null>(null);
 	const onSaveStateChangeRef = useHostCallbackRef(onSaveStateChange);
 	useEffect(() => {
@@ -854,12 +866,24 @@ export function CanvasStudio({
 			if (!controller.canLeave()) {
 				e.preventDefault();
 				e.returnValue = "";
-				void controller.flush();
+				// Browsers do not keep the page alive for Promises here, so an
+				// async `flush()` would be a false guarantee. Best-effort
+				// persistence is only attempted through the adapter's optional
+				// synchronous unload transport (sendBeacon/keepalive/localStorage).
+				const ir = getIR();
+				persistenceAdapter.saveOnUnload?.({
+					ir,
+					documentId: ir.id,
+					revision: historyStore.getState().getStateId(),
+				});
 			}
 		};
 		window.addEventListener("beforeunload", onBeforeUnload);
 		return () => {
 			window.removeEventListener("beforeunload", onBeforeUnload);
+			// Final flush, then teardown. `flush()` marks its save as protected,
+			// so the `dispose()` on the next line aborts only obsolete auto-saves
+			// — never the flush it was just paired with (FR-160).
 			void controller.flush();
 			controller.dispose();
 			saveControllerRef.current = null;
@@ -878,6 +902,12 @@ export function CanvasStudio({
 	);
 	const canLeave = useCallback(
 		() => saveControllerRef.current?.canLeave() ?? true,
+		[],
+	);
+	// FR-160/163: awaitable route-leave flush for host routing guards. Unlike
+	// `save()`, the save it starts survives controller disposal.
+	const flush = useCallback(
+		() => saveControllerRef.current?.flush() ?? Promise.resolve(true),
 		[],
 	);
 
@@ -994,13 +1024,15 @@ export function CanvasStudio({
 		return { kindRenderers: renderers, kindInspectors: inspectors };
 	}, [extensions]);
 
-	// Merge extension-contributed tools into the registry handed to the tool
-	// interaction layer (default tools + extension tools + the `toolRegistry`
-	// prop, which wins). No extension tools → pass the prop through untouched so
-	// the layer falls back to the default registry.
-	const effectiveToolRegistry = useMemo(() => {
+	// Merge extension-contributed tools into the EFFECTIVE registry (FR-010):
+	// default tools + extension tools + the `toolRegistry` prop, which wins.
+	// No extension tools → the prop untouched (it REPLACES the registry, its
+	// pre-FR-010 contract) or the default registry. Handed to both the tool
+	// interaction layer and the context, so chrome surfaces (tool strip
+	// overflow, Elements panel) list exactly the tools that can run.
+	const effectiveToolRegistry = useMemo<ToolRegistry>(() => {
 		const extTools = extensions?.flatMap((e) => e.tools ?? []) ?? [];
-		if (extTools.length === 0) return toolRegistry;
+		if (extTools.length === 0) return toolRegistry ?? defaultToolRegistry;
 		const merged: ToolRegistry = { ...defaultToolRegistry };
 		for (const tool of extTools) merged[tool.id] = tool;
 		if (toolRegistry) Object.assign(merged, toolRegistry);
@@ -1047,6 +1079,8 @@ export function CanvasStudio({
 			t,
 			kindRenderers,
 			kindInspectors,
+			// FR-010: the resolved registry, so chrome lists what can run.
+			toolRegistry: effectiveToolRegistry,
 			runtime,
 			continuousCreation,
 			// Present only with a persistence adapter — the header's save
@@ -1054,6 +1088,7 @@ export function CanvasStudio({
 			...(persistenceAdapter ? { saveStatusStore } : {}),
 			save,
 			canLeave,
+			flush,
 			...(assetPicker ? { assetPicker, pickAssets } : {}),
 			...(assetUploader ? { assetUploader } : {}),
 			...(clipboard ? { clipboard } : {}),
@@ -1095,12 +1130,14 @@ export function CanvasStudio({
 			t,
 			kindRenderers,
 			kindInspectors,
+			effectiveToolRegistry,
 			runtime,
 			continuousCreation,
 			persistenceAdapter,
 			saveStatusStore,
 			save,
 			canLeave,
+			flush,
 			assetPicker,
 			pickAssets,
 			assetUploader,
