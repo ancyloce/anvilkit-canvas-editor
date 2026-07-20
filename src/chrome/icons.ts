@@ -25,6 +25,7 @@ import {
 	Pentagon,
 	Pilcrow,
 	Plus,
+	Puzzle,
 	Redo2,
 	Send,
 	Share2,
@@ -37,6 +38,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 import type { ToolId } from "../stores/tool-store.js";
+import type { ToolRegistry } from "../tools/tool-types.js";
 
 /** A lucide icon component (props-compatible with `<svg>`). */
 export type ChromeIcon = ComponentType<LucideProps>;
@@ -118,6 +120,70 @@ export const TOOL_RAIL_ITEMS: readonly ToolDescriptor[] = [
 		icon: Brush,
 	},
 ] as const;
+
+/**
+ * Fallback icon for extension tools that register no `icon` of their own
+ * (FR-010): a generic "plug-in" glyph, never used by a built-in tool.
+ */
+export const FALLBACK_TOOL_ICON: ChromeIcon = Puzzle;
+
+/**
+ * A {@link ToolDescriptor} derived from the EFFECTIVE tool registry (FR-010):
+ * built-ins keep their rail metadata; extension-registered tools carry the
+ * presentation metadata declared on their `Tool` (or fallbacks). `labelKey`
+ * is optional here — an extension tool may register a plain `label` only.
+ */
+export interface RegistryToolDescriptor {
+	readonly id: ToolId;
+	/** i18n key when one exists (always for built-ins). `t(labelKey, label)`. */
+	readonly labelKey?: string;
+	/** English fallback label (the tool id when a tool declares nothing). */
+	readonly label: string;
+	readonly icon: ChromeIcon;
+	/** `true` for {@link TOOL_RAIL_ITEMS} entries, `false` for extension tools. */
+	readonly builtin: boolean;
+	/** Extension-declared display shortcut hint (`Tool.shortcut`). */
+	readonly shortcut?: string;
+	/** Extension-declared disabled probe (`Tool.disabled`). */
+	readonly disabled?: () => boolean;
+}
+
+/**
+ * Merge {@link TOOL_RAIL_ITEMS} (built-ins, in rail order) with the
+ * extension-registered tools of the effective registry (registry order) into
+ * ONE descriptor list — the single source for the tool strip, its "More
+ * tools" overflow, and the Elements panel. `registry` is normally
+ * `useCanvasStudio().toolRegistry`; `undefined` (e.g. a partial test context)
+ * yields the built-ins alone. A registry override of a BUILT-IN id keeps the
+ * rail's own metadata — overriding behavior must not reshuffle the chrome.
+ */
+export function toolDescriptorsFromRegistry(
+	registry: ToolRegistry | undefined,
+): readonly RegistryToolDescriptor[] {
+	const builtins: RegistryToolDescriptor[] = TOOL_RAIL_ITEMS.map((item) => ({
+		id: item.id,
+		labelKey: item.labelKey,
+		label: item.label,
+		icon: item.icon,
+		builtin: true,
+	}));
+	if (!registry) return builtins;
+	const builtinIds = new Set<ToolId>(TOOL_RAIL_ITEMS.map((item) => item.id));
+	const extensions: RegistryToolDescriptor[] = [];
+	for (const tool of Object.values(registry)) {
+		if (!tool || builtinIds.has(tool.id)) continue;
+		extensions.push({
+			id: tool.id,
+			...(tool.labelKey !== undefined ? { labelKey: tool.labelKey } : {}),
+			label: tool.label ?? tool.id,
+			icon: tool.icon ?? FALLBACK_TOOL_ICON,
+			builtin: false,
+			...(tool.shortcut !== undefined ? { shortcut: tool.shortcut } : {}),
+			...(tool.disabled !== undefined ? { disabled: tool.disabled } : {}),
+		});
+	}
+	return [...builtins, ...extensions];
+}
 
 /** Action icons shared by the stage bar, floating toolbar, and zoom control. */
 export const ChromeIcons = {
