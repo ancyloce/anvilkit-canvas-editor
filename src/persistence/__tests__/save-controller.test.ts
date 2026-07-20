@@ -286,3 +286,75 @@ describe("manual save + auto save (FR-160/162)", () => {
 		expect(signals.every((s) => s.aborted)).toBe(true);
 	});
 });
+
+describe("unmount flush protection (FR-160)", () => {
+	it("dispose immediately after flush() does NOT abort that flush's save", async () => {
+		let capturedSignal: AbortSignal | undefined;
+		let resolveSave: (() => void) | null = null;
+		const h = harness({
+			autoSave: false,
+			save: (input) =>
+				new Promise((resolve) => {
+					capturedSignal = input.signal;
+					resolveSave = () => resolve({ savedAt: FIXED_TS });
+				}),
+		});
+		h.edit(1);
+		// The standard React cleanup sequence: flush, then dispose in the same tick.
+		const pending = h.controller.flush();
+		h.controller.dispose();
+
+		expect(capturedSignal).toBeInstanceOf(AbortSignal);
+		expect(capturedSignal?.aborted).toBe(false);
+
+		resolveSave?.();
+		await expect(pending).resolves.toBe(true);
+	});
+
+	it("dispose still aborts a plain in-flight save while the flush save survives", async () => {
+		const signals: AbortSignal[] = [];
+		const h = harness({
+			autoSave: false,
+			save: (input) =>
+				new Promise(() => {
+					signals.push(input.signal);
+				}),
+		});
+		h.edit(1);
+		void h.controller.save(); // obsolete manual save, stays pending
+		h.edit(2);
+		void h.controller.flush(); // final flush, stays pending
+		expect(signals).toHaveLength(2);
+
+		h.controller.dispose();
+
+		expect(signals[0]?.aborted).toBe(true);
+		expect(signals[1]?.aborted).toBe(false);
+	});
+
+	it("a stale success arriving after a history reset (document replacement) cannot re-dirty the fresh document", async () => {
+		let resolveSave: (() => void) | null = null;
+		const h = harness({
+			autoSave: false,
+			save: () =>
+				new Promise((resolve) => {
+					resolveSave = () => resolve({ savedAt: FIXED_TS });
+				}),
+		});
+		h.edit(1);
+		const pending = h.controller.save(); // in flight for the pre-reset revision
+
+		// Document replacement resets the history store to a fresh clean checkpoint.
+		h.historyStore.getState().reset();
+		expect(h.historyStore.getState().isAtSaveCheckpoint()).toBe(true);
+
+		resolveSave?.();
+		await pending;
+
+		// The stale response must not move the checkpoint to the pre-reset
+		// revision (which would flip the fresh document to dirty).
+		expect(h.historyStore.getState().isAtSaveCheckpoint()).toBe(true);
+		expect(h.saveStatusStore.getState().status).not.toBe("dirty");
+		h.controller.dispose();
+	});
+});

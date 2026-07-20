@@ -30,9 +30,33 @@ export interface CanvasSaveResult {
 	savedAt?: string;
 }
 
+/**
+ * Payload for the optional {@link CanvasPersistenceAdapter.saveOnUnload}
+ * capability. No `signal`: the page is going away and nothing can await or
+ * abort the transport.
+ */
+export interface CanvasUnloadSaveInput {
+	ir: CanvasIR;
+	documentId: string;
+	/** History state id of the snapshot (same semantics as {@link CanvasSaveInput.revision}). */
+	revision: number;
+}
+
 export interface CanvasPersistenceAdapter {
 	save(input: CanvasSaveInput): Promise<CanvasSaveResult>;
 	load?(documentId: string): Promise<CanvasIR>;
+	/**
+	 * FR-160/163 optional unload transport. Browsers do NOT keep a page alive
+	 * for Promises during `beforeunload`/`pagehide`, so the editor never awaits
+	 * `save()` there — it only warns. A host that wants best-effort persistence
+	 * of unsaved changes on tab close can implement this with a synchronous
+	 * fire-and-forget transport (`navigator.sendBeacon`, `fetch` with
+	 * `keepalive: true`, or synchronous storage such as localStorage). The
+	 * editor calls it at most once per unload, only while dirty, and ignores
+	 * the return value. Absent this capability, unsaved changes on unload are
+	 * covered only by the leave warning and the recovery adapter (FR-164).
+	 */
+	saveOnUnload?(input: CanvasUnloadSaveInput): void;
 }
 
 export interface CanvasAutoSaveOptions {
