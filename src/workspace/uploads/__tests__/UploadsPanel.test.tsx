@@ -90,3 +90,46 @@ describe("UploadsPanel retry (FR-091)", () => {
 		expect(screen.queryByTestId(`upload-retry-${taskId}`)).toBeNull();
 	});
 });
+
+describe("UploadsPanel progress + cancellation a11y (FR-091/092)", () => {
+	it("renders an indeterminate progressbar while no fraction is reported", () => {
+		const { uploadStore } = setup();
+		let taskId = "";
+		act(() => {
+			taskId = uploadStore.getState().begin(file("a.png"));
+		});
+		const bar = screen.getByTestId(`upload-progress-${taskId}`);
+		expect(bar.getAttribute("role")).toBe("progressbar");
+		expect(bar.getAttribute("aria-valuenow")).toBeNull();
+		expect(bar.getAttribute("aria-label")).toContain("a.png");
+	});
+
+	it("switches to determinate progress with aria-valuenow when fractions arrive", () => {
+		const { uploadStore } = setup();
+		let taskId = "";
+		act(() => {
+			taskId = uploadStore.getState().begin(file("a.png"));
+			uploadStore.getState().setProgress(taskId, 0.42);
+		});
+		const bar = screen.getByTestId(`upload-progress-${taskId}`);
+		expect(bar.getAttribute("aria-valuenow")).toBe("42");
+		expect(bar.getAttribute("aria-valuemin")).toBe("0");
+		expect(bar.getAttribute("aria-valuemax")).toBe("100");
+	});
+
+	it("the cancel button has an accessible name and cancels the task", () => {
+		const { uploadStore } = setup();
+		let taskId = "";
+		act(() => {
+			taskId = uploadStore.getState().begin(file("a.png"));
+		});
+		const cancel = screen.getByTestId(`upload-cancel-${taskId}`);
+		expect(cancel.getAttribute("aria-label")).toContain("a.png");
+		act(() => {
+			fireEvent.click(cancel);
+		});
+		expect(uploadStore.getState().tasks[0]?.status).toBe("cancelled");
+		// Progress bar disappears with the settled task.
+		expect(screen.queryByTestId(`upload-progress-${taskId}`)).toBeNull();
+	});
+});

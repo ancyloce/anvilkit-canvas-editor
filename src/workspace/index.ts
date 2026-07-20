@@ -25,4 +25,16 @@ export {
 	resolveShortcutBindings,
 } from "./shortcuts/shortcut-registry.js";
 export * from "./state/index.js";
+// Tool strip (B-06, FR-010): the strip itself plus the extensibility surface —
+// effective descriptors and the `<CanvasWorkspace toolStrip>` options types.
+export {
+	type EffectiveToolDescriptor,
+	effectiveToolDescriptors,
+} from "./toolstrip/effective-tools.js";
+export {
+	type CanvasToolStripOptions,
+	type CanvasToolStripRendererProps,
+	ToolStrip,
+	type ToolStripProps,
+} from "./toolstrip/ToolStrip.js";
 export { DOCK_ITEMS, type DockItem } from "./workspace-config.js";

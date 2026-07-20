@@ -3,6 +3,7 @@
 import { findNode } from "@anvilkit/canvas-core";
 import {
 	ContextMenu,
+	ContextMenuCheckboxItem,
 	ContextMenuContent,
 	ContextMenuItem,
 	ContextMenuSeparator,
@@ -33,6 +34,11 @@ import {
 /** FR-030 "Page settings" — same code-split dialog the page navigator uses. */
 const PageSettingsDialog = lazy(
 	() => import("../../pages/PageSettingsDialog.js"),
+);
+
+/** FR-112 "Grid settings" — code-split like every dialog (constraint 20.15). */
+const GridSettingsDialog = lazy(
+	() => import("../dialogs/GridSettingsDialog.js"),
 );
 
 export interface CanvasAreaContextMenuProps {
@@ -95,6 +101,7 @@ export function CanvasAreaContextMenu({
 	const t = useCanvasT();
 	const [target, setTarget] = useState<"canvas" | "node">("canvas");
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	const [gridSettingsOpen, setGridSettingsOpen] = useState(false);
 
 	const selectedIds = ctx.selectionStore.getState().selectedIds;
 	const allLocked =
@@ -148,7 +155,18 @@ export function CanvasAreaContextMenu({
 		return null;
 	})();
 
-	const gridEnabled = ctx.viewportStore.getState().gridEnabled;
+	// Grid + snap chrome (FR-112). Read at render like the ruler/guide state
+	// below — the menu re-renders on every open, so this stays fresh. Note
+	// grid VISIBILITY (gridEnabled) and grid SNAP (snapToGridEnabled) are
+	// separate toggles on purpose (see viewport-store.ts).
+	const {
+		gridEnabled,
+		snapToGridEnabled,
+		snapToObjectsEnabled,
+		setGridEnabled,
+		setSnapToGridEnabled,
+		setSnapToObjectsEnabled,
+	} = ctx.viewportStore.getState();
 	// Ruler/guide chrome (C-02, FR-030). Values are read at render like
 	// `gridEnabled` — the menu re-renders on every open, so this stays fresh.
 	const rulerGuides = ctx.rulerGuideStore;
@@ -353,13 +371,35 @@ export function CanvasAreaContextMenu({
 							<ContextMenuSeparator />
 							<ContextMenuItem
 								data-testid="ctx-toggle-grid"
-								onClick={() =>
-									ctx.viewportStore.getState().setGridEnabled(!gridEnabled)
-								}
+								onClick={() => setGridEnabled(!gridEnabled)}
 							>
 								{gridEnabled
 									? t("canvas.menu.hideGrid", "Hide grid")
 									: t("canvas.menu.showGrid", "Show grid")}
+							</ContextMenuItem>
+							<ContextMenuCheckboxItem
+								data-testid="ctx-snap-grid"
+								checked={snapToGridEnabled}
+								onCheckedChange={(checked: boolean) =>
+									setSnapToGridEnabled(checked)
+								}
+							>
+								{t("canvas.menu.snapToGrid", "Snap to grid")}
+							</ContextMenuCheckboxItem>
+							<ContextMenuCheckboxItem
+								data-testid="ctx-snap-objects"
+								checked={snapToObjectsEnabled}
+								onCheckedChange={(checked: boolean) =>
+									setSnapToObjectsEnabled(checked)
+								}
+							>
+								{t("canvas.menu.snapToObjects", "Snap to objects")}
+							</ContextMenuCheckboxItem>
+							<ContextMenuItem
+								data-testid="ctx-grid-settings"
+								onClick={() => setGridSettingsOpen(true)}
+							>
+								{t("canvas.menu.gridSettings", "Grid settings…")}
 							</ContextMenuItem>
 							{rulerGuides ? (
 								<>
@@ -456,6 +496,11 @@ export function CanvasAreaContextMenu({
 						page={activePage}
 						onClose={() => setSettingsOpen(false)}
 					/>
+				</Suspense>
+			) : null}
+			{gridSettingsOpen ? (
+				<Suspense fallback={null}>
+					<GridSettingsDialog onClose={() => setGridSettingsOpen(false)} />
 				</Suspense>
 			) : null}
 		</>

@@ -11,6 +11,7 @@ import {
 	useCanvasT,
 } from "../../context/canvas-studio-context.js";
 import { useCanvasToaster } from "../../context/toast-context.js";
+import { ASSET_DRAG_MIME } from "./CanvasDropZone.js";
 
 const EMPTY_TASKS: never[] = [];
 
@@ -99,38 +100,89 @@ export function UploadsPanel(): React.JSX.Element {
 							key={task.id}
 							data-testid={`upload-task-${task.id}`}
 							data-status={task.status}
-							className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1 text-xs"
+							// FR-093: a completed upload is draggable onto the canvas —
+							// dropping it on an image node or image-well frame replaces
+							// that target; anywhere else inserts (no re-upload).
+							draggable={task.status === "done" && task.assetId !== undefined}
+							onDragStart={(e) => {
+								if (task.status !== "done" || task.assetId === undefined) {
+									return;
+								}
+								e.dataTransfer.setData(ASSET_DRAG_MIME, task.assetId);
+								e.dataTransfer.effectAllowed = "copy";
+							}}
+							className="flex flex-col gap-1 rounded-md bg-muted px-2 py-1 text-xs"
 						>
-							<span className="truncate">{task.fileName}</span>
-							<span className="flex items-center gap-1 text-muted-foreground">
-								{task.status === "uploading"
-									? t("canvas.upload.uploading", "Uploading…")
-									: task.status === "failed"
-										? (task.error ?? t("canvas.upload.failed", "Upload failed"))
-										: task.status === "cancelled"
-											? t("canvas.upload.cancelled", "Cancelled")
-											: t("canvas.upload.done", "Done")}
-								{task.status === "uploading" && uploadStore ? (
-									<button
-										type="button"
-										data-testid={`upload-cancel-${task.id}`}
-										className="rounded px-1 hover:bg-background"
-										onClick={() => uploadStore.getState().cancel(task.id)}
-									>
-										×
-									</button>
-								) : null}
-								{task.status === "failed" && hasUploader ? (
-									<button
-										type="button"
-										data-testid={`upload-retry-${task.id}`}
-										className="rounded px-1 hover:bg-background"
-										onClick={() => handleRetry(task.id)}
-									>
-										{t("canvas.upload.retry", "Retry")}
-									</button>
-								) : null}
+							<span className="flex items-center justify-between gap-2">
+								<span className="truncate">{task.fileName}</span>
+								<span
+									className="flex items-center gap-1 text-muted-foreground"
+									role="status"
+								>
+									{task.status === "uploading"
+										? task.progress !== undefined
+											? t("canvas.upload.uploading", "Uploading…") +
+												` ${Math.round(task.progress * 100)}%`
+											: t("canvas.upload.uploading", "Uploading…")
+										: task.status === "failed"
+											? (task.error ??
+												t("canvas.upload.failed", "Upload failed"))
+											: task.status === "cancelled"
+												? t("canvas.upload.cancelled", "Cancelled")
+												: t("canvas.upload.done", "Done")}
+									{task.status === "uploading" && uploadStore ? (
+										<button
+											type="button"
+											data-testid={`upload-cancel-${task.id}`}
+											aria-label={`${t("canvas.upload.cancel", "Cancel upload")} — ${task.fileName}`}
+											title={t("canvas.upload.cancel", "Cancel upload")}
+											className="rounded px-1 hover:bg-background"
+											onClick={() => uploadStore.getState().cancel(task.id)}
+										>
+											×
+										</button>
+									) : null}
+									{task.status === "failed" && hasUploader ? (
+										<button
+											type="button"
+											data-testid={`upload-retry-${task.id}`}
+											aria-label={`${t("canvas.upload.retry", "Retry")} — ${task.fileName}`}
+											className="rounded px-1 hover:bg-background"
+											onClick={() => handleRetry(task.id)}
+										>
+											{t("canvas.upload.retry", "Retry")}
+										</button>
+									) : null}
+								</span>
 							</span>
+							{task.status === "uploading" ? (
+								// FR-091 accessible progress: determinate when the adapter
+								// reports fractions, indeterminate otherwise.
+								<div
+									role="progressbar"
+									aria-label={`${t("canvas.upload.progress", "Upload progress")} — ${task.fileName}`}
+									aria-valuemin={0}
+									aria-valuemax={100}
+									{...(task.progress !== undefined
+										? { "aria-valuenow": Math.round(task.progress * 100) }
+										: {})}
+									data-testid={`upload-progress-${task.id}`}
+									className="h-1 w-full overflow-hidden rounded-full bg-border"
+								>
+									<div
+										className={
+											task.progress !== undefined
+												? "h-full rounded-full bg-primary transition-[width]"
+												: "h-full w-1/3 animate-pulse rounded-full bg-primary"
+										}
+										style={
+											task.progress !== undefined
+												? { width: `${Math.round(task.progress * 100)}%` }
+												: undefined
+										}
+									/>
+								</div>
+							) : null}
 						</li>
 					))}
 				</ul>

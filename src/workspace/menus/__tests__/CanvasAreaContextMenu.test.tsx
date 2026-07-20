@@ -102,6 +102,56 @@ describe("CanvasAreaContextMenu (A-06)", () => {
 		expect(h.studioCtx.viewportStore.getState().gridEnabled).toBe(!before);
 	});
 
+	it("Snap to grid / Snap to objects toggles flip the viewport store (FR-112)", async () => {
+		const h = setup(null);
+		const vs = () => h.studioCtx.viewportStore.getState();
+		expect(vs().snapToGridEnabled).toBe(false); // harness default
+		await openMenu();
+		fireEvent.click(screen.getByTestId("ctx-snap-grid"));
+		expect(vs().snapToGridEnabled).toBe(true);
+		// Grid snap toggles independently of grid VISIBILITY.
+		expect(vs().gridEnabled).toBe(false);
+
+		await openMenu();
+		expect(vs().snapToObjectsEnabled).toBe(true);
+		fireEvent.click(screen.getByTestId("ctx-snap-objects"));
+		expect(vs().snapToObjectsEnabled).toBe(false);
+	});
+
+	it("snap toggles expose their checked state as menu checkbox items (FR-112)", async () => {
+		// Seed BEFORE render: the menu reads viewport state at render, like the
+		// grid label (fresh on every open in the real tree, where the reactive
+		// studio context re-renders the menu).
+		const h = makeHarness({ ir: fixtureIR() });
+		h.studioCtx.viewportStore.getState().setSnapToGridEnabled(true);
+		render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<CanvasAreaContextMenu resolveContextTarget={() => null}>
+					<div data-testid="canvas-body" />
+				</CanvasAreaContextMenu>
+			</CanvasStudioContext.Provider>,
+		);
+		await openMenu();
+		expect(
+			screen.getByTestId("ctx-snap-grid").getAttribute("role"),
+		).toBe("menuitemcheckbox");
+		expect(
+			screen.getByTestId("ctx-snap-grid").getAttribute("aria-checked"),
+		).toBe("true");
+		expect(
+			screen.getByTestId("ctx-snap-objects").getAttribute("aria-checked"),
+		).toBe("true");
+	});
+
+	it("canvas menu Grid settings opens the grid settings dialog (FR-112)", async () => {
+		setup(null);
+		await openMenu();
+		fireEvent.click(screen.getByTestId("ctx-grid-settings"));
+		await waitFor(() => {
+			expect(screen.getByTestId("grid-settings-dialog")).toBeTruthy();
+		});
+	});
+
 	it("right-clicking a node selects it and opens the NODE menu", async () => {
 		const h = setup("b");
 		await openMenu();

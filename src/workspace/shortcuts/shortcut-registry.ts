@@ -1,5 +1,7 @@
 import type { CanvasEditorActions } from "../../actions/editor-actions.js";
+import { TOOL_RAIL_ITEMS } from "../../chrome/icons.js";
 import type { CanvasStudioStableValue } from "../../context/canvas-studio-context.js";
+import type { ToolId } from "../../stores/tool-store.js";
 
 /**
  * @file Workspace shortcut registry (A-04, PRD 0012 FR-040/§7.5).
@@ -110,6 +112,31 @@ export function formatShortcut(
 	if (combo.shift) parts.push("Shift");
 	parts.push(combo.key.length === 1 ? combo.key.toUpperCase() : combo.key);
 	return parts.join("+");
+}
+
+/**
+ * Build a `tool-<id>` activation binding whose labelKey/label derive from the
+ * tool's {@link TOOL_RAIL_ITEMS} descriptor (FR-010 — one label source for
+ * the rail, the strip tooltips, and the shortcut-help dialog, instead of
+ * duplicated strings). Binding ids and combos are part of the stable
+ * contract (`ShortcutHelpDialog`, docs/shortcut-reference.md) — only where
+ * the label COMES FROM changed.
+ */
+function toolBinding(
+	id: ToolId,
+	combos: readonly CanvasShortcutCombo[],
+): CanvasShortcutBinding {
+	const item = TOOL_RAIL_ITEMS.find((tool) => tool.id === id);
+	return {
+		id: `tool-${id}`,
+		combos,
+		labelKey: item?.labelKey ?? `canvas.tool.${id}`,
+		label: item?.label ?? id,
+		category: "tools",
+		run: (ctx) => {
+			ctx.stores.toolStore.getState().setActiveTool(id);
+		},
+	};
 }
 
 function undoRedo(ctx: CanvasShortcutRunContext, redo: boolean): void {
@@ -280,96 +307,15 @@ export function createCoreShortcutBindings(): CanvasShortcutBinding[] {
 				ctx.actions.cancel();
 			},
 		},
-		{
-			id: "tool-select",
-			combos: [{ key: "v" }],
-			labelKey: "canvas.tool.select",
-			label: "Select",
-			category: "tools",
-			run: (ctx) => {
-				ctx.stores.toolStore.getState().setActiveTool("select");
-			},
-		},
-		{
-			id: "tool-hand",
-			combos: [{ key: "h" }],
-			labelKey: "canvas.tool.hand",
-			label: "Hand",
-			category: "tools",
-			run: (ctx) => {
-				ctx.stores.toolStore.getState().setActiveTool("hand");
-			},
-		},
-		{
-			id: "tool-frame",
-			combos: [{ key: "f" }],
-			labelKey: "canvas.tool.frame",
-			label: "Frame",
-			category: "tools",
-			run: (ctx) => {
-				ctx.stores.toolStore.getState().setActiveTool("frame");
-			},
-		},
-		{
-			id: "tool-rect",
-			combos: [{ key: "r" }],
-			labelKey: "canvas.tool.rect",
-			label: "Rectangle",
-			category: "tools",
-			run: (ctx) => {
-				ctx.stores.toolStore.getState().setActiveTool("rect");
-			},
-		},
-		{
-			id: "tool-ellipse",
-			combos: [{ key: "o" }],
-			labelKey: "canvas.tool.ellipse",
-			label: "Ellipse",
-			category: "tools",
-			run: (ctx) => {
-				ctx.stores.toolStore.getState().setActiveTool("ellipse");
-			},
-		},
-		{
-			id: "tool-line",
-			combos: [{ key: "l" }],
-			labelKey: "canvas.tool.line",
-			label: "Line",
-			category: "tools",
-			run: (ctx) => {
-				ctx.stores.toolStore.getState().setActiveTool("line");
-			},
-		},
-		{
-			id: "tool-path",
-			combos: [{ key: "p" }],
-			labelKey: "canvas.tool.path",
-			label: "Pen",
-			category: "tools",
-			run: (ctx) => {
-				ctx.stores.toolStore.getState().setActiveTool("path");
-			},
-		},
-		{
-			id: "tool-text",
-			combos: [{ key: "t" }],
-			labelKey: "canvas.tool.text",
-			label: "Text",
-			category: "tools",
-			run: (ctx) => {
-				ctx.stores.toolStore.getState().setActiveTool("text");
-			},
-		},
-		{
-			id: "tool-image",
-			combos: [{ key: "i" }],
-			labelKey: "canvas.tool.image",
-			label: "Image",
-			category: "tools",
-			run: (ctx) => {
-				ctx.stores.toolStore.getState().setActiveTool("image");
-			},
-		},
+		toolBinding("select", [{ key: "v" }]),
+		toolBinding("hand", [{ key: "h" }]),
+		toolBinding("frame", [{ key: "f" }]),
+		toolBinding("rect", [{ key: "r" }]),
+		toolBinding("ellipse", [{ key: "o" }]),
+		toolBinding("line", [{ key: "l" }]),
+		toolBinding("path", [{ key: "p" }]),
+		toolBinding("text", [{ key: "t" }]),
+		toolBinding("image", [{ key: "i" }]),
 		{
 			id: "lock",
 			combos: [{ key: "l", ctrlOrMeta: true, shift: true }],
