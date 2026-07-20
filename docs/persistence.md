@@ -47,9 +47,20 @@ is present), `false`, or options:
 ## Leave protection (FR-163)
 
 - `beforeunload` warns while `canLeave()` is false (dirty or save in flight).
-- SPA routing: gate navigation on the context's `canLeave()` and call
-  `flush()` (save-immediately) before unmount; the shell flushes on unmount
-  automatically.
+  The warning is the only guarantee on browser unload: browsers do **not**
+  keep a page alive for Promises, so the editor never fires an async
+  `save()` from `beforeunload`.
+- **Optional unload transport** — `CanvasPersistenceAdapter.saveOnUnload?`:
+  a synchronous, fire-and-forget hook the editor calls once per unload while
+  dirty, with `{ ir, documentId, revision }`. Implement it with
+  `navigator.sendBeacon`, `fetch(..., { keepalive: true })`, or synchronous
+  storage if you want best-effort persistence on tab close. Without it,
+  unload-time changes are covered by the warning plus the recovery adapter.
+- SPA routing: gate navigation on the context's `canLeave()` and `await` the
+  context's `flush()` (save-if-dirty) in your route-leave hook. The shell
+  also flushes on unmount automatically, and that final flush is protected —
+  the controller teardown that follows it in the same cleanup can no longer
+  abort it (it still aborts obsolete in-flight auto-saves).
 - Manual save: header button or the context `save()` — resolves `true`/`false`
   when *that* attempt settles.
 
@@ -66,7 +77,9 @@ and never block editing. `createIndexedDbRecoveryAdapter()` is provided.
 1. Pass a stable `persistenceAdapter` instance and a `documentId`.
 2. Handle `save()` rejections in the adapter with meaningful errors — the
    message lands in the save-status store (`lastError`) and the error pill.
-3. Gate SPA navigation on `canLeave()`; flush before unmount if you bypass
-   the shell.
+3. Gate SPA navigation on `canLeave()`; `await flush()` from the context in
+   route-leave hooks when you need certainty before navigating.
 4. Optionally add `recoveryAdapter` (IndexedDB one-liner) and
    `onSaveStateChange` for host-side telemetry.
+5. Optionally implement `saveOnUnload` for best-effort tab-close persistence
+   (synchronous transports only — see Leave protection above).

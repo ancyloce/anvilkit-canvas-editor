@@ -37,14 +37,34 @@ interface CanvasAssetPicker {
 	pick(options: { multiple?: boolean; accept?: readonly string[]; kind?: "image" | "svg" | "video" | "audio" }): Promise<readonly CanvasPickedAsset[]>;
 }
 interface CanvasAssetUploader {
-	upload(files: readonly File[], context: { documentId: string }): Promise<readonly CanvasUploadedAsset[]>;
+	upload(
+		files: readonly File[],
+		context: {
+			documentId: string;
+			/** FR-092 (additive): abort of the underlying transfer. Optional to honor. */
+			signal?: AbortSignal;
+			/** FR-091 (additive): per-file progress; omit `fraction` for indeterminate. */
+			onProgress?: (event: { fileIndex: number; fraction?: number }) => void;
+		},
+	): Promise<readonly CanvasUploadedAsset[]>;
 }
 ```
 
 A returned asset's `id` becomes the `ir.assets` key and the node's `assetId`;
 `uri` is what renders and exports. The legacy `onPickAsset` prop keeps working
-through a compat shim. Flows, progress, and failure semantics in
-[assets.md](./assets.md).
+through a compat shim.
+
+**Legacy-uploader compatibility (FR-091/092):** both `signal` and
+`onProgress` are additive and optional. An adapter written against the
+original `{ documentId }` context keeps compiling and working: it shows an
+accessible *indeterminate* progress bar (no percentages), and cancelling a
+task falls back to *logical* cancellation — the editor discards the eventual
+result and never creates a node or `ir.assets` entry for it. Honoring
+`signal` upgrades cancel to real transport abort; calling `onProgress` with a
+`fraction` upgrades the UI to a determinate percentage. The editor invokes
+`upload()` once per file (a one-element `files` array) so progress and
+cancellation attribute to a single task; adapters remain free to batch
+internally. Flows and failure semantics in [assets.md](./assets.md).
 
 ## Templates — `CanvasTemplateProvider`
 

@@ -22,6 +22,7 @@ them for initial node bounds.
 | Uploads panel ("Browse") | `assetPicker` | `pick()` with kind/accept filters; multi-select supported. |
 | Uploads panel (file input) | `assetUploader` | Upload with per-file progress, retry, and cancel via the upload store. |
 | Drag-and-drop onto canvas / workspace / panel | `assetUploader` | Drop-position insert; multi-file drops grid-arrange; **no nodes are created on upload failure** (error toast instead). |
+| Drag-to-replace (FR-093) | `assetUploader` (or a done upload dragged from the panel) | A SINGLE file — or a completed upload dragged from the uploads panel — dropped on an existing image node or image-well frame replaces that target instead of inserting: bounds, transform, and crop survive (`image.replace` only swaps `assetId`; a filled well's placeholder re-points in the same step). One atomic undo entry including the upload's `asset.put`. Locked and hidden nodes are never targets; multi-file drops never replace (ambiguous) and target-less drops insert as usual. A "Drop to replace" badge plus `data-drop-target`/`data-drop-target-id` attributes on the drop zone announce the active target while dragging. |
 | Image well "Replace" (inspector / frame wells) | either adapter | Swaps the node's `assetId`, preserving bounds, fit mode, crop, and adjustments. |
 | No adapter configured | — | Drop/browse show an info toast; nothing mutates. |
 
@@ -30,8 +31,15 @@ registration together).
 
 ## Upload lifecycle
 
-`upload(files, { documentId })` is called once per accepted drop/selection.
-The upload store drives progress UI; rejection surfaces an error toast with
+`upload(files, { documentId, signal, onProgress })` is called **once per
+file** (a one-element `files` array) so progress and cancellation attribute
+to a single task; adapters may batch internally. `onProgress` fractions
+render a determinate percentage; adapters that never report show an
+accessible indeterminate bar. Cancelling a task aborts its `signal` (real
+transport cancellation when honored; logical result-discard for legacy
+adapters that ignore it — see [adapters.md](./adapters.md)). A partial batch
+inserts only its successes, still as one undo entry. Document replacement and
+unmount abort every in-flight task. Rejection surfaces an error toast with
 retry. Uploads that succeed after the user navigated away are dropped (no
 orphan commits). Validate type/size limits host-side in the adapter — the
 editor enforces only its `accept` filters.

@@ -36,7 +36,7 @@ CanvasStudio (stores, stage, action layer)
 | --- | --- | --- |
 | `storeId` | `"default"` | Namespaces the persisted UI layout (panel widths, recents). Pass a per-design id to isolate. |
 | `shortcuts` | `true` | `false` disables the whole workspace keymap; `{ extraBindings }` appends host bindings (same `id` replaces a built-in). See [shortcut-reference.md](./shortcut-reference.md) — generated from the registry. |
-| `toolStrip` | `true` | `false` hides the floating tool strip (hosts with their own tool chrome). |
+| `toolStrip` | `true` | `false` hides the floating tool strip (hosts with their own tool chrome). `CanvasToolStripOptions` (FR-010) configures it instead: `items` filters/reorders the visible rail by tool id — extension tool ids may be promoted into the rail; `renderer` replaces the strip's rendering (the workspace still positions the cluster) with `{ descriptors, activeToolId, setActiveTool }`. Extension-registered tools (via `CanvasEditorExtension.tools`, with optional `label`/`labelKey`/`icon`/`shortcut`/`disabled` presentation metadata) are discovered automatically and surface under a "More tools" overflow at the strip's end — and in the Elements panel — via the same effective descriptor source the interaction layer uses. |
 | `inspector` | `true` | `false` removes the right property-inspector column. |
 | `headerPlugins` | — | Header right-cluster plugins; the built-in export dialog ships as `createCanvasExportPlugin()`. |
 | `dockItems` / `panels` | built-ins | Reorder/extend the panel dock; override tab-panel registry entries. |

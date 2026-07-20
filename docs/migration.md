@@ -23,7 +23,7 @@ no-op feedback seams) unless a row says otherwise.
 | **Inspector completion** (FR-070..077): page properties when nothing selected, multi-select with Mixed values, appearance/stroke/radii/fit-mode sections, field contract (live preview, coalesced undo, Escape revert). | On | No opt-out (inspector semantics). |
 | **Save status + auto-save** (FR-160..163). | Only with `persistenceAdapter` | Omit the adapter → no change. See [persistence.md](./persistence.md). |
 | **Rulers and guides** (FR-110/111, Phase 2) | **Off** | Enable via the canvas context menu. Default-on is a host decision still open for Beta. |
-| **Effects precedence** (§9.4): `effects[]` wins over legacy `shadow`; nodes upgrade per-edit (no bulk migration). `effects: []` suppresses the legacy shadow. | On | Don't write `effects` and legacy `shadow` keeps rendering as before. |
+| **Effects precedence** (§9.4): `effects[]` wins over legacy `shadow`; nodes upgrade per-edit (no bulk migration, no IR version bump — see the workspace decision record `docs/architecture/shadow-effects-normalization-decision.md`). `effects: []` suppresses the legacy shadow. | On | Don't write `effects` and legacy `shadow` keeps rendering as before. |
 | **Recovery** (FR-164) | Only with `recoveryAdapter` | Omit → no recovery dialog. |
 
 ## Built-in semantics that replaced host wiring
