@@ -6,6 +6,63 @@ The PRD 0012 delivery (Phases 1a "editing loop", 1b "product chrome", 2
 "professional editing"). Behavior changes and opt-outs are catalogued in
 [docs/migration.md](./docs/migration.md); this is the feature summary.
 
+### PRD 0012 completion pass
+
+- **Grid rendering + settings (FR-112)**: `Grid` is a real editor-only
+  renderer (page-bounded lines, zoom/pan-aware, bounded line count) with a
+  sub-grid, configurable grid/sub-grid colors, an explicit snap-to-grid
+  setting **separate from grid visibility and snap-to-objects**, and a
+  configurable snap threshold — all reachable from the canvas context menu
+  and the new code-split `GridSettingsDialog`. Grid chrome never enters
+  exports (named-group exclusion in `exportStageContentDataURL`) and never
+  creates history entries.
+- **Tool-strip extensibility (FR-010)**: extension-registered tools (now
+  describable via additive `label`/`labelKey`/`icon`/`shortcut`/`disabled`
+  metadata on `Tool`) surface in a "More tools" overflow and in the Elements
+  panel through ONE effective descriptor source; `toolStrip` accepts
+  `CanvasToolStripOptions` (`items` rail filter/reorder/promotion, `renderer`
+  replacement) alongside the existing `false` opt-out.
+- **Upload progress + real cancellation (FR-091/092)**: the upload context
+  additively carries `signal` (AbortSignal) and `onProgress` (per-file
+  fractions); the editor calls `upload()` once per file so progress and
+  cancel attribute per task. Accessible determinate/indeterminate progress
+  bars, per-task cancel (aborts the transport when honored; discards the
+  result for legacy adapters), retry, partial-batch success insertion, and
+  cleanup on document replacement and unmount. Legacy batch adapters keep
+  working unchanged.
+- **Drag-to-replace (FR-093)**: a single dragged file — or a completed
+  upload dragged from the uploads panel — dropped on an image node or
+  image-well frame replaces it through the existing `image.replace` pipeline
+  (bounds/transform/crop preserved) as one atomic undo entry with its
+  `asset.put`; locked/hidden nodes are never targets, multi-file drops still
+  insert, and a "Drop to replace" indicator announces the active target.
+- **Selection-toolbar completion (FR-180)**: the quick-props pill is
+  multi-selection and mixed-value aware (selection-summary + field
+  contract), adds text typography (font/size/bold/align/color) and image
+  (crop/replace/fit) sections, disables for all-locked selections, and hides
+  during inline text editing; `ElementControls` lock now routes through
+  `actions.toggleLockSelection()` (one undo entry).
+- **Unmount persistence reliability (FR-160/163)**: the cleanup's final
+  `flush()` is protected from the `dispose()` issued alongside it (obsolete
+  in-flight saves still abort); `beforeunload` only warns — best-effort
+  unload persistence moved to the documented optional synchronous
+  `CanvasPersistenceAdapter.saveOnUnload` capability; the context now
+  exposes an awaitable `flush()` for host routing guards; stale save
+  responses can no longer re-dirty a freshly replaced document.
+- **FR-074 color entry**: the shared `ColorField` gains an explicit editable
+  hex input, R/G/B channel inputs (alpha suffix preserved), and an optional
+  feature-detected EyeDropper adapter with graceful fallback.
+- **FR-063**: campaign-size variant creation is reachable from Page Settings
+  (embedded `CampaignResizePanel`); page backgrounds of the reserved
+  `gradient`/`image` kinds render the neutral fallback instead of leaking
+  raw strings into Konva `fillStyle` (contract narrowed in core docs; SVG
+  export keeps its typed `BACKGROUND_UNSUPPORTED` warning).
+- **Tests/i18n**: §17.4 integration Flows 1 (poster), 2 (template), and 4
+  (save failure) over the real history store; upload store/actions/panel,
+  drop-target, grid, toolstrip, toolbar, and persistence-lifecycle suites;
+  29 new `canvas.*` keys in all four locale catalogs (en/zh/ja/ko,
+  parity-tested); axe coverage for the new surfaces.
+
 ### Gap-closure follow-up
 
 - **Export completeness (FR-151/152/153, §14.5)**: all six formats
