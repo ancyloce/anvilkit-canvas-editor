@@ -17,6 +17,7 @@ import { CanvasBrandKitContext } from "../stage/CanvasBrandKitContext.js";
 import { CanvasNodeRenderer } from "../stage/CanvasNodeRenderer.js";
 import { CanvasStage } from "../stage/CanvasStage.js";
 import { RenderLayer } from "../stage/RenderLayer.js";
+import { pageBackgroundFill } from "./page-background.js";
 
 export interface RasterizePageInput {
 	readonly page: CanvasPage;
@@ -120,7 +121,7 @@ export async function rasterizePage(
 										y={0}
 										width={page.size.width}
 										height={page.size.height}
-										fill={page.background.value}
+										fill={pageBackgroundFill(page.background)}
 									/>
 								</RenderLayer>
 							) : null}
