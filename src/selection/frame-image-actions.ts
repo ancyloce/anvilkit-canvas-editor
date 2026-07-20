@@ -157,17 +157,18 @@ export function wellOf(
 }
 
 /**
- * Swap the asset behind an image, preserving its bounds, transform and `crop` —
- * `image.replace` only touches `assetId`. When the image fills a frame's well,
- * the frame's placeholder is re-pointed at the new asset in the SAME undo step,
- * so the two never drift apart.
+ * The command list {@link replaceImage} commits — exported so other entry
+ * points into the SAME replacement pipeline (context menu, FR-093
+ * drag-to-replace) can compose it into a larger atomic batch (e.g. with the
+ * `asset.put` of a just-uploaded file) instead of re-deriving the semantics.
+ * Empty when the swap is a no-op.
  */
-export function replaceImage(
+export function buildReplaceImageCommands(
 	ctx: CanvasStudioContextValue,
 	node: CanvasImageNode,
 	assetId: string,
-): boolean {
-	if (!assetId || assetId === node.assetId) return false;
+): CanvasCommand[] {
+	if (!assetId || assetId === node.assetId) return [];
 	const commands: CanvasCommand[] = [
 		{
 			type: "image.replace",
@@ -178,7 +179,22 @@ export function replaceImage(
 	];
 	const frame = wellOf(ctx, node);
 	if (frame) commands.push(placeholderPatch(frame, assetId));
+	return commands;
+}
 
+/**
+ * Swap the asset behind an image, preserving its bounds, transform and `crop` —
+ * `image.replace` only touches `assetId`. When the image fills a frame's well,
+ * the frame's placeholder is re-pointed at the new asset in the SAME undo step,
+ * so the two never drift apart.
+ */
+export function replaceImage(
+	ctx: CanvasStudioContextValue,
+	node: CanvasImageNode,
+	assetId: string,
+): boolean {
+	const commands = buildReplaceImageCommands(ctx, node, assetId);
+	if (commands.length === 0) return false;
 	if (commands.length === 1 && commands[0]) ctx.commit(commands[0]);
 	else ctx.commitBatch(commands, "Replace image");
 	return true;
