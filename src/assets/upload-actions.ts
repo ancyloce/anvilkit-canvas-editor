@@ -108,10 +108,64 @@ export function insertAssetsImpl(
 }
 
 /**
- * FR-091/092 upload flow: track tasks in the upload store, hand the files to
- * the host uploader, then insert the results — one undo entry. Failures mark
- * the tasks failed and create NO nodes; a task cancelled while in flight
- * drops its results silently.
+ * Upload ONE file as one tracked task: per-task AbortController (FR-092 real
+ * cancellation when the adapter honors the signal; logical result-discard
+ * when it doesn't), per-task determinate progress when the adapter reports it
+ * (FR-091), and stale-guarding — a result landing after the task was
+ * cancelled or the store was reset (document replacement / unmount) is
+ * dropped without creating an asset or node.
+ */
+export async function uploadSingleFile(
+	ctx: CanvasStudioContextValue,
+	file: File,
+): Promise<
+	| { ok: true; assets: readonly CanvasPickedAsset[] }
+	| { ok: false; error?: string }
+> {
+	const uploader = ctx.assetUploader;
+	const uploadStore = ctx.uploadStore;
+	if (!uploader) return { ok: false };
+	const id = uploadStore?.getState().begin(file) ?? "";
+	const controller = new AbortController();
+	if (id !== "") {
+		uploadStore?.getState().registerAbort(id, () => controller.abort());
+	}
+	const settled = (): "gone" | "cancelled" | "live" => {
+		if (id === "" || !uploadStore) return "live";
+		if (!uploadStore.getState().has(id)) return "gone";
+		if (uploadStore.getState().isCancelled(id)) return "cancelled";
+		return "live";
+	};
+	try {
+		const uploaded = await uploader.upload([file], {
+			documentId: ctx.getIR().id,
+			signal: controller.signal,
+			onProgress: (event) => {
+				if (event.fileIndex === 0 && event.fraction !== undefined && id !== "") {
+					uploadStore?.getState().setProgress(id, event.fraction);
+				}
+			},
+		});
+		if (settled() !== "live") return { ok: false };
+		if (id !== "") uploadStore?.getState().succeed(id, uploaded[0]?.id);
+		return { ok: true, assets: uploaded };
+	} catch (err) {
+		// An abort-triggered rejection is the cancel path, not a failure.
+		if (settled() !== "live" || controller.signal.aborted) return { ok: false };
+		const message = err instanceof Error ? err.message : String(err);
+		if (id !== "") uploadStore?.getState().fail(id, message);
+		return { ok: false, error: message };
+	}
+}
+
+/**
+ * FR-091/092 upload flow: track tasks in the upload store, hand each file to
+ * the host uploader (one `upload()` call per file so progress and
+ * cancellation attribute per task), then insert every SUCCEEDED result as one
+ * undo entry. Failed tasks show retry, cancelled tasks drop their results,
+ * and neither creates nodes or asset entries; a partial batch inserts only
+ * its successes. Uploads resolving after a document replacement insert
+ * nothing (their tasks were reset away).
  */
 export async function uploadFilesImpl(
 	ctx: CanvasStudioContextValue,
@@ -132,34 +186,20 @@ export async function uploadFilesImpl(
 		});
 		return [];
 	}
-	const uploadStore = ctx.uploadStore;
-	const taskIds = files.map(
-		(file) => uploadStore?.getState().begin(file) ?? "",
+	const results = await Promise.all(
+		files.map((file) => uploadSingleFile(ctx, file)),
 	);
-	try {
-		const uploaded = await uploader.upload(files, {
-			documentId: ctx.getIR().id,
-		});
-		const anyCancelled = taskIds.some(
-			(id) => id !== "" && uploadStore?.getState().isCancelled(id),
-		);
-		if (anyCancelled) return [];
-		for (const id of taskIds) {
-			if (id !== "") uploadStore?.getState().succeed(id);
-		}
-		return insertAssetsImpl(ctx, uploaded, position);
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		for (const id of taskIds) {
-			if (id !== "") uploadStore?.getState().fail(id, message);
-		}
+	const errors = results.flatMap((r) => (!r.ok && r.error ? [r.error] : []));
+	if (errors.length > 0) {
 		toaster.add({
 			type: "error",
 			title: t("canvas.upload.failed", "Upload failed"),
-			description: message,
+			description: errors[0],
 		});
-		return [];
 	}
+	const uploaded = results.flatMap((r) => (r.ok ? r.assets : []));
+	if (uploaded.length === 0) return [];
+	return insertAssetsImpl(ctx, uploaded, position);
 }
 
 /**
@@ -180,14 +220,34 @@ export async function retryUploadImpl(
 	if (!task || task.status !== "failed") return [];
 	const t = resolveT(ctx);
 	uploadStore.getState().retry(taskId);
+	const controller = new AbortController();
+	uploadStore.getState().registerAbort(taskId, () => controller.abort());
 	try {
 		const uploaded = await uploader.upload([task.file], {
 			documentId: ctx.getIR().id,
+			signal: controller.signal,
+			onProgress: (event) => {
+				if (event.fileIndex === 0 && event.fraction !== undefined) {
+					uploadStore.getState().setProgress(taskId, event.fraction);
+				}
+			},
 		});
-		if (uploadStore.getState().isCancelled(taskId)) return [];
+		if (
+			!uploadStore.getState().has(taskId) ||
+			uploadStore.getState().isCancelled(taskId)
+		) {
+			return [];
+		}
 		uploadStore.getState().succeed(taskId);
 		return insertAssetsImpl(ctx, uploaded);
 	} catch (err) {
+		if (
+			!uploadStore.getState().has(taskId) ||
+			uploadStore.getState().isCancelled(taskId) ||
+			controller.signal.aborted
+		) {
+			return [];
+		}
 		const message = err instanceof Error ? err.message : String(err);
 		uploadStore.getState().fail(taskId, message);
 		toaster.add({

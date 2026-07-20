@@ -107,12 +107,15 @@ describe("insertAssetsImpl (B-10)", () => {
 });
 
 describe("uploadFilesImpl (B-10, FR-091/092)", () => {
-	it("uploads through the adapter, tracks tasks, inserts results", async () => {
+	it("uploads through the adapter (one call per file), tracks tasks, inserts results", async () => {
+		const seenBatches: number[] = [];
 		const uploader: CanvasAssetUploader = {
 			upload: async (files, ctx) => {
 				expect(ctx.documentId).toBe("doc-1");
-				return files.map((f, i) => ({
-					id: `up-${i}`,
+				expect(ctx.signal).toBeInstanceOf(AbortSignal);
+				seenBatches.push(files.length);
+				return files.map((f) => ({
+					id: `up-${f.name}`,
 					uri: `https://cdn/${f.name}`,
 				}));
 			},
@@ -125,10 +128,146 @@ describe("uploadFilesImpl (B-10, FR-091/092)", () => {
 			toaster,
 		);
 		expect(ids).toHaveLength(2);
+		// Per-file invocation so progress/cancel attribute per task (FR-091).
+		expect(seenBatches).toEqual([1, 1]);
 		expect(h.commits.filter((c) => c.type === "asset.put")).toHaveLength(2);
+		// Still ONE atomic undo entry for the whole drop.
+		expect(h.studioCtx.commitBatch).toHaveBeenCalledTimes(1);
 		expect(uploadStore.getState().tasks.every((t) => t.status === "done")).toBe(
 			true,
 		);
+	});
+
+	it("reports per-task determinate progress and ignores stale ticks after settle", async () => {
+		let tick: ((fraction: number) => void) | null = null;
+		let release: (() => void) | null = null;
+		const uploader: CanvasAssetUploader = {
+			upload: (_files, ctx) =>
+				new Promise((resolve) => {
+					tick = (fraction) => ctx.onProgress?.({ fileIndex: 0, fraction });
+					release = () => resolve([{ id: "up", uri: "https://x" }]);
+				}),
+		};
+		const { h, uploadStore, toaster } = setup(uploader);
+		const pending = uploadFilesImpl(
+			h.studioCtx,
+			[file("a.png")],
+			undefined,
+			toaster,
+		);
+		const task = () => uploadStore.getState().tasks[0];
+		tick?.(0.4);
+		expect(task()?.progress).toBe(0.4);
+		tick?.(2);
+		expect(task()?.progress).toBe(1); // clamped
+		release?.();
+		await pending;
+		expect(task()?.status).toBe("done");
+		tick?.(0.1); // stale tick after settle — must not resurrect progress
+		expect(task()?.progress).toBeUndefined();
+	});
+
+	it("cancelling a task aborts the adapter's signal (real cancellation)", async () => {
+		let signal: AbortSignal | undefined;
+		const uploader: CanvasAssetUploader = {
+			upload: (_files, ctx) =>
+				new Promise((_resolve, reject) => {
+					signal = ctx.signal;
+					ctx.signal?.addEventListener("abort", () =>
+						reject(new Error("aborted")),
+					);
+				}),
+		};
+		const { h, uploadStore, toaster } = setup(uploader);
+		const pending = uploadFilesImpl(
+			h.studioCtx,
+			[file("a.png")],
+			undefined,
+			toaster,
+		);
+		const task = uploadStore.getState().tasks[0];
+		if (!task) throw new Error("no task");
+		uploadStore.getState().cancel(task.id);
+		expect(signal?.aborted).toBe(true);
+		await expect(pending).resolves.toEqual([]);
+		// The abort-triggered rejection is the cancel path — NOT a failure.
+		expect(uploadStore.getState().tasks[0]?.status).toBe("cancelled");
+		expect(h.commits).toHaveLength(0);
+	});
+
+	it("a partial batch inserts only the successes, in one batch", async () => {
+		const uploader: CanvasAssetUploader = {
+			upload: async (files) => {
+				const f = files[0];
+				if (!f) throw new Error("empty batch");
+				if (f.name === "bad.png") throw new Error("cdn down");
+				return [{ id: `up-${f.name}`, uri: `https://cdn/${f.name}` }];
+			},
+		};
+		const { h, uploadStore, toasts, toaster } = setup(uploader);
+		const ids = await uploadFilesImpl(
+			h.studioCtx,
+			[file("good.png"), file("bad.png")],
+			undefined,
+			toaster,
+		);
+		expect(ids).toHaveLength(1);
+		expect(h.studioCtx.commitBatch).toHaveBeenCalledTimes(1);
+		expect(h.commits.filter((c) => c.type === "asset.put")).toHaveLength(1);
+		const statuses = uploadStore.getState().tasks.map((t) => t.status);
+		expect(statuses.sort()).toEqual(["done", "failed"]);
+		expect(toasts[0]?.type).toBe("error");
+	});
+
+	it("cancelling ONE task of a batch still inserts the sibling's result", async () => {
+		const releases: Array<() => void> = [];
+		const uploader: CanvasAssetUploader = {
+			upload: (files) =>
+				new Promise((resolve) => {
+					const f = files[0];
+					releases.push(() =>
+						resolve([{ id: `up-${f?.name}`, uri: `https://cdn/${f?.name}` }]),
+					);
+				}),
+		};
+		const { h, uploadStore, toaster } = setup(uploader);
+		const pending = uploadFilesImpl(
+			h.studioCtx,
+			[file("a.png"), file("b.png")],
+			undefined,
+			toaster,
+		);
+		const [taskA] = uploadStore.getState().tasks;
+		if (!taskA) throw new Error("no task");
+		uploadStore.getState().cancel(taskA.id);
+		for (const release of releases) release();
+		const ids = await pending;
+		// Sibling task is not stranded and its result inserts (FR-091 fix).
+		expect(ids).toHaveLength(1);
+		const byStatus = uploadStore.getState().tasks.map((t) => t.status);
+		expect(byStatus.sort()).toEqual(["cancelled", "done"]);
+	});
+
+	it("an upload resolving after a store reset (document replacement) inserts nothing", async () => {
+		let release: (() => void) | null = null;
+		const uploader: CanvasAssetUploader = {
+			upload: () =>
+				new Promise((resolve) => {
+					release = () => resolve([{ id: "up", uri: "https://x" }]);
+				}),
+		};
+		const { h, uploadStore, toaster } = setup(uploader);
+		const pending = uploadFilesImpl(
+			h.studioCtx,
+			[file("a.png")],
+			undefined,
+			toaster,
+		);
+		uploadStore.getState().reset();
+		release?.();
+		await expect(pending).resolves.toEqual([]);
+		expect(h.commits).toHaveLength(0);
+		expect(uploadStore.getState().tasks).toHaveLength(0);
 	});
 
 	it("failed uploads create NO nodes, mark tasks failed, toast the error", async () => {
