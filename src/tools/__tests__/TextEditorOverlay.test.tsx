@@ -74,6 +74,38 @@ function fixtureIRWithNestedText(): CanvasIR {
 	return createCanvasIR({ id: "ir-1", pages: [page], now: () => FIXED_TS });
 }
 
+/**
+ * A text node nested inside a frame that itself has a NON-identity transform
+ * (E-10) — the frame's own (50, 80) offset must be composed into the text
+ * node's world position, not just its own local (10, 10).
+ */
+function fixtureIRWithNestedTextInMovedFrame(): CanvasIR {
+	const page = createPage({ id: "p1" });
+	page.root = createGroup({
+		id: "p1-root",
+		bounds: page.root.bounds,
+		children: [
+			createFrame({
+				id: "frame1",
+				bounds: { width: 300, height: 200 },
+				transform: { x: 50, y: 80 },
+				children: [
+					createText({
+						id: "nested-text1",
+						bounds: { width: 100, height: 36 },
+						transform: { x: 10, y: 10 },
+						text: "Nested",
+						fontFamily: "Inter",
+						fontSize: 16,
+						fill: "#000000",
+					}),
+				],
+			}),
+		],
+	});
+	return createCanvasIR({ id: "ir-1", pages: [page], now: () => FIXED_TS });
+}
+
 /** A rich-text node with two distinctly-styled paragraphs. */
 function fixtureIRWithRichText(): CanvasIR {
 	const page = createPage({ id: "p1" });
@@ -209,6 +241,51 @@ describe("TextEditorOverlay", () => {
 		) as HTMLTextAreaElement | null;
 		expect(ta).not.toBeNull();
 		expect(ta?.value).toBe("Nested");
+	});
+
+	it("composes the parent frame's transform into the overlay position for a nested node (E-10)", () => {
+		const ir = fixtureIRWithNestedTextInMovedFrame();
+		const { ctx } = makeCtx(ir, makeFakeStage());
+		ctx.editingStore.getState().setEditing("nested-text1");
+		const { container } = render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<TextEditorOverlay />
+			</CanvasStudioContext.Provider>,
+		);
+		const ta = container.querySelector(
+			"[data-testid=text-editor-overlay]",
+		) as HTMLTextAreaElement | null;
+		expect(ta).not.toBeNull();
+		// frame1 (50, 80) + nested-text1's own local (10, 10) = (60, 90). Before
+		// the fix this read the node's own local transform only and landed at
+		// (10, 10) — missing the frame's offset entirely.
+		expect(ta?.style.left).toBe("60px");
+		expect(ta?.style.top).toBe("90px");
+	});
+
+	it("repositions when the viewport pans/zooms while the overlay is open (E-10)", () => {
+		const ir = fixtureIR();
+		const { ctx } = makeCtx(ir, makeFakeStage());
+		ctx.editingStore.getState().setEditing("text1");
+		const { container } = render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<TextEditorOverlay />
+			</CanvasStudioContext.Provider>,
+		);
+		const before = container.querySelector(
+			"[data-testid=text-editor-overlay]",
+		) as HTMLTextAreaElement;
+		expect(before.style.left).toBe("50px");
+
+		act(() => {
+			ctx.viewportStore.getState().setPan(20, 0);
+		});
+		const after = container.querySelector(
+			"[data-testid=text-editor-overlay]",
+		) as HTMLTextAreaElement;
+		// Before the fix, viewportStore was read via a one-off getState()
+		// snapshot (no subscription), so this never re-rendered/repositioned.
+		expect(after.style.left).toBe("70px");
 	});
 
 	it("calls stage.container() bound to the stage (no 'getContainer' crash)", () => {

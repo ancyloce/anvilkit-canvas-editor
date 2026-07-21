@@ -64,11 +64,14 @@ function fakeStageWithNodes(
 		positionFns.set(id, vi.fn());
 	}
 	return {
-		findOne: (selector: string) => {
-			const id = selector.replace(/^\./, "");
-			const positionFn = positionFns.get(id);
-			if (!positionFn) return null;
-			return { position: positionFn } as unknown as Konva.Node;
+		// `findNodeById` (E-13) selects via a predicate, not a `.`-selector
+		// string — match real Konva's `findOne(fn)` semantics here too.
+		findOne: (selector: (node: { id(): string }) => boolean) => {
+			for (const [id, positionFn] of positionFns) {
+				const node = { id: () => id, position: positionFn };
+				if (selector(node)) return node as unknown as Konva.Node;
+			}
+			return null;
 		},
 		_positionFns: positionFns,
 	} as unknown as Konva.Stage;

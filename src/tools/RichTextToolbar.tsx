@@ -25,6 +25,7 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
+import { resolveNodeWorldPosition } from "../stage/node-world-position.js";
 import {
 	flattenRichText,
 	rebuildRichTextParagraphs,
@@ -76,6 +77,24 @@ export function RichTextToolbar(): React.JSX.Element | null {
 		() => ctx.editingStore.getState().editingNodeId,
 		() => ctx.editingStore.getState().editingNodeId,
 	);
+	// Subscribed (not a one-off getState() snapshot) so the toolbar
+	// repositions on zoom/pan while editing (E-10) — called unconditionally,
+	// before the early return below, per the Rules of Hooks.
+	const zoom = useSyncExternalStore(
+		ctx.viewportStore.subscribe,
+		() => ctx.viewportStore.getState().zoom,
+		() => ctx.viewportStore.getState().zoom,
+	);
+	const panX = useSyncExternalStore(
+		ctx.viewportStore.subscribe,
+		() => ctx.viewportStore.getState().panX,
+		() => ctx.viewportStore.getState().panX,
+	);
+	const panY = useSyncExternalStore(
+		ctx.viewportStore.subscribe,
+		() => ctx.viewportStore.getState().panY,
+		() => ctx.viewportStore.getState().panY,
+	);
 	const node = editingNodeId
 		? (findNode(ctx.ir, editingNodeId)?.node ?? null)
 		: null;
@@ -104,9 +123,13 @@ export function RichTextToolbar(): React.JSX.Element | null {
 	const container =
 		typeof ctx.stage.container === "function" ? ctx.stage.container() : null;
 	const rect = container?.getBoundingClientRect?.();
-	const vp = ctx.viewportStore.getState();
-	const left = (rect?.left ?? 0) + richText.transform.x * vp.zoom + vp.panX;
-	const top = (rect?.top ?? 0) + richText.transform.y * vp.zoom + vp.panY;
+	// Ancestor-composed (E-10) — see TextEditorOverlay, which shares this
+	// positioning contract; a rich-text node nested in a moved/rotated/scaled
+	// group or frame needs more than its own local transform.x/y.
+	const worldPosition =
+		resolveNodeWorldPosition(ctx.ir, richText.id) ?? richText.transform;
+	const left = (rect?.left ?? 0) + worldPosition.x * zoom + panX;
+	const top = (rect?.top ?? 0) + worldPosition.y * zoom + panY;
 
 	const firstStyle = resolveSpanStyle(
 		richText.paragraphs[0]?.spans[0] ?? { text: "" },

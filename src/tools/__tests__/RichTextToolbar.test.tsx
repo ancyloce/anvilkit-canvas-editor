@@ -6,7 +6,7 @@ import {
 	createPage,
 	createRichText,
 } from "@anvilkit/canvas-core";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
 import { RichTextToolbar } from "../RichTextToolbar.js";
@@ -53,6 +53,44 @@ function mount() {
 function lastPatch(h: ReturnType<typeof makeHarness>) {
 	const cmd = h.commits.at(-1) as CanvasNodeUpdateCommand<"rich-text">;
 	return cmd.patch as { paragraphs: CanvasRichTextNode["paragraphs"] };
+}
+
+/** A rich-text node nested inside a group with a non-identity transform. */
+function mountNested() {
+	const node = createRichText({
+		id: "rt-1",
+		width: 200,
+		bounds: { width: 200, height: 60 },
+		transform: { x: 10, y: 10 },
+		paragraphs: [{ spans: [{ text: "Hello" }] }],
+	});
+	const page = createPage({
+		id: "p1",
+		root: createGroup({
+			children: [
+				createGroup({
+					id: "g1",
+					transform: { x: 50, y: 80 },
+					children: [node],
+				}),
+			],
+		}),
+	});
+	const ir = createCanvasIR({ id: "doc", pages: [page] });
+	const h = makeHarness({ ir });
+	h.studioCtx.editingStore.getState().setEditing("rt-1");
+	const view = render(
+		<CanvasStudioContext.Provider
+			value={{
+				...h.studioCtx,
+				ir: h.studioCtx.getIR(),
+				stage: makeFakeStage(),
+			}}
+		>
+			<RichTextToolbar />
+		</CanvasStudioContext.Provider>,
+	);
+	return { h, view };
 }
 
 describe("RichTextToolbar (C-11, FR-082)", () => {
@@ -144,5 +182,27 @@ describe("RichTextToolbar (C-11, FR-082)", () => {
 			"Hello",
 			" world",
 		]);
+	});
+});
+
+describe("RichTextToolbar — positioning (E-10)", () => {
+	it("composes the parent group's transform into the toolbar position", () => {
+		const { view } = mountNested();
+		const bar = view.getByTestId("rich-text-toolbar");
+		// g1 (50, 80) + rt-1's own local (10, 10) = (60, 90); top is offset
+		// upward by the toolbar's own 40px, floored at 0: max(0, 90-40)=50.
+		expect(bar.style.left).toBe("60px");
+		expect(bar.style.top).toBe("50px");
+	});
+
+	it("repositions when the viewport pans while editing", () => {
+		const { h, view } = mountNested();
+		const before = view.getByTestId("rich-text-toolbar");
+		expect(before.style.left).toBe("60px");
+		act(() => {
+			h.studioCtx.viewportStore.getState().setPan(20, 0);
+		});
+		const after = view.getByTestId("rich-text-toolbar");
+		expect(after.style.left).toBe("80px");
 	});
 });

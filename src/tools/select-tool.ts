@@ -7,6 +7,7 @@ import type Konva from "konva";
 import { isolationScopeChildren } from "../selection/isolation.js";
 import { getOtherNodeRects } from "../snap/get-node-rect.js";
 import { computeSnap } from "../snap/snap-engine.js";
+import { findNodeById } from "../stage/find-node-by-id.js";
 import { nodeRenderOffset } from "../stage/node-render-offset.js";
 import type { Tool, ToolContext, ToolPointerEvent } from "./tool-types.js";
 
@@ -223,7 +224,7 @@ export const selectTool: Tool = {
 			// instead of drifting by half their bounds. See `nodeRenderOffset`.
 			const scope = selectionScope(ctx);
 			for (const start of draft.nodeStarts) {
-				const konvaNode = ctx.stage.findOne(`.${start.id}`);
+				const konvaNode = findNodeById(ctx.stage, start.id);
 				if (!konvaNode) continue;
 				const node = scope.find((c) => c.id === start.id);
 				const offset = node ? nodeRenderOffset(node) : { x: 0, y: 0 };
