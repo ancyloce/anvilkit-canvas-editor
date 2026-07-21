@@ -21,6 +21,7 @@ import {
 } from "../brand/resolve-brand-token.js";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { useCanvasBrandKit } from "../stage/CanvasBrandKitContext.js";
+import { resolveNodeWorldPosition } from "../stage/node-world-position.js";
 import {
 	flattenRichText,
 	rebuildRichTextParagraphs,
@@ -66,9 +67,31 @@ function resolveOverlayStyle(
 }
 
 export function TextEditorOverlay(): React.JSX.Element | null {
-	const { editingStore, stage, getIR, commit, viewportStore } =
-		useCanvasStudio();
+	// `ir` (the reactive context field), not `getIR()` (an imperative
+	// snapshot-at-call-time escape hatch) — reading `ir` here means this
+	// component re-renders whenever the document changes for ANY reason,
+	// including a remote-collab write to the node being edited (E-10).
+	const { editingStore, stage, ir, commit, viewportStore } = useCanvasStudio();
 	const brandKit = useCanvasBrandKit();
+	// Subscribed (not a one-off getState() snapshot) so the open overlay
+	// repositions on zoom/pan while editing, not just on the next unrelated
+	// re-render (E-10). Three separate subscriptions, matching how
+	// <CanvasStudio> itself reads viewportStore.
+	const zoom = useSyncExternalStore(
+		viewportStore.subscribe,
+		() => viewportStore.getState().zoom,
+		() => viewportStore.getState().zoom,
+	);
+	const panX = useSyncExternalStore(
+		viewportStore.subscribe,
+		() => viewportStore.getState().panX,
+		() => viewportStore.getState().panX,
+	);
+	const panY = useSyncExternalStore(
+		viewportStore.subscribe,
+		() => viewportStore.getState().panY,
+		() => viewportStore.getState().panY,
+	);
 	const editingNodeId = useSyncExternalStore(
 		editingStore.subscribe,
 		() => editingStore.getState().editingNodeId,
@@ -91,7 +114,6 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 		[editingStore],
 	);
 
-	const ir = getIR();
 	// Container-aware: the editing node may be nested inside a frame, not just
 	// a top-level child of the page root, so this can't be a shallow
 	// `page.root.children.find(...)` — findNode already walks the full tree
@@ -149,9 +171,16 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 	const container =
 		typeof stage.container === "function" ? stage.container() : null;
 	const rect = container?.getBoundingClientRect?.();
-	const vp = viewportStore.getState();
-	const left = (rect?.left ?? 0) + editingNode.transform.x * vp.zoom + vp.panX;
-	const top = (rect?.top ?? 0) + editingNode.transform.y * vp.zoom + vp.panY;
+	// Ancestor-composed (E-10): a node nested inside a moved/rotated/scaled
+	// group or frame needs more than its own local transform.x/y to find its
+	// TRUE page-space position. Falls back to the node's own transform (the
+	// pre-fix behavior) on the — expected never to happen here, since
+	// `editingNode` was just resolved from this same `ir` — off chance the
+	// lookup fails.
+	const worldPosition =
+		resolveNodeWorldPosition(ir, editingNodeId) ?? editingNode.transform;
+	const left = (rect?.left ?? 0) + worldPosition.x * zoom + panX;
+	const top = (rect?.top ?? 0) + worldPosition.y * zoom + panY;
 	const overlayStyle = resolveOverlayStyle(editingNode, brandKit);
 
 	const commitAndClose = () => {
@@ -214,10 +243,10 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 				position: "fixed",
 				left,
 				top,
-				width: editingNode.bounds.width * vp.zoom,
-				height: editingNode.bounds.height * vp.zoom,
+				width: editingNode.bounds.width * zoom,
+				height: editingNode.bounds.height * zoom,
 				fontFamily: overlayStyle.fontFamily,
-				fontSize: overlayStyle.fontSize * vp.zoom,
+				fontSize: overlayStyle.fontSize * zoom,
 				color: overlayStyle.color,
 				border: "1px solid #3b82f6",
 				background: "rgba(255, 255, 255, 0.9)",
