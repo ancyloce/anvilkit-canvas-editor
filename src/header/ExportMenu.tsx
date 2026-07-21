@@ -158,7 +158,14 @@ export function ExportMenu({
 					stage: ctx.stage,
 					...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
 				},
-				{ quality, resolution: resolutionScale(resolution), stripMetadata },
+				{
+					// The slider is 0-100; exporters (Konva's toDataURL) expect 0-1 —
+					// ExportDialog already normalizes this (E-9), this entry point
+					// had drifted and passed the raw 0-100 value straight through.
+					quality: quality / 100,
+					resolution: resolutionScale(resolution),
+					stripMetadata,
+				},
 			);
 			downloadCanvasArtifact(artifact);
 			if (artifact.warnings && artifact.warnings.length > 0) {
