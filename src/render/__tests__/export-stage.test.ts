@@ -3,6 +3,7 @@
 // is independent of jsdom.
 import type Konva from "konva";
 import { describe, expect, it, vi } from "vitest";
+import { GRID_CHROME_GROUP_NAME } from "@/stage/Grid.js";
 import type { RenderLayerName } from "@/stage/RenderLayer.js";
 import { exportStageContentDataURL } from "../export-stage.js";
 
@@ -51,8 +52,8 @@ function fakeStage(
 	);
 	const stage = {
 		getLayers: () => layers as unknown as ReadonlyArray<Konva.Layer>,
-		find: vi.fn((selector: string) =>
-			groups.filter((g) => `.${g.name()}` === selector),
+		find: vi.fn((selector: (node: { name(): string }) => boolean) =>
+			groups.filter((g) => selector(g)),
 		),
 		toDataURL,
 		batchDraw: vi.fn(),
@@ -125,9 +126,9 @@ describe("exportStageContentDataURL", () => {
 		expect(stage.batchDraw).not.toHaveBeenCalled();
 	});
 
-	it("hides the FR-112 'grid' group inside the content layer during serialization", () => {
+	it("hides the FR-112 grid group inside the content layer during serialization", () => {
 		const content = fakeLayer("content");
-		const grid = fakeGroup("grid");
+		const grid = fakeGroup(GRID_CHROME_GROUP_NAME);
 		const stage = fakeStage([content], [grid]);
 
 		const url = exportStageContentDataURL(stage);
@@ -136,12 +137,12 @@ describe("exportStageContentDataURL", () => {
 		// it into the export (the group lives inside a KEPT layer, so hiding
 		// whole layers could never exclude it).
 		expect(url).toBe("data:image/png;base64,content");
-		expect(stage.find).toHaveBeenCalledWith(".grid");
+		expect(stage.find).toHaveBeenCalledWith(expect.any(Function));
 	});
 
 	it("restores the grid group's visibility (and redraws) after serialization", () => {
 		const content = fakeLayer("content");
-		const grid = fakeGroup("grid");
+		const grid = fakeGroup(GRID_CHROME_GROUP_NAME);
 		const stage = fakeStage([content], [grid]);
 
 		exportStageContentDataURL(stage);
@@ -152,7 +153,7 @@ describe("exportStageContentDataURL", () => {
 
 	it("leaves an already-hidden grid group hidden (no spurious restore)", () => {
 		const content = fakeLayer("content");
-		const grid = fakeGroup("grid");
+		const grid = fakeGroup(GRID_CHROME_GROUP_NAME);
 		grid.visible(false);
 		const stage = fakeStage([content], [grid]);
 
@@ -161,5 +162,21 @@ describe("exportStageContentDataURL", () => {
 		expect(grid._isVisible()).toBe(false);
 		// Nothing was hidden by the exporter → nothing to redraw.
 		expect(stage.batchDraw).not.toHaveBeenCalled();
+	});
+
+	// Regression (E-13): `CanvasNodeRenderer` names every content node after its
+	// raw `CanvasNode.id` (untrusted — looseObject/hostile-peer by design). A
+	// bare `"grid"` chrome name used to collide with a design that happened to
+	// have a node id of `"grid"`, silently hiding it from every export. The
+	// chrome group is namespaced specifically so this can't happen.
+	it("does not hide a design node whose id happens to be 'grid'", () => {
+		const content = fakeLayer("content");
+		const userNode = fakeGroup("grid");
+		const stage = fakeStage([content], [userNode]);
+
+		const url = exportStageContentDataURL(stage);
+
+		expect(userNode._isVisible()).toBe(true);
+		expect(url).toBe("data:image/png;base64,content+grid");
 	});
 });

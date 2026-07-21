@@ -1,4 +1,5 @@
 import type Konva from "konva";
+import { GRID_CHROME_GROUP_NAME } from "../stage/Grid.js";
 import type { RenderLayerName } from "../stage/RenderLayer.js";
 
 /**
@@ -13,10 +14,14 @@ const CHROME_LAYER_NAMES = new Set<RenderLayerName>(["overlay", "presence"]);
 /**
  * Editor-only named GROUPS that live INSIDE kept layers, so hiding whole
  * layers cannot exclude them: the FR-112 grid renders inside the content
- * layer's background group (`<Group name="grid">` in `Grid.tsx`). Hidden by
- * Konva name-selector (`.grid`) for the duration of the serialize.
+ * layer's background group. Namespaced (`ak-chrome-grid`, not a bare
+ * `"grid"`) so it can't collide with a user-authored `CanvasNode.id` — which
+ * `CanvasNodeRenderer` also uses as a Konva `name` — and matched via a
+ * predicate rather than Konva's `.`-selector string syntax so the match
+ * can't accidentally widen if a node's own name ever contains a space
+ * (E-13; see `find-node-by-id.ts`).
  */
-const CHROME_GROUP_NAMES: readonly string[] = ["grid"];
+const CHROME_GROUP_NAMES: readonly string[] = [GRID_CHROME_GROUP_NAME];
 
 export interface ExportStageContentOptions {
 	/** Defaults handled by the caller; forwarded verbatim to `toDataURL`. */
@@ -62,12 +67,16 @@ export function exportStageContentDataURL(
 	}
 
 	const find = (
-		stage as { find?: (selector: string) => ReadonlyArray<Konva.Node> }
+		stage as {
+			find?: (
+				selector: (node: Konva.Node) => boolean,
+			) => ReadonlyArray<Konva.Node>;
+		}
 	).find;
 	const hiddenGroups: Konva.Node[] = [];
 	if (typeof find === "function") {
 		for (const name of CHROME_GROUP_NAMES) {
-			for (const node of find.call(stage, `.${name}`)) {
+			for (const node of find.call(stage, (n) => n.name() === name)) {
 				if (node.visible()) {
 					node.visible(false);
 					hiddenGroups.push(node);

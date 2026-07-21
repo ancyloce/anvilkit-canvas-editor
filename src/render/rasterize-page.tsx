@@ -223,6 +223,11 @@ function timeout(ms: number): Promise<void> {
 
 function collectImageAssetIds(node: CanvasNode): string[] {
 	if (node.type === "image" || node.type === "svg") return [node.assetId];
+	// A video's poster is an asset-id reference resolved the same way as an
+	// image/svg's — omitting it here left it unpreloaded, so it was flakily
+	// still "loading" (and rendered as nothing) by the time the raster/PDF
+	// capture ran (E-12).
+	if (node.type === "video") return node.poster ? [node.poster] : [];
 	if (isContainerNode(node)) {
 		return node.children.flatMap(collectImageAssetIds);
 	}

@@ -10,6 +10,7 @@ import {
 	createRect,
 	createRichText,
 	createSvg,
+	createVideo,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { ReactNode } from "react";
@@ -242,6 +243,44 @@ describe("rasterizePage", () => {
 		});
 		expect(result.url.startsWith("data:")).toBe(true);
 		expect(preloadedSrcs).toContain("data:image/svg+xml;base64,PHN2Zz4=");
+	});
+
+	// Regression: a video node's poster is an asset-id reference resolved the
+	// same way as an image/svg's, but `collectImageAssetIds` never walked
+	// `"video"` nodes — the poster was left unpreloaded and could rasterize
+	// blank if `useImage` hadn't already settled by capture time (E-12).
+	it("preloads a video node's poster image, same as image nodes", async () => {
+		stubImageLoader();
+		const videoNode = createVideo({
+			id: "v1",
+			bounds: { width: 32, height: 32 },
+			assetId: "video-asset",
+			poster: "poster-asset",
+		});
+		const page = buildPage([videoNode]);
+		const result = await rasterizePage({
+			page,
+			assets: {
+				"poster-asset": {
+					id: "poster-asset",
+					uri: "data:image/png;base64,POSTER=",
+				},
+			},
+		});
+		expect(result.url.startsWith("data:")).toBe(true);
+		expect(preloadedSrcs).toContain("data:image/png;base64,POSTER=");
+	});
+
+	it("does not attempt to preload a video node without a poster", async () => {
+		const videoNode = createVideo({
+			id: "v1",
+			bounds: { width: 32, height: 32 },
+			assetId: "video-asset",
+		});
+		const page = buildPage([videoNode]);
+		const result = await rasterizePage({ page, assets: {} });
+		expect(result.url.startsWith("data:")).toBe(true);
+		expect(preloadedSrcs).toHaveLength(0);
 	});
 
 	// PDF/PNG export fidelity (canvas-m1-003) rides on the rasterizer honouring
