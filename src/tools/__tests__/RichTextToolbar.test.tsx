@@ -7,7 +7,7 @@ import {
 	createRichText,
 } from "@anvilkit/canvas-core";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
 import { RichTextToolbar } from "../RichTextToolbar.js";
 import { makeFakeStage, makeHarness } from "./_tool-test-helpers.js";
@@ -140,6 +140,18 @@ describe("RichTextToolbar (C-11, FR-082)", () => {
 		expect(
 			lastPatch(h).paragraphs[0]?.spans.every((s) => s.fontSize === 32),
 		).toBe(true);
+	});
+
+	it("commits the size field through commitCoalesced with a stable merge key, not a fresh undo entry per keystroke (E-19)", () => {
+		const { h, view } = mount();
+		const input = view.getByTestId("rich-text-size");
+		fireEvent.change(input, { target: { value: "2" } });
+		fireEvent.change(input, { target: { value: "24" } });
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(2);
+		const calls = (h.studioCtx.commitCoalesced as ReturnType<typeof vi.fn>).mock
+			.calls;
+		expect(calls[0]?.[1]).toBe(calls[1]?.[1]);
 	});
 
 	it("font-family control rewrites every span's family (FR-082)", () => {

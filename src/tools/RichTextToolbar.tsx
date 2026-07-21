@@ -146,6 +146,22 @@ export function RichTextToolbar(): React.JSX.Element | null {
 		ctx.commit(cmd);
 	};
 
+	// The size field fires on every keystroke — typing "24" sends fontSize 2
+	// then 24 through plain `commit`, which is two undo entries, a visible
+	// flash, and two collab broadcasts (E-19). Route it through the §10 field
+	// contract's coalescing commit instead, like every other live-typing field.
+	const commitSizeCoalesced = (paragraphs: RichTextParagraph[]): void => {
+		const cmd: CanvasNodeUpdateCommand<"rich-text"> = {
+			type: "node.update",
+			nodeId: node.id,
+			kind: "rich-text",
+			patch: { paragraphs },
+		};
+		if (ctx.commitCoalesced)
+			ctx.commitCoalesced(cmd, `rich-text-size:${node.id}`);
+		else ctx.commit(cmd);
+	};
+
 	const boldActive = everySpan(
 		richText,
 		(s) =>
@@ -304,7 +320,7 @@ export function RichTextToolbar(): React.JSX.Element | null {
 				onChange={(e) => {
 					const fontSize = Number(e.currentTarget.value);
 					if (!Number.isFinite(fontSize) || fontSize < 1) return;
-					commitParagraphs(
+					commitSizeCoalesced(
 						mapSpans(currentRichText(), (s) => ({ ...s, fontSize })),
 					);
 				}}

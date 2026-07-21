@@ -1,7 +1,13 @@
-import type { CanvasNodeCreateCommand } from "@anvilkit/canvas-core";
+import {
+	type CanvasNodeCreateCommand,
+	createCanvasIR,
+	createPage,
+} from "@anvilkit/canvas-core";
 import { describe, expect, it, vi } from "vitest";
 import { imageTool } from "../image-tool.js";
 import { makeHarness, pointerEvent } from "./_tool-test-helpers.js";
+
+const FIXED_TS = "2026-05-20T00:00:00.000Z";
 
 describe("imageTool", () => {
 	it("places an image node after pickAsset resolves", async () => {
@@ -43,6 +49,27 @@ describe("imageTool", () => {
 	it("pointermove / pointerup are undefined", () => {
 		expect(imageTool.onPointerMove).toBeUndefined();
 		expect(imageTool.onPointerUp).toBeUndefined();
+	});
+
+	it("no-ops (no crash, no commit) when the active page is removed while the picker is open (E-17)", async () => {
+		const h = makeHarness();
+		const pageRemovedIR = createCanvasIR({
+			id: "ir-2",
+			pages: [createPage({ id: "p2" })],
+			now: () => FIXED_TS,
+		});
+		h.ctx.pickAsset = vi.fn(async () => {
+			// The gesture's `ctx.activePageId` still says "p1" — simulate the
+			// active page having been deleted while this await was pending.
+			h.setIR(pageRemovedIR);
+			return "asset-42";
+		});
+		expect(() =>
+			imageTool.onPointerDown?.(pointerEvent(100, 200), h.ctx),
+		).not.toThrow();
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(h.commits).toHaveLength(0);
 	});
 });
 

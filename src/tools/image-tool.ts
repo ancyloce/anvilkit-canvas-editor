@@ -66,52 +66,63 @@ export const imageTool: Tool = {
 				ids = [assetId];
 			}
 
-			const ir = ctx.getIR();
-			const page = ir.pages.find((p) => p.id === ctx.activePageId);
-			const frame = page ? findFrameAtPoint(page.root.children, e.point) : null;
+			// Re-resolve the active page from the CURRENT document (E-17): the
+			// picker await can span an arbitrary amount of time (it's a real user
+			// dialog), during which `ctx.activePageId` — snapshotted for this
+			// gesture — may no longer exist (the page was deleted or the doc was
+			// replaced). Bail rather than commit against a vanished page.
+			try {
+				const ir = ctx.getIR();
+				const page = ir.pages.find((p) => p.id === ctx.activePageId);
+				if (!page) return;
+				const frame = findFrameAtPoint(page.root.children, e.point);
 
-			if (frame) {
-				const assetId = ids[0]!;
-				const commands = buildFillFrameCommands({
-					frame,
-					assetId,
-					asset: ir.assets[assetId],
-					pageId: ctx.activePageId,
+				if (frame) {
+					const assetId = ids[0]!;
+					const commands = buildFillFrameCommands({
+						frame,
+						assetId,
+						asset: ir.assets[assetId],
+						pageId: page.id,
+					});
+					// Re-placing the asset already in the well is a no-op, not an undo step.
+					if (commands.length === 0) return;
+					commitAsOne(ctx, commands, "Place image");
+					selectPlaced(ctx, commands, frame.id);
+					return;
+				}
+
+				if (ids.length > 1) {
+					const { commands, nodeIds } = buildAssetInsertCommands(
+						picked,
+						page,
+						e.point,
+					);
+					if (commands.length === 0) return;
+					commitAsOne(ctx, commands, "Add images");
+					ctx.selectionStore.getState().setSelection(nodeIds);
+					return;
+				}
+
+				const node = createImage({
+					bounds: {
+						width: DEFAULT_IMAGE_WIDTH,
+						height: DEFAULT_IMAGE_HEIGHT,
+					},
+					transform: { x: e.point.x, y: e.point.y },
+					assetId: ids[0]!,
 				});
-				// Re-placing the asset already in the well is a no-op, not an undo step.
-				if (commands.length === 0) return;
-				commitAsOne(ctx, commands, "Place image");
-				selectPlaced(ctx, commands, frame.id);
-				return;
+				const cmd: CanvasNodeCreateCommand = {
+					type: "node.create",
+					node,
+					pageId: page.id,
+				};
+				ctx.commit(cmd);
+				ctx.selectionStore.getState().setSelection([node.id]);
+			} catch {
+				// The target page/frame vanished between the picker resolving and
+				// the commit — nothing to select, nothing to recover.
 			}
-
-			if (ids.length > 1 && page) {
-				const { commands, nodeIds } = buildAssetInsertCommands(
-					picked,
-					page,
-					e.point,
-				);
-				if (commands.length === 0) return;
-				commitAsOne(ctx, commands, "Add images");
-				ctx.selectionStore.getState().setSelection(nodeIds);
-				return;
-			}
-
-			const node = createImage({
-				bounds: {
-					width: DEFAULT_IMAGE_WIDTH,
-					height: DEFAULT_IMAGE_HEIGHT,
-				},
-				transform: { x: e.point.x, y: e.point.y },
-				assetId: ids[0]!,
-			});
-			const cmd: CanvasNodeCreateCommand = {
-				type: "node.create",
-				node,
-				pageId: ctx.activePageId,
-			};
-			ctx.commit(cmd);
-			ctx.selectionStore.getState().setSelection([node.id]);
 		};
 		void place();
 	},
