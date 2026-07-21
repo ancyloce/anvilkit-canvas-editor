@@ -32,17 +32,25 @@ export interface ExportStageContentOptions {
 
 /**
  * Serialize a live editor stage to a data URL with the editor-only chrome
- * layers hidden, so the exported preview shows only design content — not the
- * selection transformer, smart guides, or remote-presence overlays the user
- * happened to have on screen at export time.
+ * layers hidden and the viewport's live pan/zoom neutralized, so the exported
+ * preview shows only design content, at the page's real 1:1 scale/position —
+ * not the transformer handles, guides, or remote-presence overlays the user
+ * happened to have on screen, nor whatever pan/zoom their viewport happened
+ * to be at, at export time. Every caller of this function shares this
+ * guarantee (E-14) — earlier, only the built-in raster exporters neutralized
+ * the viewport themselves (E-8); `CanvasExportBridge`-driven DesignBlock
+ * previews had no such reset, so a saved preview shifted/cropped (and its
+ * resolution varied with zoom) whenever the stage was panned/zoomed.
  *
  * Konva's `toDataURL` composes only visible layers, so we flip the chrome
  * layers invisible for the duration of the serialize and restore them in a
  * `finally` (the stage is normally about to unmount, but we never leave it in
  * a mutated visual state). Named chrome GROUPS inside kept layers (see
  * {@link CHROME_GROUP_NAMES}) get the same hide/restore treatment via
- * `stage.find`. Stages that don't expose `getLayers`/`find` (e.g. unit-test
- * fakes) fall through to a plain `toDataURL` — there is no chrome to hide.
+ * `stage.find`. Scale/position are snapshotted, reset to 1:1/0:0, and
+ * restored the same way. Stages that don't expose `getLayers`/`find`/
+ * `scale`/`position` (e.g. unit-test fakes) skip whichever step they don't
+ * support.
  */
 export function exportStageContentDataURL(
 	stage: Konva.Stage,
@@ -85,13 +93,32 @@ export function exportStageContentDataURL(
 		}
 	}
 
+	type Vector2d = { x: number; y: number };
+	const scaleFn = (stage as { scale?: (v?: Vector2d) => Vector2d }).scale;
+	const positionFn = (stage as { position?: (v?: Vector2d) => Vector2d })
+		.position;
+	const prevScale = typeof scaleFn === "function" ? scaleFn.call(stage) : null;
+	const prevPosition =
+		typeof positionFn === "function" ? positionFn.call(stage) : null;
+	const viewportChanged =
+		(prevScale !== null && (prevScale.x !== 1 || prevScale.y !== 1)) ||
+		(prevPosition !== null && (prevPosition.x !== 0 || prevPosition.y !== 0));
+	if (viewportChanged) {
+		scaleFn?.call(stage, { x: 1, y: 1 });
+		positionFn?.call(stage, { x: 0, y: 0 });
+	}
+
 	try {
 		return stage.toDataURL(options);
 	} finally {
 		for (const layer of hidden) layer.visible(true);
 		for (const node of hiddenGroups) node.visible(true);
+		if (viewportChanged) {
+			if (prevScale) scaleFn?.call(stage, prevScale);
+			if (prevPosition) positionFn?.call(stage, prevPosition);
+		}
 		if (
-			hidden.length + hiddenGroups.length > 0 &&
+			hidden.length + hiddenGroups.length + (viewportChanged ? 1 : 0) > 0 &&
 			typeof stage.batchDraw === "function"
 		) {
 			stage.batchDraw();
