@@ -4,12 +4,11 @@ import type {
 	CanvasNodeUpdateCommand,
 	CanvasRichTextNode,
 	CanvasTextNode,
-	RichTextParagraph,
-	RichTextSpan,
 } from "@anvilkit/canvas-core";
 import { findNode, resolveSpanStyle } from "@anvilkit/canvas-core";
 import {
 	type KeyboardEvent,
+	useCallback,
 	useEffect,
 	useRef,
 	useState,
@@ -22,49 +21,13 @@ import {
 } from "../brand/resolve-brand-token.js";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { useCanvasBrandKit } from "../stage/CanvasBrandKitContext.js";
+import {
+	flattenRichText,
+	rebuildRichTextParagraphs,
+} from "../text/rich-text-draft.js";
 import { DEFAULT_RICH_TEXT_STYLE } from "../text/rich-text-style.js";
 
 type EditableNode = CanvasTextNode | CanvasRichTextNode;
-
-/** A paragraph's text, as the flat single-span line the textarea shows. */
-function flattenRichText(node: CanvasRichTextNode): string {
-	return node.paragraphs
-		.map((p) => p.spans.map((s) => s.text).join(""))
-		.join("\n");
-}
-
-function spanStyleWithoutText(
-	span: RichTextSpan | undefined,
-): Omit<RichTextSpan, "text"> {
-	if (!span) return {};
-	const { text: _text, ...rest } = span;
-	return rest;
-}
-
-/**
- * Split edited text back into paragraphs on newlines. Per-span selection is
- * out of scope for MVP (deliverable note), so each edited paragraph collapses
- * to a single span that inherits its SOURCE paragraph's align/lineHeight and
- * first span's style — the source paragraph at the same index when it existed,
- * or the original's last paragraph for any newly-typed lines beyond it.
- */
-function rebuildRichTextParagraphs(
-	original: CanvasRichTextNode,
-	newText: string,
-): RichTextParagraph[] {
-	const lastOriginal = original.paragraphs[original.paragraphs.length - 1];
-	return newText.split("\n").map((lineText, i) => {
-		const source = original.paragraphs[i] ?? lastOriginal;
-		const style = spanStyleWithoutText(source?.spans[0]);
-		return {
-			...(source?.align !== undefined ? { align: source.align } : {}),
-			...(source?.lineHeight !== undefined
-				? { lineHeight: source.lineHeight }
-				: {}),
-			spans: [{ ...style, text: lineText }],
-		};
-	});
-}
 
 /**
  * Font/color to display in the overlay — resolved through the rich-text
@@ -114,6 +77,19 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const [draftText, setDraftText] = useState("");
 	const editingNodeRef = useRef<EditableNode | null>(null);
+	// Distinguishes "the editing TARGET changed" (a real new-node-opened event,
+	// which must reset the draft) from "the SAME node was just re-committed
+	// elsewhere" (e.g. a RichTextToolbar style click, which must not — E-4).
+	const prevEditingNodeIdRef = useRef<string | null>(null);
+	// Registered into editingStore so a sibling control (RichTextToolbar) can
+	// read the live, possibly-uncommitted draft before it builds a patch.
+	const setTextareaRef = useCallback(
+		(el: HTMLTextAreaElement | null) => {
+			textareaRef.current = el;
+			editingStore.getState().setTextareaEl(el);
+		},
+		[editingStore],
+	);
 
 	const ir = getIR();
 	// Container-aware: the editing node may be nested inside a frame, not just
@@ -128,18 +104,26 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 		editingNode !== null && editingNode.type === "rich-text";
 
 	useEffect(() => {
-		if (isTextNode) {
-			const textNode = editingNode as CanvasTextNode;
-			editingNodeRef.current = textNode;
-			setDraftText(textNode.text);
-			requestAnimationFrame(() => {
-				textareaRef.current?.focus();
-				textareaRef.current?.select();
-			});
-		} else if (isRichTextNode) {
-			const richTextNode = editingNode as CanvasRichTextNode;
-			editingNodeRef.current = richTextNode;
-			setDraftText(flattenRichText(richTextNode));
+		const sameTarget = prevEditingNodeIdRef.current === editingNodeId;
+		prevEditingNodeIdRef.current = editingNodeId;
+
+		if (isTextNode || isRichTextNode) {
+			const node = editingNode as EditableNode;
+			editingNodeRef.current = node;
+			const newText = isTextNode
+				? (node as CanvasTextNode).text
+				: flattenRichText(node as CanvasRichTextNode);
+			const textarea = textareaRef.current;
+			const isFocused =
+				textarea !== null && document.activeElement === textarea;
+			// A re-commit of the SAME node (e.g. the toolbar applying a style
+			// change) must not overwrite in-progress typing or yank the
+			// selection out from under a still-focused textarea, and is a
+			// no-op anyway once the content genuinely matches.
+			if (sameTarget && (isFocused || newText === textarea?.value)) {
+				return;
+			}
+			setDraftText(newText);
 			requestAnimationFrame(() => {
 				textareaRef.current?.focus();
 				textareaRef.current?.select();
@@ -220,7 +204,7 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 
 	return (
 		<textarea
-			ref={textareaRef}
+			ref={setTextareaRef}
 			data-testid="text-editor-overlay"
 			value={draftText}
 			onChange={(e) => setDraftText(e.target.value)}

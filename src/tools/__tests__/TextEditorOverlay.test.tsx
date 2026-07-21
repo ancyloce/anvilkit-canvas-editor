@@ -22,6 +22,7 @@ import { createPagesStore } from "@/stores/pages-store.js";
 import { createSelectionStore } from "@/stores/selection-store.js";
 import { createToolStore } from "@/stores/tool-store.js";
 import { createViewportStore } from "@/stores/viewport-store.js";
+import { RichTextToolbar } from "../RichTextToolbar.js";
 import { TextEditorOverlay } from "../TextEditorOverlay.js";
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
@@ -412,5 +413,80 @@ describe("TextEditorOverlay", () => {
 			expect(commits).toHaveLength(0);
 			expect(ctx.editingStore.getState().editingNodeId).toBeNull();
 		});
+	});
+});
+
+describe("TextEditorOverlay + RichTextToolbar integration (E-4)", () => {
+	it("a toolbar click while the textarea is focused preserves uncommitted typing and does not reset the draft", () => {
+		const ir = fixtureIRWithRichText();
+		const { ctx, commits } = makeCtx(ir, makeFakeStage());
+		ctx.editingStore.getState().setEditing("rt1");
+		const { container, rerender } = render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<TextEditorOverlay />
+				<RichTextToolbar />
+			</CanvasStudioContext.Provider>,
+		);
+		const ta = container.querySelector(
+			"[data-testid=text-editor-overlay]",
+		) as HTMLTextAreaElement;
+		expect(ta.value).toBe("First\nSecond");
+
+		// The user types more content than what's currently committed, then
+		// clicks a toolbar button without blurring (the toolbar's onMouseDown
+		// preventDefault is meant to keep focus in the textarea).
+		fireEvent.change(ta, { target: { value: "First\nSecond EXTRA" } });
+		ta.focus();
+		expect(document.activeElement).toBe(ta);
+		fireEvent.click(
+			container.querySelector('[data-testid="rich-text-bold"]') as Element,
+		);
+
+		// The commit must carry the user's typed content, not the stale
+		// pre-edit "Second" — this is the actual data-loss fix.
+		expect(commits).toHaveLength(1);
+		const cmd = commits[0] as CanvasNodeUpdateCommand<"rich-text">;
+		expect(
+			cmd.patch.paragraphs?.map((p) => p.spans.map((s) => s.text).join("")),
+		).toEqual(["First", "Second EXTRA"]);
+		expect(
+			cmd.patch.paragraphs?.[1]?.spans.every((s) => s.fontWeight === "700"),
+		).toBe(true);
+
+		// Simulate the commit landing in the IR (a genuinely new node identity,
+		// same editing target) and re-render, reusing the SAME stores so
+		// editingNodeId/textareaEl survive — exactly what a real commit does.
+		const committedIr: CanvasIR = {
+			...ir,
+			pages: ir.pages.map((p) =>
+				p.id !== "p1"
+					? p
+					: {
+							...p,
+							root: {
+								...p.root,
+								children: p.root.children.map((n) =>
+									n.id !== "rt1"
+										? n
+										: { ...n, paragraphs: cmd.patch.paragraphs },
+								),
+							} as typeof p.root,
+						},
+			),
+		};
+		const nextCtx = { ...ctx, getIR: () => committedIr, ir: committedIr };
+		rerender(
+			<CanvasStudioContext.Provider value={nextCtx}>
+				<TextEditorOverlay />
+				<RichTextToolbar />
+			</CanvasStudioContext.Provider>,
+		);
+		const taAfter = container.querySelector(
+			"[data-testid=text-editor-overlay]",
+		) as HTMLTextAreaElement;
+		// Still focused, still showing the user's live typing — not reverted
+		// and not re-selected out from under them.
+		expect(taAfter.value).toBe("First\nSecond EXTRA");
+		expect(document.activeElement).toBe(taAfter);
 	});
 });

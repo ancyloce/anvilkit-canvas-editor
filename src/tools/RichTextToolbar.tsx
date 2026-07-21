@@ -25,6 +25,10 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
+import {
+	flattenRichText,
+	rebuildRichTextParagraphs,
+} from "../text/rich-text-draft.js";
 import { DEFAULT_RICH_TEXT_STYLE } from "../text/rich-text-style.js";
 
 const ALIGN_CYCLE: readonly CanvasTextAlign[] = ["left", "center", "right"];
@@ -76,7 +80,26 @@ export function RichTextToolbar(): React.JSX.Element | null {
 		? (findNode(ctx.ir, editingNodeId)?.node ?? null)
 		: null;
 	if (!node || node.type !== "rich-text" || !ctx.stage) return null;
+	// DISPLAY only (button active-states, current font/color, position) — as
+	// of THIS render, same reactivity as every other toolbar control. Never
+	// used to build a committed patch — see `currentRichText` below.
 	const richText = node;
+
+	/**
+	 * The user may keep typing between this render and the moment a control
+	 * is actually clicked — reading `ctx.editingStore.getState().textareaEl`
+	 * up here (once per render) would still capture a stale value the next
+	 * keystroke immediately invalidates. Called FRESH inside each mutation
+	 * handler instead, so a click always builds from whatever is CURRENTLY in
+	 * the textarea (E-4), not a snapshot from whenever RichTextToolbar last
+	 * happened to re-render.
+	 */
+	const currentRichText = (): CanvasRichTextNode => {
+		const liveDraft = ctx.editingStore.getState().textareaEl?.value;
+		return liveDraft !== undefined && liveDraft !== flattenRichText(node)
+			? { ...node, paragraphs: rebuildRichTextParagraphs(node, liveDraft) }
+			: node;
+	};
 
 	const container =
 		typeof ctx.stage.container === "function" ? ctx.stage.container() : null;
@@ -93,7 +116,7 @@ export function RichTextToolbar(): React.JSX.Element | null {
 	const commitParagraphs = (paragraphs: RichTextParagraph[]): void => {
 		const cmd: CanvasNodeUpdateCommand<"rich-text"> = {
 			type: "node.update",
-			nodeId: richText.id,
+			nodeId: node.id,
 			kind: "rich-text",
 			patch: { paragraphs },
 		};
@@ -110,7 +133,7 @@ export function RichTextToolbar(): React.JSX.Element | null {
 	);
 	const toggleBold = (): void => {
 		commitParagraphs(
-			mapSpans(richText, (s) => ({
+			mapSpans(currentRichText(), (s) => ({
 				...s,
 				fontWeight: boldActive ? "400" : "700",
 			})),
@@ -124,7 +147,9 @@ export function RichTextToolbar(): React.JSX.Element | null {
 		);
 	const toggleFlag = (flag: SpanFlag): void => {
 		const next = !flagActive(flag);
-		commitParagraphs(mapSpans(richText, (s) => ({ ...s, [flag]: next })));
+		commitParagraphs(
+			mapSpans(currentRichText(), (s) => ({ ...s, [flag]: next })),
+		);
 	};
 
 	const align = richText.paragraphs[0]?.align ?? DEFAULT_RICH_TEXT_STYLE.align;
@@ -132,7 +157,9 @@ export function RichTextToolbar(): React.JSX.Element | null {
 		const next =
 			ALIGN_CYCLE[(ALIGN_CYCLE.indexOf(align) + 1) % ALIGN_CYCLE.length] ??
 			"left";
-		commitParagraphs(richText.paragraphs.map((p) => ({ ...p, align: next })));
+		commitParagraphs(
+			currentRichText().paragraphs.map((p) => ({ ...p, align: next })),
+		);
 	};
 	const AlignIcon =
 		align === "center"
@@ -216,7 +243,9 @@ export function RichTextToolbar(): React.JSX.Element | null {
 				}
 				onChange={(e) => {
 					const fontFamily = e.currentTarget.value;
-					commitParagraphs(mapSpans(richText, (s) => ({ ...s, fontFamily })));
+					commitParagraphs(
+						mapSpans(currentRichText(), (s) => ({ ...s, fontFamily })),
+					);
 				}}
 			>
 				{FONT_FAMILIES.map((family) => (
@@ -236,7 +265,9 @@ export function RichTextToolbar(): React.JSX.Element | null {
 				}
 				onChange={(e) => {
 					const fill = e.currentTarget.value;
-					commitParagraphs(mapSpans(richText, (s) => ({ ...s, fill })));
+					commitParagraphs(
+						mapSpans(currentRichText(), (s) => ({ ...s, fill })),
+					);
 				}}
 			/>
 			<input
@@ -250,7 +281,9 @@ export function RichTextToolbar(): React.JSX.Element | null {
 				onChange={(e) => {
 					const fontSize = Number(e.currentTarget.value);
 					if (!Number.isFinite(fontSize) || fontSize < 1) return;
-					commitParagraphs(mapSpans(richText, (s) => ({ ...s, fontSize })));
+					commitParagraphs(
+						mapSpans(currentRichText(), (s) => ({ ...s, fontSize })),
+					);
 				}}
 			/>
 			<Button

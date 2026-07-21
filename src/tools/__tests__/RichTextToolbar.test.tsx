@@ -115,4 +115,34 @@ describe("RichTextToolbar (C-11, FR-082)", () => {
 			),
 		).toBe(true);
 	});
+
+	it("builds the patch from the live overlay draft, not the stale IR content (E-4)", () => {
+		const { h, view } = mount();
+		// Simulate the overlay having a textarea mounted with text the user
+		// typed AFTER "Hello world" was last committed — the toolbar must not
+		// discard it.
+		const textarea = document.createElement("textarea");
+		textarea.value = "Hello world, more typing";
+		h.studioCtx.editingStore.getState().setTextareaEl(textarea);
+
+		fireEvent.click(view.getByTestId("rich-text-bold"));
+
+		const { paragraphs } = lastPatch(h);
+		expect(paragraphs[0]?.spans.map((s) => s.text).join("")).toBe(
+			"Hello world, more typing",
+		);
+		expect(paragraphs[0]?.spans.every((s) => s.fontWeight === "700")).toBe(
+			true,
+		);
+	});
+
+	it("uses the committed IR content when no overlay textarea is registered (no crash, matches prior behavior)", () => {
+		const { h, view } = mount();
+		fireEvent.click(view.getByTestId("rich-text-bold"));
+		const { paragraphs } = lastPatch(h);
+		expect(paragraphs[0]?.spans.map((s) => s.text)).toEqual([
+			"Hello",
+			" world",
+		]);
+	});
 });

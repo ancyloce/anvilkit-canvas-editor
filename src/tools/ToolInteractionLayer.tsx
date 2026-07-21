@@ -114,7 +114,8 @@ export function ToolInteractionLayer({
 		if (!stage || !ctx) return;
 		const dispatch = (
 			phase: "down" | "move" | "up",
-			kEvt: Konva.KonvaEventObject<PointerEvent>,
+			evt: PointerEvent,
+			target: Konva.Node,
 		) => {
 			const activeId = toolStore.getState().activeTool;
 			const tool = registry[activeId];
@@ -128,18 +129,14 @@ export function ToolInteractionLayer({
 			if (!hook) return;
 			const ptr = getStagePointer(stage);
 			if (!ptr) return;
-			const evt = kEvt.evt;
-			const shiftKey =
-				evt && "shiftKey" in evt
-					? Boolean((evt as PointerEvent).shiftKey)
-					: false;
+			const shiftKey = "shiftKey" in evt ? Boolean(evt.shiftKey) : false;
 			hook(
 				{
 					evt,
 					point: ptr.world,
 					screenPoint: ptr.screen,
 					stage,
-					target: kEvt.target,
+					target,
 					shiftKey,
 				},
 				ctx,
@@ -164,7 +161,7 @@ export function ToolInteractionLayer({
 			moveRaf = 0;
 			const kEvt = pendingMove;
 			pendingMove = null;
-			if (kEvt) dispatch("move", kEvt);
+			if (kEvt) dispatch("move", kEvt.evt, kEvt.target);
 		};
 		// Apply the final queued move synchronously before a down/up so the
 		// gesture's last geometry lands before the commit reads the live pointer.
@@ -173,9 +170,33 @@ export function ToolInteractionLayer({
 			runPendingMove();
 		};
 
+		// Konva's stage listeners are bound to the CONTAINER element, so a
+		// gesture that started inside the stage and is released outside it
+		// (over a sidebar, or outside the browser window entirely) never fires
+		// a Konva pointerup — the tool's "down" state (a move/marquee draft)
+		// is stuck forever (E-5). `window` is the one target every pointer
+		// event bubbles to regardless of which DOM subtree it originated in,
+		// so a fallback bound there always fires; `onUp` below removes it
+		// first when the release lands INSIDE the stage (its bubble-phase
+		// listener on the container runs before window's), so a normal
+		// gesture never double-dispatches "up".
+		let lastDownTarget: Konva.Node | null = null;
+		const removeWindowFallback = () => {
+			window.removeEventListener("pointerup", onWindowUp);
+			window.removeEventListener("pointercancel", onWindowUp);
+		};
+		const onWindowUp = (evt: PointerEvent) => {
+			removeWindowFallback();
+			flushPendingMove();
+			if (lastDownTarget) dispatch("up", evt, lastDownTarget);
+		};
+
 		const onDown = (kEvt: Konva.KonvaEventObject<PointerEvent>) => {
 			flushPendingMove();
-			dispatch("down", kEvt);
+			lastDownTarget = kEvt.target;
+			dispatch("down", kEvt.evt, kEvt.target);
+			window.addEventListener("pointerup", onWindowUp);
+			window.addEventListener("pointercancel", onWindowUp);
 		};
 		const onMove = (kEvt: Konva.KonvaEventObject<PointerEvent>) => {
 			pendingMove = kEvt;
@@ -186,8 +207,9 @@ export function ToolInteractionLayer({
 			if (!moveRaf) moveRaf = requestAnimationFrame(runPendingMove);
 		};
 		const onUp = (kEvt: Konva.KonvaEventObject<PointerEvent>) => {
+			removeWindowFallback();
 			flushPendingMove();
-			dispatch("up", kEvt);
+			dispatch("up", kEvt.evt, kEvt.target);
 		};
 		stage.on("pointerdown", onDown);
 		stage.on("pointermove", onMove);
@@ -195,6 +217,7 @@ export function ToolInteractionLayer({
 		return () => {
 			if (moveRaf && hasRaf) cancelAnimationFrame(moveRaf);
 			pendingMove = null;
+			removeWindowFallback();
 			stage.off("pointerdown", onDown);
 			stage.off("pointermove", onMove);
 			stage.off("pointerup", onUp);
