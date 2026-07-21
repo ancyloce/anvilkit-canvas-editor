@@ -132,11 +132,22 @@ export function WorkspaceHeader({
 		() => ctx.historyStore.getState().canRedo(),
 	);
 
+	// Prefer the context-level seam — it fires onChange/onChanges like every
+	// other commit (E-20); partial test contexts without it fall back to the
+	// pre-P0-9 direct historyStore -> sceneStore wiring.
 	const undo = () => {
+		if (ctx.undo) {
+			ctx.undo();
+			return;
+		}
 		const next = ctx.historyStore.getState().undo(ctx.getIR());
 		ctx.sceneStore?.getState().setIR(next);
 	};
 	const redo = () => {
+		if (ctx.redo) {
+			ctx.redo();
+			return;
+		}
 		const next = ctx.historyStore.getState().redo(ctx.getIR());
 		ctx.sceneStore?.getState().setIR(next);
 	};

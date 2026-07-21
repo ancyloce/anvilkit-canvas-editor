@@ -172,31 +172,45 @@ export function CanvasDropZone({
 		}
 		const asset = result.assets[0];
 		if (!asset) return;
-		const replace = buildDropReplaceCommands(ctx, target, asset.id);
+		// Re-resolve the target from the CURRENT document (E-17): the upload
+		// await can span an arbitrary amount of time, during which the node/
+		// frame captured above may have been deleted or replaced. A vanished
+		// target falls back to plain insertion instead of committing a patch
+		// against a node that no longer exists.
+		const liveTarget = targetAtClientPoint(ctx, clientX, clientY);
+		const replace = liveTarget
+			? buildDropReplaceCommands(ctx, liveTarget, asset.id)
+			: [];
 		if (replace.length === 0) {
-			// Degenerate no-op swap (same asset): fall back to insertion.
+			// Degenerate no-op swap (same asset), or the target is gone: insert.
 			insertAssetsImpl(ctx, result.assets, position);
 			return;
 		}
-		// One atomic undo entry: register the uploaded asset AND swap the target.
-		ctx.commitBatch(
-			[
-				{
-					type: "asset.put",
-					asset: {
-						id: asset.id,
-						uri: asset.uri,
-						...(asset.mimeType !== undefined
-							? { mimeType: asset.mimeType }
-							: {}),
-						...(asset.width !== undefined ? { width: asset.width } : {}),
-						...(asset.height !== undefined ? { height: asset.height } : {}),
+		try {
+			// One atomic undo entry: register the uploaded asset AND swap the target.
+			ctx.commitBatch(
+				[
+					{
+						type: "asset.put",
+						asset: {
+							id: asset.id,
+							uri: asset.uri,
+							...(asset.mimeType !== undefined
+								? { mimeType: asset.mimeType }
+								: {}),
+							...(asset.width !== undefined ? { width: asset.width } : {}),
+							...(asset.height !== undefined ? { height: asset.height } : {}),
+						},
 					},
-				},
-				...replace,
-			],
-			"Replace image",
-		);
+					...replace,
+				],
+				"Replace image",
+			);
+		} catch {
+			// The re-resolved target vanished in the narrow window between
+			// resolution and commit — same fallback as a missing target.
+			insertAssetsImpl(ctx, result.assets, position);
+		}
 	};
 
 	const handleAssetDrop = (

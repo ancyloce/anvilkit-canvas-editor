@@ -281,4 +281,36 @@ describe("CanvasDropZone drag-to-replace (FR-093)", () => {
 		dropAt({ clientX: 150, clientY: 150 }, { assetId: "no-such-asset" });
 		expect(h.commits).toHaveLength(0);
 	});
+
+	it("falls back to plain insertion when the drop target is deleted mid-upload (E-17)", async () => {
+		const irWithoutTarget = fixtureIR();
+		const page = irWithoutTarget.pages[0];
+		if (page) {
+			page.root.children = page.root.children.filter((c) => c.id !== "img-1");
+		}
+		const h = makeHarness({ ir: fixtureIR() });
+		h.studioCtx.stage = makeStage();
+		h.studioCtx.uploadStore = createUploadStore();
+		h.studioCtx.assetUploader = {
+			upload: async (files) => {
+				// The target (`img-1`) vanishes while this upload is in flight.
+				h.setIR(irWithoutTarget);
+				return files.map((f) => ({
+					id: `up-${f.name}`,
+					uri: `https://cdn/${f.name}`,
+				}));
+			},
+		};
+		render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<CanvasDropZone>
+					<div>content</div>
+				</CanvasDropZone>
+			</CanvasStudioContext.Provider>,
+		);
+		dropAt({ clientX: 150, clientY: 150 }, { files: [file("new.png")] });
+		await waitFor(() => expect(h.commits.length).toBeGreaterThan(0));
+		expect(h.commits.some((c) => c.type === "image.replace")).toBe(false);
+		expect(h.commits.some((c) => c.type === "node.create")).toBe(true);
+	});
 });
