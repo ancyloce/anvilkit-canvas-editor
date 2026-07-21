@@ -1,13 +1,13 @@
 import {
-	type CanvasIR,
 	type CanvasImageNode,
+	type CanvasIR,
 	createCanvasIR,
 	createPage,
 	createRect,
 	createText,
 	walk,
 } from "@anvilkit/canvas-core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CanvasAssetUploader } from "@/assets/adapter-types.js";
 import { uploadFilesImpl } from "@/assets/upload-actions.js";
 import type { CanvasStudioContextValue } from "@/context/canvas-studio-context.js";
@@ -169,6 +169,9 @@ describe("Flow 1 — Create a Poster (PRD 0012 §17.4)", () => {
 		// 8. Export the poster as PNG off the live stage.
 		const stage = {
 			toDataURL: () => TINY_PNG,
+			scale: () => ({ x: 1, y: 1 }),
+			position: () => ({ x: 0, y: 0 }),
+			batchDraw: vi.fn(),
 		} as unknown as NonNullable<CanvasStudioContextValue["stage"]>;
 		const artifact = await pngExporter(
 			{ ir: s.getIR(), activePageId: "p1", stage },
