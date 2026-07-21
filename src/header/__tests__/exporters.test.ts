@@ -23,7 +23,29 @@ function fixture() {
 		(opts: { mimeType?: string }) =>
 			`data:${opts.mimeType ?? "image/png"};base64,AAAA`,
 	);
-	const stage = { toDataURL } as unknown as Konva.Stage;
+	// A panned/zoomed viewport (E-8): scale/position start non-identity so a
+	// test can assert they're neutralized during the capture and restored
+	// after.
+	let scale = { x: 2, y: 2 };
+	let position = { x: 100, y: 50 };
+	const stage = {
+		toDataURL,
+		scale: vi.fn((next?: { x: number; y: number }) => {
+			if (next) {
+				scale = next;
+				return stage;
+			}
+			return scale;
+		}),
+		position: vi.fn((next?: { x: number; y: number }) => {
+			if (next) {
+				position = next;
+				return stage;
+			}
+			return position;
+		}),
+		batchDraw: vi.fn(),
+	} as unknown as Konva.Stage;
 	return { ir, stage, toDataURL };
 }
 
@@ -71,6 +93,43 @@ describe("built-in raster exporters (B-18, AC-010)", () => {
 		const [pngCall, jpegCall] = toDataURL.mock.calls;
 		expect(pngCall?.[0]).not.toHaveProperty("quality");
 		expect(jpegCall?.[0]).toMatchObject({ quality: 0.5 });
+	});
+
+	it("neutralizes stage scale/position around the capture and restores them after (E-8)", () => {
+		const { ir, stage, toDataURL } = fixture();
+		let capturedDuringCall: {
+			scale: { x: number; y: number };
+			position: { x: number; y: number };
+		} | null = null;
+		toDataURL.mockImplementation((opts: { mimeType?: string }) => {
+			capturedDuringCall = {
+				scale: (stage.scale as unknown as () => { x: number; y: number })(),
+				position: (
+					stage.position as unknown as () => { x: number; y: number }
+				)(),
+			};
+			return `data:${opts.mimeType ?? "image/png"};base64,AAAA`;
+		});
+
+		pngExporter(
+			{ ir, stage, pageId: "p1" },
+			{ resolution: 1, quality: 0.8, transparent: false },
+		);
+
+		// Neutralized DURING the capture, not whatever pan/zoom was active.
+		expect(capturedDuringCall).toEqual({
+			scale: { x: 1, y: 1 },
+			position: { x: 0, y: 0 },
+		});
+		// Restored afterward — the live stage is not left in a mutated state.
+		expect((stage.scale as unknown as () => unknown)()).toEqual({
+			x: 2,
+			y: 2,
+		});
+		expect((stage.position as unknown as () => unknown)()).toEqual({
+			x: 100,
+			y: 50,
+		});
 	});
 
 	it("raster exporters throw without a stage; json works stage-free", () => {

@@ -7,6 +7,7 @@ import type {
 	CanvasIR,
 } from "@anvilkit/canvas-core";
 import { resolveBrandToken } from "../brand/resolve-brand-token.js";
+import { exportStageContentDataURL } from "../render/export-stage.js";
 import type {
 	CanvasExportArtifact,
 	CanvasExporter,
@@ -72,6 +73,14 @@ function toExportWarnings(
  * live Konva stage directly — no extra deps. `resolution` scales the (retina)
  * pixel ratio; `quality` applies to the lossy formats (Konva forwards it to
  * `canvas.toDataURL`) and is a no-op for PNG.
+ *
+ * Content-only (no transformer handles, guides, or remote-presence chrome —
+ * `exportStageContentDataURL`), and at the page's real 1:1 scale/position —
+ * not whatever pan/zoom the user's viewport happened to be at (E-8). The
+ * default dialog/headless export path is already safe (routed through an
+ * offscreen `rasterizePage`); this brings the built-in exporters — reachable
+ * via the still-shipped, root-exported `<ExportMenu>` and direct imports —
+ * up to the same standard. Scale/position are restored in a `finally`.
  */
 function rasterExporter(
 	mimeType: "image/png" | "image/jpeg" | "image/webp",
@@ -81,11 +90,24 @@ function rasterExporter(
 		if (!stage) {
 			throw new Error(`${ext.toUpperCase()} export needs a ready Konva stage.`);
 		}
-		const url = stage.toDataURL({
-			pixelRatio: 2 * (resolution || 1),
-			mimeType,
-			...(mimeType !== "image/png" && quality !== undefined ? { quality } : {}),
-		});
+		const prevScale = stage.scale();
+		const prevPosition = stage.position();
+		stage.scale({ x: 1, y: 1 });
+		stage.position({ x: 0, y: 0 });
+		let url: string;
+		try {
+			url = exportStageContentDataURL(stage, {
+				pixelRatio: 2 * (resolution || 1),
+				mimeType,
+				...(mimeType !== "image/png" && quality !== undefined
+					? { quality }
+					: {}),
+			});
+		} finally {
+			stage.scale(prevScale);
+			stage.position(prevPosition);
+			if (typeof stage.batchDraw === "function") stage.batchDraw();
+		}
 		return {
 			filename: exportFilename(ir, ext),
 			data: url,
