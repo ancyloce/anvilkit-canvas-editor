@@ -101,7 +101,15 @@ export interface HistoryState {
 		cmd: AnyCanvasCommand,
 		mergeKey: string,
 	) => CanvasIR;
+	/**
+	 * Replays the top inverse. A STALE inverse (e.g. it references a node a
+	 * remote peer has since deleted, E-20) cannot replay — that entry is
+	 * dropped and `ir` is returned unchanged instead of throwing, so a
+	 * corrupted history doesn't get stuck retrying the same broken entry on
+	 * every subsequent undo.
+	 */
 	undo: (ir: CanvasIR) => CanvasIR;
+	/** @see undo — the same stale-entry drop applies to `future`. */
 	redo: (ir: CanvasIR) => CanvasIR;
 	reset: () => void;
 	canUndo: () => boolean;
@@ -240,7 +248,16 @@ export function createHistoryStore(
 			if (state.past.length === 0) return ir;
 			const inverseCmd = state.past[state.past.length - 1];
 			if (!inverseCmd) return ir;
-			const result = apply(ir, inverseCmd, replayOptions);
+			let result: CommandApplyResult<AnyCanvasCommand>;
+			try {
+				result = apply(ir, inverseCmd, replayOptions);
+			} catch {
+				// Stale inverse — drop it instead of leaving history stuck
+				// retrying the same broken entry on every subsequent undo.
+				pastBeforeIds.pop();
+				set((s) => ({ past: s.past.slice(0, -1) }));
+				return ir;
+			}
 			futureStateIds.push(stateId);
 			stateId = pastBeforeIds.pop() ?? 0;
 			set((s) => ({
@@ -255,7 +272,14 @@ export function createHistoryStore(
 			if (state.future.length === 0) return ir;
 			const forwardCmd = state.future[state.future.length - 1];
 			if (!forwardCmd) return ir;
-			const result = apply(ir, forwardCmd, replayOptions);
+			let result: CommandApplyResult<AnyCanvasCommand>;
+			try {
+				result = apply(ir, forwardCmd, replayOptions);
+			} catch {
+				futureStateIds.pop();
+				set((s) => ({ future: s.future.slice(0, -1) }));
+				return ir;
+			}
 			pastBeforeIds.push(stateId);
 			stateId = futureStateIds.pop() ?? ++stateIdCounter;
 			set((s) => {

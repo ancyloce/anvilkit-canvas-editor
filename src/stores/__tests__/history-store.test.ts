@@ -1,4 +1,6 @@
 import {
+	applyCommand,
+	type CanvasCommand,
 	type CanvasIR,
 	type CanvasNodeMoveCommand,
 	createCanvasIR,
@@ -7,7 +9,11 @@ import {
 	createRect,
 } from "@anvilkit/canvas-core";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createHistoryStore, DEFAULT_HISTORY_LIMIT } from "../history-store.js";
+import {
+	type CommandApplyFn,
+	createHistoryStore,
+	DEFAULT_HISTORY_LIMIT,
+} from "../history-store.js";
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
 const now = () => FIXED_TS;
@@ -163,6 +169,50 @@ describe("createHistoryStore — undo / redo", () => {
 		const result = store.getState().redo(ir);
 		expect(result).toBe(ir);
 		expect(store.getState().future).toEqual([]);
+	});
+});
+
+describe("createHistoryStore — stale inverse safety (E-20)", () => {
+	/** Delegates to the real `applyCommand`, except the Nth call throws —
+	 *  simulating a stored inverse that references a node a remote peer has
+	 *  since deleted. */
+	function flakyApplyOnCall(n: number): CommandApplyFn {
+		let calls = 0;
+		return (irArg, cmd, opts) => {
+			calls += 1;
+			if (calls === n) throw new Error("simulated stale inverse");
+			return applyCommand(irArg, cmd as CanvasCommand, opts);
+		};
+	}
+
+	it("undo drops a throwing top entry and returns ir unchanged instead of throwing", () => {
+		const ir = fixtureIR();
+		const store = createHistoryStore({ now, apply: flakyApplyOnCall(3) });
+		const a1 = store.getState().commit(ir, moveRectA({ x: 10, y: 0 })); // call 1
+		const a2 = store.getState().commit(a1, moveRectA({ x: 20, y: 0 })); // call 2
+		expect(store.getState().past).toHaveLength(2);
+
+		const result = store.getState().undo(a2); // call 3 -> throws, caught
+		expect(result).toBe(a2);
+		expect(store.getState().past).toHaveLength(1);
+		expect(store.getState().canUndo()).toBe(true);
+
+		// The next-older entry is intact and undoes normally.
+		const undone = store.getState().undo(result);
+		expect(nodeX(undone, "rectA")).toBe(0);
+	});
+
+	it("redo drops a throwing top future entry and returns ir unchanged instead of throwing", () => {
+		const ir = fixtureIR();
+		const store = createHistoryStore({ now, apply: flakyApplyOnCall(3) });
+		const a1 = store.getState().commit(ir, moveRectA({ x: 10, y: 0 })); // call 1
+		const undone = store.getState().undo(a1); // call 2
+		expect(store.getState().future).toHaveLength(1);
+
+		const result = store.getState().redo(undone); // call 3 -> throws, caught
+		expect(result).toBe(undone);
+		expect(store.getState().future).toHaveLength(0);
+		expect(store.getState().canRedo()).toBe(false);
 	});
 });
 
