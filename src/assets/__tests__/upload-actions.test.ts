@@ -404,6 +404,10 @@ describe("retryUploadImpl (FR-091 retry)", () => {
 		expect(uploadStore.getState().tasks[0]).toMatchObject({
 			id: failedTask.id,
 			status: "done",
+			// E-16: the retry path used to call `succeed(taskId)` with no asset
+			// id — the task showed "Done" but its `assetId` stayed unset, so it
+			// could never be dragged onto the canvas (FR-093).
+			assetId: "up-1",
 		});
 	});
 

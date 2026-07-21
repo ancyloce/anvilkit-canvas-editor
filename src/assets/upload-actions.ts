@@ -251,7 +251,10 @@ export async function retryUploadImpl(
 		) {
 			return [];
 		}
-		uploadStore.getState().succeed(taskId);
+		// Same as the primary upload path: without the asset id, the task's
+		// `assetId` stays unset, so the panel shows "Done" but the retried
+		// upload can never be dragged onto the canvas (E-16).
+		uploadStore.getState().succeed(taskId, uploaded[0]?.id);
 		return insertAssetsImpl(ctx, uploaded);
 	} catch (err) {
 		if (
