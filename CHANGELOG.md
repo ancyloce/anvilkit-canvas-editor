@@ -8,6 +8,11 @@ The PRD 0012 delivery (Phases 1a "editing loop", 1b "product chrome", 2
 
 ### PRD 0012 completion pass
 
+- **Unit/DPI export-only decision formalized (FR-063, OD-1)**: Page Settings
+  intentionally has no unit/DPI control — `@anvilkit/canvas-core`'s
+  `docs/architecture/unit-dpi-export-only-decision.md` now records the
+  rationale. `PageSettingsDialog.test.tsx` gained a regression test locking
+  in the absence of a unit/DPI control. No code behavior change.
 - **Grid rendering + settings (FR-112)**: `Grid` is a real editor-only
   renderer (page-bounded lines, zoom/pan-aware, bounded line count) with a
   sub-grid, configurable grid/sub-grid colors, an explicit snap-to-grid
@@ -41,7 +46,12 @@ The PRD 0012 delivery (Phases 1a "editing loop", 1b "product chrome", 2
   contract), adds text typography (font/size/bold/align/color) and image
   (crop/replace/fit) sections, disables for all-locked selections, and hides
   during inline text editing; `ElementControls` lock now routes through
-  `actions.toggleLockSelection()` (one undo entry).
+  `actions.toggleLockSelection()` (one undo entry). **Now also adds Position
+  (X/Y, per-node `transform` patch, same convention as the inspector's
+  `TransformSection`) and, for a single image, an Adjust popover reusing the
+  inspector's `renderAdjustmentFields` verbatim** — both mixed-value aware,
+  disabled for all-locked selections, and committing through the same §10
+  field contract as every other toolbar control.
 - **Unmount persistence reliability (FR-160/163)**: the cleanup's final
   `flush()` is protected from the `dispose()` issued alongside it (obsolete
   in-flight saves still abort); `beforeunload` only warns — best-effort
