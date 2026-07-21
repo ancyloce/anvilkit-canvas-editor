@@ -29161,7 +29161,15 @@
 								"summary": [
 									{
 										"kind": "text",
-										"text": "Serialize a live editor stage to a data URL with the editor-only chrome\nlayers hidden, so the exported preview shows only design content — not the\nselection transformer, smart guides, or remote-presence overlays the user\nhappened to have on screen at export time.\n\nKonva's "
+										"text": "Serialize a live editor stage to a data URL with the editor-only chrome\nlayers hidden and the viewport's live pan/zoom neutralized, so the exported\npreview shows only design content, at the page's real 1:1 scale/position —\nnot the transformer handles, guides, or remote-presence overlays the user\nhappened to have on screen, nor whatever pan/zoom their viewport happened\nto be at, at export time. Every caller of this function shares this\nguarantee (E-14) — earlier, only the built-in raster exporters neutralized\nthe viewport themselves (E-8); "
+									},
+									{
+										"kind": "code",
+										"text": "`CanvasExportBridge`"
+									},
+									{
+										"kind": "text",
+										"text": "-driven DesignBlock\npreviews had no such reset, so a saved preview shifted/cropped (and its\nresolution varied with zoom) whenever the stage was panned/zoomed.\n\nKonva's "
 									},
 									{
 										"kind": "code",
@@ -29199,7 +29207,7 @@
 									},
 									{
 										"kind": "text",
-										"text": ". Stages that don't expose "
+										"text": ". Scale/position are snapshotted, reset to 1:1/0:0, and\nrestored the same way. Stages that don't expose "
 									},
 									{
 										"kind": "code",
@@ -29215,15 +29223,23 @@
 									},
 									{
 										"kind": "text",
-										"text": " (e.g. unit-test\nfakes) fall through to a plain "
+										"text": "/\n"
 									},
 									{
 										"kind": "code",
-										"text": "`toDataURL`"
+										"text": "`scale`"
 									},
 									{
 										"kind": "text",
-										"text": " — there is no chrome to hide."
+										"text": "/"
+									},
+									{
+										"kind": "code",
+										"text": "`position`"
+									},
+									{
+										"kind": "text",
+										"text": " (e.g. unit-test fakes) skip whichever step they don't\nsupport."
 									}
 								]
 							},
@@ -46940,11 +46956,11 @@
 									},
 									{
 										"kind": "code",
-										"text": "`<Group name=\"grid\" listening={false}>`"
+										"text": "`<Group name={GRID_CHROME_GROUP_NAME} listening={false}>`"
 									},
 									{
 										"kind": "text",
-										"text": " so\n"
+										"text": "\nso "
 									},
 									{
 										"kind": "code",
