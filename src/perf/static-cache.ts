@@ -151,19 +151,46 @@ export function useStaticGroupCache(args: StaticGroupCacheArgs): void {
 		draftStore,
 	} = args;
 	const cachedRef = useRef<Set<string>>(new Set());
+	// Per-id top-level node reference as of its last successful cache() call.
+	// The immutable-update convention means ANY content change inside a
+	// group's subtree (undo, redo, a remote-collab write) produces a NEW
+	// object reference all the way up to this top-level node, even while its
+	// membership in the static set never changes — `applyGroupCache` only
+	// diffs membership, so that case needs a separate check (E-7).
+	const fingerprintRef = useRef<Map<string, CanvasNode>>(new Map());
 
 	useEffect(() => {
 		if (!stage) {
 			cachedRef.current = new Set();
+			fingerprintRef.current = new Map();
 			return;
 		}
 		const apply = () => {
-			const ids = selectStaticGroupIds(getIR(), activePageId, {
+			const currentIr = getIR();
+			const page = currentIr.pages.find((p) => p.id === activePageId);
+			const ids = selectStaticGroupIds(currentIr, activePageId, {
 				selectedIds: selectionStore.getState().selectedIds,
 				editingNodeId: editingStore.getState().editingNodeId,
 				draggedIds: selectDraggedIds(draftStore.getState().draft),
 			});
-			cachedRef.current = applyGroupCache(stage, ids, cachedRef.current);
+			const prevCachedIds = cachedRef.current;
+			cachedRef.current = applyGroupCache(stage, ids, prevCachedIds);
+			// Re-cache a group that was ALREADY static last time (so
+			// `applyGroupCache` skipped it as unchanged membership) but whose
+			// top-level node reference has since changed — an otherwise
+			// invisible stale bitmap that would only refresh once the group
+			// next becomes active (E-7).
+			const nextFingerprints = new Map<string, CanvasNode>();
+			for (const id of ids) {
+				const node = page?.root.children.find((c) => c.id === id);
+				if (!node) continue;
+				nextFingerprints.set(id, node);
+				if (!prevCachedIds.has(id)) continue; // just entered — already fresh
+				if (fingerprintRef.current.get(id) === node) continue; // unchanged
+				const knode = stage.findOne(`.${id}`);
+				if (knode && typeof knode.cache === "function") knode.cache();
+			}
+			fingerprintRef.current = nextFingerprints;
 		};
 		apply();
 		const unsubs = [

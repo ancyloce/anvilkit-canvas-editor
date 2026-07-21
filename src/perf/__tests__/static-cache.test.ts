@@ -259,6 +259,78 @@ describe("useStaticGroupCache", () => {
 		expect(node("g1").clearCache).toHaveBeenCalledTimes(1);
 	});
 
+	it("re-caches a group whose content changed via IR update, even though it stayed static (E-7)", async () => {
+		const { renderHook } = await import("@testing-library/react");
+		const { stage, node } = fakeStage();
+		const selectionStore = createSelectionStore();
+		const editingStore = createEditingStore();
+		const draftStore = createDraftStore();
+		const ir1 = irWith([shapeGroup("g1", "r1")]);
+
+		const { rerender } = renderHook(
+			(props: Parameters<typeof useStaticGroupCache>[0]) =>
+				useStaticGroupCache(props),
+			{
+				initialProps: {
+					stage,
+					getIR: () => ir1,
+					activePageId: "p1",
+					ir: ir1,
+					selectionStore,
+					editingStore,
+					draftStore,
+				},
+			},
+		);
+		expect(node("g1").cache).toHaveBeenCalledTimes(1);
+
+		// Simulate an undo/redo/remote-collab write into the STILL-idle
+		// group — a fresh top-level node reference for the SAME id "g1",
+		// which is never selected/edited/dragged either time.
+		const ir2 = irWith([shapeGroup("g1", "r1")]);
+		rerender({
+			stage,
+			getIR: () => ir2,
+			activePageId: "p1",
+			ir: ir2,
+			selectionStore,
+			editingStore,
+			draftStore,
+		});
+		// Before the fix, applyGroupCache saw "g1" as membership-unchanged
+		// and never refreshed its now-stale bitmap.
+		expect(node("g1").cache).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not re-cache a still-static group when its content did not change", async () => {
+		const { renderHook, act } = await import("@testing-library/react");
+		const { stage, node } = fakeStage();
+		const selectionStore = createSelectionStore();
+		const editingStore = createEditingStore();
+		const draftStore = createDraftStore();
+		const ir = irWith([shapeGroup("g1", "r1")]);
+
+		renderHook(() =>
+			useStaticGroupCache({
+				stage,
+				getIR: () => ir,
+				activePageId: "p1",
+				ir,
+				selectionStore,
+				editingStore,
+				draftStore,
+			}),
+		);
+		expect(node("g1").cache).toHaveBeenCalledTimes(1);
+
+		// A store notification with no actual IR change (e.g. selecting an
+		// unrelated id that was already unselected) must not re-cache.
+		act(() => {
+			selectionStore.getState().setSelection([]);
+		});
+		expect(node("g1").cache).toHaveBeenCalledTimes(1);
+	});
+
 	it("is a no-op when stage is null", async () => {
 		const { renderHook } = await import("@testing-library/react");
 		const ir = irWith([shapeGroup("g1", "r1")]);
