@@ -40,10 +40,12 @@ const MODE_LABELS: Record<CanvasPageResizeMode, [string, string]> = {
 };
 
 /**
- * FR-063 page settings (B-11): width/height (px — unit/DPI stay export-side
- * per OD-1), orientation swap, solid background color, and the FR-063 resize
- * modes, applied as ONE undo entry (`page.resize` + `page.set-background`).
- * Code-split via its lazy trigger like every dialog (constraint 20.15).
+ * FR-063 page settings (B-11): width/height (px — unit/DPI stay export-side,
+ * decision record: `@anvilkit/canvas-core`'s
+ * docs/architecture/unit-dpi-export-only-decision.md), orientation swap,
+ * solid background color, and the FR-063 resize modes, applied as ONE undo
+ * entry (`page.resize` + `page.set-background`). Code-split via its lazy
+ * trigger like every dialog (constraint 20.15).
  */
 export default function PageSettingsDialog({
 	page,
@@ -180,7 +182,10 @@ export default function PageSettingsDialog({
 							data-testid="page-settings-variants-toggle"
 							onClick={() => setVariantsOpen((open) => !open)}
 						>
-							{t("canvas.pageSettings.campaignVariants", "Campaign size variants")}
+							{t(
+								"canvas.pageSettings.campaignVariants",
+								"Campaign size variants",
+							)}
 							<span aria-hidden>{variantsOpen ? "▾" : "▸"}</span>
 						</button>
 						{variantsOpen ? (

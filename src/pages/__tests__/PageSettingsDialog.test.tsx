@@ -131,4 +131,12 @@ describe("PageSettingsDialog (B-11, FR-063)", () => {
 		).toBeDefined();
 		expect(screen.getByTestId("campaign-resize-create")).toBeDefined();
 	});
+
+	it("has no unit or DPI control (OD-1: export-time-only, see @anvilkit/canvas-core's docs/architecture/unit-dpi-export-only-decision.md)", () => {
+		setup();
+		expect(screen.queryByTestId("page-settings-unit")).toBeNull();
+		expect(screen.queryByTestId("page-settings-dpi")).toBeNull();
+		expect(screen.queryByLabelText(/unit/i)).toBeNull();
+		expect(screen.queryByLabelText(/dpi/i)).toBeNull();
+	});
 });
