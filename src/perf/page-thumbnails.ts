@@ -51,6 +51,12 @@ export function usePageThumbnails(
 	const pixelRatio = args.pixelRatio ?? 1;
 	const [urls, setUrls] = useState<Map<string, string>>(new Map());
 	const cacheRef = useRef<Map<string, { key: string; url: string }>>(new Map());
+	// Fingerprint currently being rasterized for a page id, so a re-run of this
+	// effect (e.g. a remote-collab commit stream, or any OTHER page's content
+	// changing and recreating the `pages` array) doesn't launch a second
+	// concurrent off-screen `createRoot` + stage rasterize for the same page
+	// at the same content version while the first is still in flight (E-15).
+	const pendingRef = useRef<Map<string, string>>(new Map());
 
 	useEffect(() => {
 		let cancelled = false;
@@ -69,6 +75,9 @@ export function usePageThumbnails(
 				pruned = true;
 			}
 		}
+		for (const id of pendingRef.current.keys()) {
+			if (!liveIds.has(id)) pendingRef.current.delete(id);
+		}
 		if (pruned) publish();
 
 		for (const page of pages) {
@@ -76,6 +85,8 @@ export function usePageThumbnails(
 			const key = pageThumbnailKey(page);
 			const cached = cacheRef.current.get(page.id);
 			if (cached && cached.key === key) continue; // thumbnail still valid
+			if (pendingRef.current.get(page.id) === key) continue; // already in flight
+			pendingRef.current.set(page.id, key);
 			rasterize({ page, assets, pixelRatio })
 				.then((res) => {
 					if (cancelled) return;
@@ -84,6 +95,12 @@ export function usePageThumbnails(
 				})
 				.catch(() => {
 					// A failed rasterize just leaves the previous (or no) thumbnail.
+				})
+				.finally(() => {
+					// Only clear if nothing newer superseded this key while it ran.
+					if (pendingRef.current.get(page.id) === key) {
+						pendingRef.current.delete(page.id);
+					}
 				});
 		}
 		return () => {

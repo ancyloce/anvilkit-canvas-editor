@@ -185,8 +185,13 @@ describe("selectStaticGroupIds", () => {
 	});
 });
 
-/** Fake Konva stage: findOne(`.id`) returns a per-id node with cache spies. */
-function fakeStage() {
+/**
+ * Fake Konva stage returning a per-id node with cache spies. `ids` pre-
+ * registers every id the test cares about — `findNodeById` (E-13) selects
+ * via a predicate (real Konva's `findOne(fn)` semantics), so this fake must
+ * search a known node set rather than parse an id out of a selector string.
+ */
+function fakeStage(ids: readonly string[] = []) {
 	const nodes = new Map<
 		string,
 		{ cache: ReturnType<typeof vi.fn>; clearCache: ReturnType<typeof vi.fn> }
@@ -199,15 +204,21 @@ function fakeStage() {
 		}
 		return n;
 	};
+	for (const id of ids) get(id);
 	const stage = {
-		findOne: (selector: string) => get(selector.replace(/^\./, "")),
+		findOne: (selector: (node: { id(): string }) => boolean) => {
+			for (const [id, n] of nodes) {
+				if (selector({ id: () => id, ...n })) return n;
+			}
+			return null;
+		},
 	} as unknown as Konva.Stage;
 	return { stage, node: get };
 }
 
 describe("applyGroupCache", () => {
 	it("caches entering ids and clears leaving ids, leaving stable ids untouched", () => {
-		const { stage, node } = fakeStage();
+		const { stage, node } = fakeStage(["a", "b", "c"]);
 		let prev = applyGroupCache(stage, ["a", "b"], new Set());
 		expect(node("a").cache).toHaveBeenCalledTimes(1);
 		expect(node("b").cache).toHaveBeenCalledTimes(1);
@@ -222,7 +233,8 @@ describe("applyGroupCache", () => {
 
 	it("does not throw when a node is missing or lacks cache()", () => {
 		const stage = {
-			findOne: (sel: string) => (sel === ".has" ? {} : null),
+			findOne: (selector: (node: { id(): string }) => boolean) =>
+				selector({ id: () => "has" }) ? {} : null,
 		} as unknown as Konva.Stage;
 		expect(() =>
 			applyGroupCache(stage, ["has", "missing"], new Set()),
@@ -233,7 +245,7 @@ describe("applyGroupCache", () => {
 describe("useStaticGroupCache", () => {
 	it("caches a static group on mount and clears it when selected", async () => {
 		const { renderHook, act } = await import("@testing-library/react");
-		const { stage, node } = fakeStage();
+		const { stage, node } = fakeStage(["g1"]);
 		const ir = irWith([shapeGroup("g1", "r1")]);
 		const selectionStore = createSelectionStore();
 		const editingStore = createEditingStore();
@@ -261,7 +273,7 @@ describe("useStaticGroupCache", () => {
 
 	it("re-caches a group whose content changed via IR update, even though it stayed static (E-7)", async () => {
 		const { renderHook } = await import("@testing-library/react");
-		const { stage, node } = fakeStage();
+		const { stage, node } = fakeStage(["g1"]);
 		const selectionStore = createSelectionStore();
 		const editingStore = createEditingStore();
 		const draftStore = createDraftStore();
@@ -304,7 +316,7 @@ describe("useStaticGroupCache", () => {
 
 	it("does not re-cache a still-static group when its content did not change", async () => {
 		const { renderHook, act } = await import("@testing-library/react");
-		const { stage, node } = fakeStage();
+		const { stage, node } = fakeStage(["g1"]);
 		const selectionStore = createSelectionStore();
 		const editingStore = createEditingStore();
 		const draftStore = createDraftStore();
