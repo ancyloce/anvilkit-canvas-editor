@@ -28,6 +28,7 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "@/context/canvas-studio-context.js";
+import { findNodeById } from "@/stage/find-node-by-id.js";
 
 export type AlignDirection =
 	| "left"
@@ -137,7 +138,7 @@ function measureSelection(
 	let maxX = Number.NEGATIVE_INFINITY;
 	let found = false;
 	for (const id of ids) {
-		const knode = stage.findOne(`.${id}`);
+		const knode = findNodeById(stage, id);
 		if (!knode) continue;
 		const r = knode.getClientRect({ skipShadow: true, skipStroke: true });
 		if (r.x < minX) minX = r.x;
