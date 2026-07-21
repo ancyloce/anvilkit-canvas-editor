@@ -27,7 +27,7 @@ vi.mock("react-konva", () => ({
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
 import type { CreateViewportStoreOptions } from "@/stores/viewport-store.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
-import { Grid, MAX_GRID_LINES } from "../Grid.js";
+import { GRID_CHROME_GROUP_NAME, Grid, MAX_GRID_LINES } from "../Grid.js";
 
 afterEach(() => {
 	cleanup();
@@ -99,10 +99,13 @@ describe("Grid (FR-112)", () => {
 		expect(calls).toHaveLength(0);
 	});
 
-	it("wraps everything in a non-listening 'grid' group so export can exclude it", () => {
+	it("wraps everything in a non-listening namespaced chrome group so export can exclude it", () => {
 		renderGrid({ gridSize: 100 });
 		const group = calls.find((c) => c.type === "Group");
-		expect(group?.props).toMatchObject({ name: "grid", listening: false });
+		expect(group?.props).toMatchObject({
+			name: GRID_CHROME_GROUP_NAME,
+			listening: false,
+		});
 	});
 
 	it("renders page-bounded interior lines at gridSize spacing", () => {

@@ -745,12 +745,28 @@ function AdjustedKonvaImage({
 			applyColorMatrixToPixels(imageData.data, m);
 		};
 	}, [matrixKey]);
-	const filters = [
-		...(colorFilter ? [colorFilter] : []),
-		...(blurRadius > 0 ? [Konva.Filters.Blur] : []),
-	];
+	const hasBlur = blurRadius > 0;
+	// Memoized so the ARRAY REFERENCE stays stable across renders whose
+	// content is unchanged — an unmemoized array literal here is a NEW
+	// reference every render even when `colorFilter`/`hasBlur` didn't
+	// change, and Konva re-runs the (expensive) pixel filter whenever the
+	// `filters` prop reference changes, not just when it's genuinely
+	// needed (E-11).
+	const filters = useMemo(
+		() => [
+			...(colorFilter ? [colorFilter] : []),
+			...(hasBlur ? [Konva.Filters.Blur] : []),
+		],
+		[colorFilter, hasBlur],
+	);
 	const active = filters.length > 0;
-	const { width, height } = imageProps;
+	const { width, height, crop } = imageProps;
+	// Serialized (matching `matrixKey`'s convention) so a crop CONTENT
+	// change reliably invalidates the effect even though `crop` is a fresh
+	// object reference every render.
+	const cropKey = crop
+		? `${crop.x},${crop.y},${crop.width},${crop.height}`
+		: "";
 	useEffect(() => {
 		const node = ref.current;
 		if (!node) return;
@@ -760,7 +776,9 @@ function AdjustedKonvaImage({
 			node.clearCache();
 		}
 		node.getLayer()?.batchDraw();
-	}, [active, matrixKey, blurRadius, image, width, height]);
+		// `cropKey` is read for its dependency-tracking effect only — the fit/clip
+		// path that sizes via `crop.width * scale` lives in the caller, not here.
+	}, [active, matrixKey, blurRadius, image, width, height, cropKey]);
 	return (
 		<KonvaImage
 			ref={ref}

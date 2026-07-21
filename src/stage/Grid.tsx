@@ -11,6 +11,17 @@ import { useCanvasStudio } from "../context/canvas-studio-context.js";
 export const MAX_GRID_LINES = 512;
 
 /**
+ * Konva name for the chrome group below, namespaced so it can never collide
+ * with a user-authored `CanvasNode.id` (which `CanvasNodeRenderer` also uses
+ * as a Konva `name` — see `commonProps`). A bare `"grid"` name previously
+ * meant a design that happened to have a node id of `"grid"` got silently
+ * hidden by `export-stage.ts`'s chrome-hiding pass (E-13); IR ids are
+ * untrusted (looseObject/hostile-peer by design), so this must not be a
+ * plausible id.
+ */
+export const GRID_CHROME_GROUP_NAME = "ak-chrome-grid";
+
+/**
  * Interior line positions for one axis: multiples of `step` strictly between
  * 0 and `extent` (the page edges themselves are the page border, not grid
  * lines). Index-based so fractional steps don't accumulate float error.
@@ -49,8 +60,8 @@ function linePositions(
  * `maxPageDimension / step` fits the budget. Coarsened lines still sit on
  * grid multiples, so what remains is an honest (sparser) view of the grid.
  *
- * Chrome only: wrapped in `<Group name="grid" listening={false}>` so
- * `export-stage.ts` can hide it during live-stage serialization; the
+ * Chrome only: wrapped in `<Group name={GRID_CHROME_GROUP_NAME} listening={false}>`
+ * so `export-stage.ts` can hide it during live-stage serialization; the
  * offscreen rasterizer never mounts it.
  */
 export function Grid(): React.JSX.Element | null {
@@ -80,7 +91,7 @@ export function Grid(): React.JSX.Element | null {
 	const subStrokeWidth = 0.5 / vs.zoom;
 
 	return (
-		<Group name="grid" listening={false}>
+		<Group name={GRID_CHROME_GROUP_NAME} listening={false}>
 			{/* Sub-grid first so main lines paint on top at shared crossings. */}
 			{subStep !== null
 				? linePositions(width, subStep, subdivisions).map((x) => (
