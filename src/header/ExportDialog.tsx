@@ -528,7 +528,7 @@ export default function ExportDialog({
 									aria-label={t("canvas.export.width", "Width")}
 									data-testid="export-width"
 									value={customW}
-									placeholder="W"
+									placeholder={t("canvas.export.widthPlaceholder", "W")}
 									onChange={(e) => {
 										const next = e.currentTarget.value;
 										setCustomW(next);
@@ -560,7 +560,7 @@ export default function ExportDialog({
 									aria-label={t("canvas.export.height", "Height")}
 									data-testid="export-height"
 									value={customH}
-									placeholder="H"
+									placeholder={t("canvas.export.heightPlaceholder", "H")}
 									disabled={lockAspect}
 									onChange={(e) => setCustomH(e.currentTarget.value)}
 								/>

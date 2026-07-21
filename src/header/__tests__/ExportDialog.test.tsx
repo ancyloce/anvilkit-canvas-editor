@@ -242,6 +242,31 @@ describe("ExportDialog (B-09, FR-150..154)", () => {
 	});
 });
 
+describe("width/height placeholders are translated, not hardcoded (AC-014)", () => {
+	it("renders the host's t() output, not a fixed 'W'/'H' literal", async () => {
+		const h = makeHarness({ ir: twoPageIR() });
+		h.studioCtx.t = (key, fallback) => {
+			if (key === "canvas.export.widthPlaceholder") return "ANCHO";
+			if (key === "canvas.export.heightPlaceholder") return "ALTO";
+			return fallback ?? key;
+		};
+		render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<ExportDialogTrigger exporters={{}} />
+			</CanvasStudioContext.Provider>,
+		);
+		await openDialog();
+		expect(screen.getByTestId("export-width")).toHaveAttribute(
+			"placeholder",
+			"ANCHO",
+		);
+		expect(screen.getByTestId("export-height")).toHaveAttribute(
+			"placeholder",
+			"ALTO",
+		);
+	});
+});
+
 describe("custom width x height pixel ratio (FR-153, Bug 1)", () => {
 	it("threads an unlocked, non-proportional custom size through to the rasterizer as {x, y}", async () => {
 		setup();
