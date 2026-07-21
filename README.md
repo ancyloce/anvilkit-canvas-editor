@@ -317,8 +317,14 @@ schema / command / serializer extensions for the same kinds.
   `ssr: false`. There is no server render path.
 - **Styles must be imported.** Tailwind utilities and parent-document CSS do not
   reach the Konva canvas; import `@anvilkit/canvas-editor/styles.css` in the host.
-- **`./internal` is unstable.** Deep imports (store factories, tools, stage / snap
-  primitives) carry no semver guarantee — prefer the root entry where possible.
+- **`./internal` is unstable, and so is every other deep subpath (E-21).** The
+  package's `./*` export wildcard lets a specific module be imported directly
+  (`@anvilkit/canvas-editor/stores/viewport-store`, say) without going through
+  `/internal` — but it carries the exact same no-semver-guarantee posture,
+  including for modules `/internal` deliberately does NOT re-export (e.g.
+  `header/export-runner`). Deep imports (store factories, tools, stage / snap
+  primitives) can be renamed or removed without notice — prefer the root entry
+  where possible, and treat any deep import as pinned to this exact version.
 - **Collaboration peers are optional.** `yjs` and `y-protocols` are only needed
   for the `./collab` entry; omit them for single-user editing.
 
