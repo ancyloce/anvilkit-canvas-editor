@@ -193,7 +193,9 @@ describe("ToolStrip extensibility (FR-010)", () => {
 		// Enter (Base UI menu semantics).
 		trigger.focus();
 		await user.keyboard("{Enter}");
-		expect(await screen.findByTestId("tool-strip-more-my-ext-tool")).toBeTruthy();
+		expect(
+			await screen.findByTestId("tool-strip-more-my-ext-tool"),
+		).toBeTruthy();
 	});
 
 	it("items filters and reorders the rail; a promoted extension tool leaves the overflow", () => {
@@ -204,10 +206,7 @@ describe("ToolStrip extensibility (FR-010)", () => {
 		)
 			.map((el) => el.getAttribute("data-testid"))
 			.filter((id) => id !== "tool-strip-more");
-		expect(railIds).toEqual([
-			"tool-strip-my-ext-tool",
-			"tool-strip-select",
-		]);
+		expect(railIds).toEqual(["tool-strip-my-ext-tool", "tool-strip-select"]);
 		// The promoted tool was the only extension tool → no overflow left.
 		expect(screen.queryByTestId("tool-strip-more")).toBeNull();
 	});

@@ -43,11 +43,8 @@ describe("GridSettingsDialog (FR-112)", () => {
 				.checked,
 		).toBe(vs().snapToObjectsEnabled);
 		expect(
-			(
-				screen.getByTestId(
-					"grid-settings-snap-threshold",
-				) as HTMLInputElement
-			).value,
+			(screen.getByTestId("grid-settings-snap-threshold") as HTMLInputElement)
+				.value,
 		).toBe(String(vs().snapThreshold));
 	});
 

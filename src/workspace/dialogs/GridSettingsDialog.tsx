@@ -58,7 +58,9 @@ export default function GridSettingsDialog({
 		<Dialog open onOpenChange={(open) => !open && onClose()}>
 			<DialogContent data-testid="grid-settings-dialog">
 				<DialogHeader>
-					<DialogTitle>{t("canvas.grid.settings", "Grid settings")}</DialogTitle>
+					<DialogTitle>
+						{t("canvas.grid.settings", "Grid settings")}
+					</DialogTitle>
 				</DialogHeader>
 				<div className="flex flex-col gap-3 text-sm">
 					<div className="flex items-center gap-2">

@@ -125,9 +125,7 @@ function setup(overrides?: { uploader?: CanvasAssetUploader | undefined }) {
 
 function dropAt(
 	point: { clientX: number; clientY: number },
-	data:
-		| { files: readonly File[] }
-		| { assetId: string },
+	data: { files: readonly File[] } | { assetId: string },
 ): void {
 	const zone = screen.getByTestId("canvas-drop-zone");
 	const dataTransfer =
@@ -214,7 +212,8 @@ describe("CanvasDropZone drag-to-replace (FR-093)", () => {
 		expect(h.commits.some((c) => c.type === "node.create")).toBe(true);
 		expect(
 			h.commits.some(
-				(c) => c.type === "node.update" && "nodeId" in c && c.nodeId === "well-1",
+				(c) =>
+					c.type === "node.update" && "nodeId" in c && c.nodeId === "well-1",
 			),
 		).toBe(true);
 	});
@@ -248,9 +247,9 @@ describe("CanvasDropZone drag-to-replace (FR-093)", () => {
 		const h = setup({ uploader: failing });
 		dropAt({ clientX: 150, clientY: 150 }, { files: [file("new.png")] });
 		await waitFor(() =>
-			expect(
-				h.studioCtx.uploadStore?.getState().tasks[0]?.status,
-			).toBe("failed"),
+			expect(h.studioCtx.uploadStore?.getState().tasks[0]?.status).toBe(
+				"failed",
+			),
 		);
 		expect(h.commits).toHaveLength(0);
 	});

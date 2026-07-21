@@ -216,11 +216,7 @@ export function CanvasDropZone({
 			return;
 		}
 		// No target (or no-op swap): insert the existing asset at the drop point.
-		insertAssetsImpl(
-			ctx,
-			[asset],
-			clientPointToPage(ctx, clientX, clientY),
-		);
+		insertAssetsImpl(ctx, [asset], clientPointToPage(ctx, clientX, clientY));
 	};
 
 	const hoverLabel =
@@ -232,9 +228,7 @@ export function CanvasDropZone({
 		<div
 			data-testid="canvas-drop-zone"
 			data-dragging={dragging ? "true" : "false"}
-			data-drop-target={
-				hoverTarget === undefined ? "none" : hoverTarget.kind
-			}
+			data-drop-target={hoverTarget === undefined ? "none" : hoverTarget.kind}
 			data-drop-target-id={
 				hoverTarget === undefined
 					? undefined

@@ -34,10 +34,7 @@ describe("effectiveToolDescriptors (FR-010)", () => {
 	});
 
 	it("keeps built-ins first in rail order, extensions appended", () => {
-		const out = effectiveToolDescriptors(
-			registryWith(probeTool, bareTool),
-			t,
-		);
+		const out = effectiveToolDescriptors(registryWith(probeTool, bareTool), t);
 		expect(out.map((d) => d.id)).toEqual([
 			...TOOL_RAIL_ITEMS.map((i) => i.id),
 			"custom.probe",

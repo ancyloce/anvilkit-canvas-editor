@@ -12,6 +12,11 @@ import {
 	resolveSpanStyle,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
+import {
+	Popover,
+	PopoverPanel,
+	PopoverTrigger,
+} from "@anvilkit/ui/components/animate-ui/components/base/popover";
 import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { Separator } from "@anvilkit/ui/separator";
@@ -22,6 +27,7 @@ import {
 	Bold,
 	Crop,
 	ImageUp,
+	SlidersHorizontal,
 } from "lucide-react";
 import { useRef, useSyncExternalStore } from "react";
 import {
@@ -29,10 +35,17 @@ import {
 	useCanvasT,
 } from "@/context/canvas-studio-context.js";
 import {
+	type CommitPatchAll,
 	type FieldContractTarget,
 	sharedFieldValue,
+	useCommitPatchAll,
 	useFieldContract,
 } from "@/panels/fields.js";
+import {
+	FIT_MODE_LABELS,
+	FIT_MODES,
+	renderAdjustmentFields,
+} from "@/panels/inspector/media-sections.js";
 import { summarizeSelection } from "@/panels/inspector/selection-summary.js";
 import { beginCrop } from "@/selection/crop-actions.js";
 import { pickAndReplaceImage } from "@/selection/frame-image-actions.js";
@@ -67,15 +80,6 @@ const FONT_FAMILIES: readonly string[] = [
 ];
 
 const ALIGN_CYCLE: readonly CanvasTextAlign[] = ["left", "center", "right"];
-
-/** FR-094 image fit modes — same option set as the inspector's media section. */
-const FIT_MODES: readonly CanvasImageFitMode[] = [
-	"stretch",
-	"fill",
-	"fit",
-	"original",
-	"center",
-];
 
 /* -------------------------------------------------------------------------- *
  * Typography readers / patch builders over the two text kinds.
@@ -128,7 +132,9 @@ function fontFamilyOf(n: CanvasNode): string {
 }
 
 function fontSizeOf(n: CanvasNode): number {
-	return isRichText(n) ? spanStyleOf(n).fontSize : (n as CanvasTextNode).fontSize;
+	return isRichText(n)
+		? spanStyleOf(n).fontSize
+		: (n as CanvasTextNode).fontSize;
 }
 
 function boldOf(n: CanvasNode): boolean {
@@ -178,18 +184,20 @@ export interface CanvasToolbarProps {
 /**
  * Dynamic property toolbar — a floating, centered pill above the page (Canva
  * style). Surfaces the most-used quick props for the whole selection
- * (FR-180): fill · border · width · opacity for shapes, typography for text /
- * rich-text selections, crop · replace · fit for a single image — committing
- * through the §10 field contract (transient preview, ONE coalesced undo entry
- * per completed interaction, Escape revert), mixed-value aware across a
- * multi-selection. Renders nothing when the selection is empty or while an
- * inline text editor is open (the `RichTextToolbar` owns that mode).
+ * (FR-180): fill · border · width · opacity · position for shapes, typography
+ * for text / rich-text selections, crop · replace · fit · adjust for a single
+ * image — committing through the §10 field contract (transient preview, ONE
+ * coalesced undo entry per completed interaction, Escape revert), mixed-value
+ * aware across a multi-selection. Renders nothing when the selection is empty
+ * or while an inline text editor is open (the `RichTextToolbar` owns that
+ * mode).
  */
 export function CanvasToolbar({
 	className,
 }: CanvasToolbarProps): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
+	const commitPatchAll = useCommitPatchAll();
 	const selectedIds = useSyncExternalStore(
 		ctx.selectionStore.subscribe,
 		() => ctx.selectionStore.getState().selectedIds,
@@ -250,6 +258,12 @@ export function CanvasToolbar({
 				)
 			: null;
 	const opacity = sharedFieldValue(nodes, (n) => n.opacity ?? 1);
+	// FR-180 Position (common control): X/Y follow the same per-node absolute
+	// patch the inspector's TransformSection already establishes for a
+	// multi-selection — every selected node's transform.x/y is set to the
+	// typed value, mixed-aware.
+	const posX = sharedFieldValue(nodes, (n) => n.transform.x);
+	const posY = sharedFieldValue(nodes, (n) => n.transform.y);
 
 	const fontFamily = isText ? sharedFieldValue(nodes, fontFamilyOf) : null;
 	const fontSize = isText ? sharedFieldValue(nodes, fontSizeOf) : null;
@@ -398,7 +412,10 @@ export function CanvasToolbar({
 							label={t("canvas.toolbar.fitMode", "Fit")}
 							value={fitMode ?? "stretch"}
 							disabled={allLocked}
-							options={FIT_MODES.map((m) => ({ value: m, label: m }))}
+							options={FIT_MODES.map((m) => ({
+								value: m,
+								label: t(...FIT_MODE_LABELS[m]),
+							}))}
 							testId="toolbar-fit-mode"
 							contract={{
 								nodes: [image],
@@ -408,6 +425,23 @@ export function CanvasToolbar({
 								}),
 							}}
 						/>
+						<Popover>
+							<PopoverTrigger
+								data-testid="toolbar-image-adjust"
+								disabled={allLocked}
+								aria-label={t("canvas.toolbar.adjust", "Adjust")}
+								title={t("canvas.toolbar.adjust", "Adjust")}
+								render={<Button type="button" size="icon-sm" variant="ghost" />}
+							>
+								<SlidersHorizontal aria-hidden />
+							</PopoverTrigger>
+							<PopoverPanel
+								data-testid="toolbar-adjust-panel"
+								className="max-h-96 w-72 overflow-y-auto"
+							>
+								{renderAdjustmentFields([image], commitPatchAll, t)}
+							</PopoverPanel>
+						</Popover>
 					</>
 				) : null}
 				<PillDivider />
@@ -421,6 +455,29 @@ export function CanvasToolbar({
 					max={1}
 					testId="toolbar-opacity"
 					contract={{ nodes, buildPatch: (_n, v) => ({ opacity: v }) }}
+				/>
+				<PillDivider />
+				<NumberControl
+					label={t("canvas.toolbar.positionX", "X")}
+					value={posX.value}
+					mixed={posX.mixed}
+					disabled={allLocked}
+					testId="toolbar-position-x"
+					contract={{
+						nodes,
+						buildPatch: (n, v) => ({ transform: { ...n.transform, x: v } }),
+					}}
+				/>
+				<NumberControl
+					label={t("canvas.toolbar.positionY", "Y")}
+					value={posY.value}
+					mixed={posY.mixed}
+					disabled={allLocked}
+					testId="toolbar-position-y"
+					contract={{
+						nodes,
+						buildPatch: (n, v) => ({ transform: { ...n.transform, y: v } }),
+					}}
 				/>
 			</div>
 		</div>
@@ -464,7 +521,9 @@ function SwatchControl({
 		<label
 			className={cn(
 				"inline-flex items-center gap-1.5 rounded-full px-2 py-1",
-				disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-muted",
+				disabled
+					? "cursor-not-allowed opacity-50"
+					: "cursor-pointer hover:bg-muted",
 			)}
 			title={mixed ? `${label}: ${field.mixedLabel}` : label}
 		>
@@ -472,7 +531,9 @@ function SwatchControl({
 				className="size-4 rounded-full ring-1 ring-border"
 				style={
 					mixed
-						? { background: "linear-gradient(135deg, #d4d4d8 50%, #52525b 50%)" }
+						? {
+								background: "linear-gradient(135deg, #d4d4d8 50%, #52525b 50%)",
+							}
 						: { backgroundColor: fallback }
 				}
 				aria-hidden
@@ -685,9 +746,14 @@ function AlignCycleControl({
 }): React.JSX.Element {
 	const field = useFieldContract(contract, testId);
 	const Icon =
-		value === "center" ? AlignCenter : value === "right" ? AlignRight : AlignLeft;
+		value === "center"
+			? AlignCenter
+			: value === "right"
+				? AlignRight
+				: AlignLeft;
 	const next =
-		ALIGN_CYCLE[(ALIGN_CYCLE.indexOf(value) + 1) % ALIGN_CYCLE.length] ?? "left";
+		ALIGN_CYCLE[(ALIGN_CYCLE.indexOf(value) + 1) % ALIGN_CYCLE.length] ??
+		"left";
 	return (
 		<Button
 			type="button"

@@ -132,9 +132,9 @@ describe("CanvasAreaContextMenu (A-06)", () => {
 			</CanvasStudioContext.Provider>,
 		);
 		await openMenu();
-		expect(
-			screen.getByTestId("ctx-snap-grid").getAttribute("role"),
-		).toBe("menuitemcheckbox");
+		expect(screen.getByTestId("ctx-snap-grid").getAttribute("role")).toBe(
+			"menuitemcheckbox",
+		);
 		expect(
 			screen.getByTestId("ctx-snap-grid").getAttribute("aria-checked"),
 		).toBe("true");

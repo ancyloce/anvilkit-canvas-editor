@@ -11,13 +11,22 @@ import {
 	createText,
 	findNode,
 } from "@anvilkit/canvas-core";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+	act,
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
 } from "@/context/canvas-studio-context.js";
-import { makeHarness, type TestHarness } from "@/tools/__tests__/_tool-test-helpers.js";
+import {
+	makeHarness,
+	type TestHarness,
+} from "@/tools/__tests__/_tool-test-helpers.js";
 import { CanvasToolbar } from "../CanvasToolbar.js";
 
 afterEach(cleanup);
@@ -44,6 +53,7 @@ function fixtureIR(): CanvasIR {
 				fill: "#ff0000",
 				stroke: "#111111",
 				strokeWidth: 2,
+				transform: { x: 10, y: 20 },
 			}),
 			createRect({
 				id: "r2",
@@ -51,6 +61,7 @@ function fixtureIR(): CanvasIR {
 				fill: "#00ff00",
 				stroke: "#111111",
 				strokeWidth: 5,
+				transform: { x: 30, y: 40 },
 			}),
 			{
 				...createRect({
@@ -160,7 +171,9 @@ describe("CanvasToolbar — multi-selection mixed values", () => {
 		expect(screen.getByTestId("toolbar-stroke")).not.toHaveAttribute(
 			"data-mixed",
 		);
-		const width = screen.getByTestId("toolbar-stroke-width") as HTMLInputElement;
+		const width = screen.getByTestId(
+			"toolbar-stroke-width",
+		) as HTMLInputElement;
 		expect(width.value).toBe("");
 		expect(width.placeholder).toBe("Mixed");
 	});
@@ -331,10 +344,126 @@ describe("CanvasToolbar — single image (FR-180)", () => {
 		]);
 	});
 
+	it("fit-mode options are translated labels, not raw ids (AC-014)", () => {
+		const h = makeHarness({ ir: fixtureIR() });
+		h.studioCtx.t = (key, fallback) =>
+			key === "canvas.inspector.fitModeStretch" ? "ESTIRAR" : (fallback ?? key);
+		h.studioCtx.selectionStore.getState().setSelection(["i1"]);
+		render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<CanvasToolbar />
+			</CanvasStudioContext.Provider>,
+		);
+		const select = screen.getByTestId("toolbar-fit-mode") as HTMLSelectElement;
+		const stretchOption = Array.from(select.options).find(
+			(o) => o.value === "stretch",
+		);
+		expect(stretchOption?.textContent).toBe("ESTIRAR");
+	});
+
 	it("a mixed-kind selection hides the image section", () => {
 		setup(["i1", "r1"]);
 		expect(screen.queryByTestId("toolbar-image-crop")).toBeNull();
 		expect(screen.queryByTestId("toolbar-fit-mode")).toBeNull();
+	});
+});
+
+describe("CanvasToolbar — position (FR-180)", () => {
+	it("shows X/Y for a single node and commits a change through the contract", () => {
+		const { h } = setup(["r1"]);
+		expect(
+			(screen.getByTestId("toolbar-position-x") as HTMLInputElement).value,
+		).toBe("10");
+		expect(
+			(screen.getByTestId("toolbar-position-y") as HTMLInputElement).value,
+		).toBe("20");
+		commitInput("toolbar-position-x", "100");
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		expect(h.commits).toEqual([
+			{
+				type: "node.update",
+				nodeId: "r1",
+				kind: "rect",
+				patch: {
+					transform: { x: 100, y: 20, rotation: 0, scaleX: 1, scaleY: 1 },
+				},
+			},
+		]);
+	});
+
+	it("flags mixed X/Y across a multi-selection with different positions", () => {
+		setup(["r1", "r2"]);
+		const x = screen.getByTestId("toolbar-position-x") as HTMLInputElement;
+		const y = screen.getByTestId("toolbar-position-y") as HTMLInputElement;
+		expect(x.value).toBe("");
+		expect(x.placeholder).toBe("Mixed");
+		expect(y.value).toBe("");
+		expect(y.placeholder).toBe("Mixed");
+	});
+
+	it("committing a mixed X unifies the selection as one batch", () => {
+		const { h } = setup(["r1", "r2"]);
+		commitInput("toolbar-position-x", "5");
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		const cmd = h.commits[0] as {
+			type: string;
+			commands: CanvasNodeUpdateCommand<"rect">[];
+		};
+		expect(cmd.type).toBe("batch");
+		expect(cmd.commands.map((c) => c.nodeId)).toEqual(["r1", "r2"]);
+		expect(
+			cmd.commands.every((c) => (c.patch.transform as { x: number }).x === 5),
+		).toBe(true);
+	});
+
+	it("is disabled for an all-locked selection", () => {
+		const { h } = setup(["lr1"]);
+		expect(screen.getByTestId("toolbar-position-x")).toBeDisabled();
+		expect(screen.getByTestId("toolbar-position-y")).toBeDisabled();
+		commitInput("toolbar-position-x", "999");
+		expect(h.commits).toHaveLength(0);
+	});
+});
+
+describe("CanvasToolbar — image adjust popover (FR-180)", () => {
+	it("opens the adjust popover reusing the inspector's adjustment fields", () => {
+		setup(["i1"]);
+		expect(screen.queryByTestId("prop-adjust-brightness")).toBeNull();
+		fireEvent.click(screen.getByTestId("toolbar-image-adjust"));
+		expect(screen.getByTestId("prop-adjust-brightness")).toBeInTheDocument();
+		expect(screen.getByTestId("prop-adjust-preset")).toBeInTheDocument();
+	});
+
+	it("committing a brightness change patches node.adjustments through the contract", () => {
+		const { h } = setup(["i1"]);
+		fireEvent.click(screen.getByTestId("toolbar-image-adjust"));
+		commitInput("prop-adjust-brightness", "0.4");
+		expect(h.commits).toEqual([
+			{
+				type: "node.update",
+				nodeId: "i1",
+				kind: "image",
+				patch: { adjustments: { brightness: 0.4 } },
+			},
+		]);
+	});
+
+	it("the adjust trigger is disabled for a locked image (FR-024 gating)", () => {
+		const h = makeHarness({ ir: fixtureIR() });
+		const ir = h.studioCtx.getIR();
+		const page = ir.pages[0];
+		if (!page) throw new Error("no page");
+		const image = findNode(ir, "i1");
+		if (!image) throw new Error("i1 missing");
+		(image.node as { locked?: boolean }).locked = true;
+		h.setIR(ir);
+		h.studioCtx.selectionStore.getState().setSelection(["i1"]);
+		render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<CanvasToolbar />
+			</CanvasStudioContext.Provider>,
+		);
+		expect(screen.getByTestId("toolbar-image-adjust")).toBeDisabled();
 	});
 });
 

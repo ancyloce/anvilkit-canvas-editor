@@ -152,7 +152,11 @@ describe("CanvasWorkspace shell", () => {
 describe("CanvasWorkspace toolStrip prop (FR-010)", () => {
 	it("renders the default strip by default and none with toolStrip={false}", () => {
 		const first = render(
-			<CanvasWorkspace initialIR={ir()} initialActivePageId="p1" storeId="ts-a" />,
+			<CanvasWorkspace
+				initialIR={ir()}
+				initialActivePageId="p1"
+				storeId="ts-a"
+			/>,
 		);
 		expect(
 			first.container.querySelector("[data-testid='tool-strip']"),
@@ -188,9 +192,7 @@ describe("CanvasWorkspace toolStrip prop (FR-010)", () => {
 		expect(
 			strip?.querySelector("[data-testid='tool-strip-select']"),
 		).not.toBeNull();
-		expect(
-			strip?.querySelector("[data-testid='tool-strip-text']"),
-		).toBeNull();
+		expect(strip?.querySelector("[data-testid='tool-strip-text']")).toBeNull();
 		first.unmount();
 		const second = render(
 			<CanvasWorkspace
