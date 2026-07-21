@@ -433,6 +433,51 @@ describe("CanvasStudio integration", () => {
 		).toBe(true);
 	});
 
+	it("keyboard: Ctrl+Z undoes through the context seam and fires onChange (E-20)", () => {
+		let stage: Konva.Stage | null = null;
+		const onChange = vi.fn();
+		const ir = createCanvasIR({
+			pages: [
+				(() => {
+					const page = createPage({ id: "p1" });
+					page.root = createGroup({
+						id: "p1-root",
+						bounds: page.root.bounds,
+						children: [
+							createRect({
+								id: "r1",
+								bounds: { width: 20, height: 20 },
+								transform: { x: 10, y: 20 },
+							}),
+						],
+					});
+					return page;
+				})(),
+			],
+			now: () => "2026-01-01T00:00:00.000Z",
+		});
+		render(
+			<CanvasStudio
+				initialIR={ir}
+				initialActivePageId="p1"
+				onChange={onChange}
+				onStageReady={(s) => {
+					if (s) stage = s;
+				}}
+			>
+				<KbSelectProbe ids={["r1"]} />
+			</CanvasStudio>,
+		);
+		if (!stage) throw new Error("stage not ready");
+		const container = (stage as Konva.Stage).container();
+		fireEvent.keyDown(container, { key: "ArrowRight" });
+		onChange.mockClear();
+		fireEvent.keyDown(container, { key: "z", ctrlKey: true });
+		// Unlike the pre-E-20 direct historyStore -> sceneStore wiring, undo now
+		// goes through the context seam and notifies the host, same as a commit.
+		expect(onChange.mock.calls.at(-1)?.[1]).toMatchObject({ type: "undo" });
+	});
+
 	it("renders a focus ring for the keyboard-focused node", () => {
 		const ir = createCanvasIR({
 			pages: [

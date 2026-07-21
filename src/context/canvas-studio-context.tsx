@@ -167,6 +167,16 @@ export interface CanvasStudioContextValue {
 	 * recovery, or wiring a `./collab` binding's `stores` option.
 	 */
 	replaceDocument: (ir: CanvasIR, source: DocumentSnapshotSource) => void;
+	/**
+	 * Undo the last commit through `historyStore` AND fire `onChange`/
+	 * `onChanges` (E-20) — use this, never `historyStore.getState().undo(ir)` +
+	 * `sceneStore.getState().setIR(ir)` directly, or a host mirroring the
+	 * document silently misses every undo. Optional so hand-built partial test
+	 * contexts keep working; always provided by `<CanvasStudio>`.
+	 */
+	undo?: () => CanvasIR;
+	/** @see undo */
+	redo?: () => CanvasIR;
 	pickAsset: () => Promise<string>;
 	/**
 	 * FR-090 (B-10) multi-select pick: present only when a full `assetPicker`

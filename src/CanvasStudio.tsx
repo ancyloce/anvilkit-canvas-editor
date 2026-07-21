@@ -503,9 +503,33 @@ function useCommitPipeline(
 		[historyStore, sceneStore, onChangeRef, onChangesRef],
 	);
 
+	// Undo/redo (E-20): the same onChange/onChanges seam as `commit`. `next ===
+	// current` covers BOTH "nothing to undo/redo" and "the top entry was a
+	// stale inverse the store just dropped" (history-store.ts) — neither is a
+	// real change, so neither notifies.
+	const undo = useCallback((): CanvasIR => {
+		const current = sceneStore.getState().ir;
+		const next = historyStore.getState().undo(current);
+		if (next === current) return current;
+		sceneStore.getState().setIR(next);
+		onChangeRef.current?.(next, { type: "undo" });
+		onChangesRef.current?.([], next);
+		return next;
+	}, [historyStore, sceneStore, onChangeRef, onChangesRef]);
+
+	const redo = useCallback((): CanvasIR => {
+		const current = sceneStore.getState().ir;
+		const next = historyStore.getState().redo(current);
+		if (next === current) return current;
+		sceneStore.getState().setIR(next);
+		onChangeRef.current?.(next, { type: "redo" });
+		onChangesRef.current?.([], next);
+		return next;
+	}, [historyStore, sceneStore, onChangeRef, onChangesRef]);
+
 	const getIR = useCallback(() => sceneStore.getState().ir, [sceneStore]);
 
-	return { commit, commitCoalesced, commitBatch, getIR };
+	return { commit, commitCoalesced, commitBatch, undo, redo, getIR };
 }
 
 /**
@@ -792,12 +816,8 @@ export function CanvasStudio({
 		() => viewportStore.getState().panY,
 		() => viewportStore.getState().panY,
 	);
-	const { commit, commitCoalesced, commitBatch, getIR } = useCommitPipeline(
-		sceneStore,
-		historyStore,
-		onChange,
-		onChanges,
-	);
+	const { commit, commitCoalesced, commitBatch, undo, redo, getIR } =
+		useCommitPipeline(sceneStore, historyStore, onChange, onChanges);
 	// FR-091: created before `documentStores` so document replacement can abort
 	// in-flight uploads; unmount cleanup lives in the effect below.
 	const uploadStore = useMemo(() => createUploadStore(), []);
@@ -1062,6 +1082,8 @@ export function CanvasStudio({
 			commit,
 			commitCoalesced,
 			commitBatch,
+			undo,
+			redo,
 			fieldPreviewStore,
 			rulerGuideStore,
 			isolationStore,
@@ -1113,6 +1135,8 @@ export function CanvasStudio({
 			commit,
 			commitCoalesced,
 			commitBatch,
+			undo,
+			redo,
 			fieldPreviewStore,
 			rulerGuideStore,
 			isolationStore,
