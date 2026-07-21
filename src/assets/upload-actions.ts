@@ -141,7 +141,11 @@ export async function uploadSingleFile(
 			documentId: ctx.getIR().id,
 			signal: controller.signal,
 			onProgress: (event) => {
-				if (event.fileIndex === 0 && event.fraction !== undefined && id !== "") {
+				if (
+					event.fileIndex === 0 &&
+					event.fraction !== undefined &&
+					id !== ""
+				) {
 					uploadStore?.getState().setProgress(id, event.fraction);
 				}
 			},
