@@ -1,5 +1,6 @@
 "use client";
 
+import { type CanvasNode, findNode } from "@anvilkit/canvas-core";
 import Konva from "konva";
 import {
 	useCallback,
@@ -629,7 +630,19 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		const ir = getIR();
 		const page = ir.pages.find((p) => p.id === activePageId);
 		if (!page) return;
-		const childById = new Map(page.root.children.map((c) => [c.id, c]));
+		// `page.root.children` only reaches TOP-LEVEL nodes — a selection made
+		// via the LayerPanel or isolation mode can be a node nested inside a
+		// group/frame, whose gesture would otherwise silently commit nothing
+		// (E-3). Look each selected id up with a full-tree walk, as
+		// TextEditorOverlay already does.
+		const childById = new Map(
+			selectedIds
+				.map((id): [string, CanvasNode] | undefined => {
+					const node = findNode(ir, id)?.node;
+					return node ? [id, node] : undefined;
+				})
+				.filter((entry) => entry !== undefined),
+		);
 		// Collect every node's resize/rotate command so a single gesture (incl.
 		// simultaneous resize + rotate, and multi-node transforms) is ONE undo entry.
 		const cmds = collectTransformEndCommands(stage, selectedIds, childById);

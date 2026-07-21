@@ -6,7 +6,10 @@ import type {
 	CanvasNodeRotateCommand,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
-import { nodeRenderOffset } from "../stage/node-render-offset.js";
+import {
+	aspectFitScaleY,
+	nodeRenderOffset,
+} from "../stage/node-render-offset.js";
 
 /**
  * Selection-chrome colors, sourced from the editor's shadcn/Tailwind theme
@@ -167,6 +170,19 @@ export const MIN_DIMENSION = 1;
 const SCALE_SIZED: ReadonlySet<CanvasNode["type"]> = new Set(["path", "line"]);
 
 /**
+ * Polygon/star render with `aspectFitScaleY` layered on TOP of the node's own
+ * `transform.scaleY` (see that helper) so their single `radius` can still
+ * fill a non-square bounding box. The live Konva `scaleY()` read back off the
+ * stage therefore already includes that factor — baking it into
+ * `bounds.height` unchanged would apply it a SECOND time, corrupting the
+ * committed height on every transformer gesture (E-2).
+ */
+const ASPECT_FIT_KINDS: ReadonlySet<CanvasNode["type"]> = new Set([
+	"polygon",
+	"star",
+]);
+
+/**
  * Translate the live Konva transforms of the selected nodes into IR commands
  * on `transformend` — one resize and/or rotate command per affected node so
  * the caller can commit a whole gesture (incl. simultaneous resize + rotate,
@@ -244,8 +260,14 @@ export function collectTransformEndCommands(
 		// from 1×.
 		knode.scaleX(1);
 		knode.scaleY(1);
+		// Undo the renderer's aspect-fit composition for polygon/star (E-2) —
+		// `fit` is 1 (a no-op) for every other kind. Guard against a degenerate
+		// zero-height `bounds` (fit === 0), which would otherwise divide by
+		// zero instead of just skipping the correction.
+		const fit = ASPECT_FIT_KINDS.has(irNode.type) ? aspectFitScaleY(bounds) : 1;
+		const effectiveScaleY = fit > 0 ? scaleY / fit : scaleY;
 		const newW = Math.max(MIN_DIMENSION, bounds.width * scaleX);
-		const newH = Math.max(MIN_DIMENSION, bounds.height * scaleY);
+		const newH = Math.max(MIN_DIMENSION, bounds.height * effectiveScaleY);
 		// Konva.Ellipse positions by its CENTER, so `knode.x()` is the center.
 		// Convert back to the IR top-left using the NEW bounds, or a resized
 		// ellipse drifts by half its new size on commit.

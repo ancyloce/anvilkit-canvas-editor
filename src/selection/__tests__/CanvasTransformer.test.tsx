@@ -11,6 +11,7 @@ import {
 	createLine,
 	createPage,
 	createRect,
+	createStar,
 } from "@anvilkit/canvas-core";
 import { act, render } from "@testing-library/react";
 import type Konva from "konva";
@@ -478,6 +479,54 @@ describe("CanvasTransformer", () => {
 		expect((node as unknown as { scaleX: () => number }).scaleX()).toBe(1);
 	});
 
+	it("commits a resize for a node NESTED inside a group, not just top-level children (E-3)", () => {
+		transformerCalls.length = 0;
+		const page = createPage({ id: "p1" });
+		page.root = createGroup({
+			id: "p1-root",
+			bounds: page.root.bounds,
+			children: [
+				createGroup({
+					id: "g1",
+					children: [
+						createRect({
+							id: "nestedRect",
+							bounds: { width: 100, height: 50 },
+							transform: { x: 10, y: 20 },
+						}),
+					],
+				}),
+			],
+		});
+		const ir = createCanvasIR({
+			id: "ir-nested",
+			pages: [page],
+			now: () => FIXED_TS,
+		});
+		// Before the fix, `childById` only mapped `page.root.children` (just
+		// "g1"), so this nested node's gesture silently produced zero commands
+		// even though the transformer visually attached to it.
+		const node = makeNode({ x: 10, y: 20, scaleX: 2, scaleY: 2 });
+		const stage = makeFakeStage({ nestedRect: node });
+		const { ctx, commits } = makeCtx(stage, ir);
+		ctx.selectionStore.getState().setSelection(["nestedRect"]);
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<CanvasTransformer />
+			</CanvasStudioContext.Provider>,
+		);
+		const transformerProps = transformerCalls[0]?.props as {
+			onTransformEnd: () => void;
+		};
+		act(() => {
+			transformerProps.onTransformEnd();
+		});
+		const resizeCmds = commits.filter((c) => c.type === "node.resize");
+		expect(resizeCmds).toHaveLength(1);
+		const cmd = resizeCmds[0] as CanvasNodeResizeCommand;
+		expect(cmd.to).toEqual({ x: 10, y: 20, width: 200, height: 100 });
+	});
+
 	it("transformend with a near-zero scale floors the committed size at MIN_DIMENSION", () => {
 		transformerCalls.length = 0;
 		const ir = fixtureIR();
@@ -638,5 +687,105 @@ describe("CanvasTransformer", () => {
 		const transform = (cmd.patch as { transform?: Record<string, number> })
 			.transform;
 		expect(transform).toMatchObject({ x: 10, y: 20, scaleX: 2, scaleY: 2 });
+	});
+
+	it("a rotate-only gesture on a non-square star does not corrupt its height (E-2)", () => {
+		transformerCalls.length = 0;
+		const page = createPage({ id: "p1" });
+		page.root = createGroup({
+			id: "p1-root",
+			bounds: page.root.bounds,
+			children: [
+				createStar({
+					id: "starA",
+					bounds: { width: 100, height: 50 },
+					transform: { x: 10, y: 20 },
+				}),
+			],
+		});
+		const ir = createCanvasIR({
+			id: "ir-s",
+			pages: [page],
+			now: () => FIXED_TS,
+		});
+		// The renderer sets the live Konva scaleY to
+		// transform.scaleY(1) * aspectFitScaleY(50/100=0.5) = 0.5 — unchanged by
+		// a pure rotation, which never touches scale. Before the fix, reading
+		// this composed 0.5 raw and baking it into bounds.height (50 * 0.5)
+		// corrupted the committed height to 25 even though nothing was resized.
+		// Konva.Star positions by its CENTER (nodeRenderOffset), so x/y are
+		// the unchanged center of the 100×50 box: (10+50, 20+25).
+		const node = makeNode({
+			x: 60,
+			y: 45,
+			scaleX: 1,
+			scaleY: 0.5,
+			rotation: 30,
+		});
+		const stage = makeFakeStage({ starA: node });
+		const { ctx, commits } = makeCtx(stage, ir);
+		ctx.selectionStore.getState().setSelection(["starA"]);
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<CanvasTransformer />
+			</CanvasStudioContext.Provider>,
+		);
+		const transformerProps = transformerCalls[0]?.props as {
+			onTransformEnd: () => void;
+		};
+		act(() => {
+			transformerProps.onTransformEnd();
+		});
+		const resizeCmds = commits.filter((c) => c.type === "node.resize");
+		expect(resizeCmds).toHaveLength(0);
+		const rotateCmds = commits.filter((c) => c.type === "node.rotate");
+		expect(rotateCmds).toHaveLength(1);
+		expect((rotateCmds[0] as CanvasNodeRotateCommand).to).toBe(30);
+	});
+
+	it("a real resize on a non-square star bakes the un-composed scale into height (E-2)", () => {
+		transformerCalls.length = 0;
+		const page = createPage({ id: "p1" });
+		page.root = createGroup({
+			id: "p1-root",
+			bounds: page.root.bounds,
+			children: [
+				createStar({
+					id: "starA",
+					bounds: { width: 100, height: 50 },
+					transform: { x: 10, y: 20 },
+				}),
+			],
+		});
+		const ir = createCanvasIR({
+			id: "ir-s2",
+			pages: [page],
+			now: () => FIXED_TS,
+		});
+		// A genuine "make it twice as tall" drag: Konva multiplies its CURRENT
+		// composed scaleY (0.5) by the drag ratio (2) => raw scaleY 1.0. A
+		// symmetric grow-from-center resize keeps the center fixed at (60, 45);
+		// the new 100×100 box's center offset is (50, 50), so the committed
+		// top-left is (60-50, 45-50) = (10, -5).
+		const node = makeNode({ x: 60, y: 45, scaleX: 1, scaleY: 1 });
+		const stage = makeFakeStage({ starA: node });
+		const { ctx, commits } = makeCtx(stage, ir);
+		ctx.selectionStore.getState().setSelection(["starA"]);
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<CanvasTransformer />
+			</CanvasStudioContext.Provider>,
+		);
+		const transformerProps = transformerCalls[0]?.props as {
+			onTransformEnd: () => void;
+		};
+		act(() => {
+			transformerProps.onTransformEnd();
+		});
+		const resizeCmds = commits.filter((c) => c.type === "node.resize");
+		expect(resizeCmds).toHaveLength(1);
+		const cmd = resizeCmds[0] as CanvasNodeResizeCommand;
+		// Un-composed: effectiveScaleY = 1.0 / 0.5 = 2 => height 50*2 = 100.
+		expect(cmd.to).toEqual({ x: 10, y: -5, width: 100, height: 100 });
 	});
 });
