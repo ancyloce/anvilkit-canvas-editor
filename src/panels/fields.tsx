@@ -394,7 +394,9 @@ function channelsToHex(
 	alphaSuffix: string,
 ): string {
 	const c = (n: number): string =>
-		Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+		Math.max(0, Math.min(255, Math.round(n)))
+			.toString(16)
+			.padStart(2, "0");
 	return `#${c(r)}${c(g)}${c(b)}${alphaSuffix}`;
 }
 
@@ -492,7 +494,9 @@ export function ColorField({
 						key={fk.key}
 						type="color"
 						aria-label={label}
-						defaultValue={channels ? (value ?? "#000000").slice(0, 7) : "#000000"}
+						defaultValue={
+							channels ? (value ?? "#000000").slice(0, 7) : "#000000"
+						}
 						className="h-7.5 w-9 shrink-0 p-0.5"
 						data-testid={dataTestId}
 						onFocus={fk.onFocus}

@@ -110,7 +110,7 @@ describe("renderImageFields — fit mode (FR-094)", () => {
 				commitPatchAll={commitPatchAll}
 			/>,
 		);
-		await selectOption("prop-fit-mode", "fit");
+		await selectOption("prop-fit-mode", "Fit");
 		await waitFor(() => expect(commitPatchAll).toHaveBeenCalledTimes(1));
 		expect(lastPatch(commitPatchAll)).toEqual({ fitMode: "fit" });
 	});
@@ -133,7 +133,7 @@ describe("renderImageFields — fit mode (FR-094)", () => {
 				commitPatchAll={commitPatchAll}
 			/>,
 		);
-		await selectOption("prop-fit-mode", "stretch");
+		await selectOption("prop-fit-mode", "Stretch");
 		await waitFor(() => expect(commitPatchAll).toHaveBeenCalledTimes(1));
 		expect(lastPatch(commitPatchAll)).toEqual({ fitMode: undefined });
 	});
@@ -224,7 +224,7 @@ describe("renderImageFields — adjustment presets (FR-100/101)", () => {
 				commitPatchAll={commitPatchAll}
 			/>,
 		);
-		await selectOption("prop-adjust-preset", "mono");
+		await selectOption("prop-adjust-preset", "Mono");
 		await waitFor(() => expect(commitPatchAll).toHaveBeenCalledTimes(1));
 		expect(lastPatch(commitPatchAll)).toEqual({
 			adjustments: { grayscale: 1 },

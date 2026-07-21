@@ -1,10 +1,6 @@
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-	ColorField,
-	hexColorChannels,
-	normalizeHexColor,
-} from "../fields.js";
+import { ColorField, hexColorChannels, normalizeHexColor } from "../fields.js";
 
 /**
  * FR-074 color entry: explicit editable hex input, RGB channel inputs, alpha

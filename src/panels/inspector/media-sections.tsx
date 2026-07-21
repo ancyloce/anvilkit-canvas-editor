@@ -53,14 +53,42 @@ import { CornerRadiiFields } from "./stroke-section.js";
  * mode) and act on the FIRST selected node, same as `path`'s "Edit points".
  */
 
-/** FR-094 image fit modes (B-02); `stretch` is the schema default. */
-const FIT_MODES: readonly CanvasImageFitMode[] = [
+/** FR-094 image fit modes (B-02); `stretch` is the schema default. Exported
+ * so the FR-180 selection toolbar shares this exact option set instead of
+ * keeping its own copy (AC-014: two lists risk drifting apart). */
+export const FIT_MODES: readonly CanvasImageFitMode[] = [
 	"stretch",
 	"fill",
 	"fit",
 	"original",
 	"center",
 ];
+
+/** AC-014: fit-mode labels are translated, not the raw enum id (same
+ * key/fallback-tuple convention as `PageSettingsDialog`'s `MODE_LABELS`). */
+export const FIT_MODE_LABELS: Record<CanvasImageFitMode, [string, string]> = {
+	stretch: ["canvas.inspector.fitModeStretch", "Stretch"],
+	fill: ["canvas.inspector.fitModeFill", "Fill"],
+	fit: ["canvas.inspector.fitModeFit", "Fit"],
+	original: ["canvas.inspector.fitModeOriginal", "Original"],
+	center: ["canvas.inspector.fitModeCenter", "Center"],
+};
+
+/** AC-014: adjustment-preset labels are translated, not the raw preset id. */
+export const ADJUST_PRESET_LABELS: Record<
+	CanvasImageAdjustmentPresetId,
+	[string, string]
+> = {
+	original: ["canvas.inspector.adjustPresetOriginal", "Original"],
+	warm: ["canvas.inspector.adjustPresetWarm", "Warm"],
+	cool: ["canvas.inspector.adjustPresetCool", "Cool"],
+	mono: ["canvas.inspector.adjustPresetMono", "Mono"],
+	vintage: ["canvas.inspector.adjustPresetVintage", "Vintage"],
+	"high-contrast": [
+		"canvas.inspector.adjustPresetHighContrast",
+		"High contrast",
+	],
+};
 
 export function renderImageFields(
 	nodes: readonly CanvasImageNode[],
@@ -118,7 +146,10 @@ export function renderImageFields(
 				</Button>
 				<FieldRow label={t("canvas.inspector.fitMode", "Fit")}>
 					<Select
-						items={FIT_MODES.map((m) => ({ value: m, label: m }))}
+						items={FIT_MODES.map((m) => ({
+							value: m,
+							label: t(...FIT_MODE_LABELS[m]),
+						}))}
 						value={fitMode.mixed ? undefined : fitMode.value}
 						onValueChange={(next) =>
 							next &&
@@ -140,7 +171,7 @@ export function renderImageFields(
 						<SelectContent>
 							{FIT_MODES.map((m) => (
 								<SelectItem key={m} value={m}>
-									{m}
+									{t(...FIT_MODE_LABELS[m])}
 								</SelectItem>
 							))}
 						</SelectContent>
@@ -338,9 +369,11 @@ function normalizeAdjustments(
 /**
  * FR-100/101 adjustments section (C-04): preset picker (plain adjustment
  * values, replace-on-apply) + one field per adjustment through the §10 field
- * contract. Non-destructive — only `node.adjustments` ever changes.
+ * contract. Non-destructive — only `node.adjustments` ever changes. Exported
+ * for reuse by the FR-180 selection toolbar's Adjust popover (single source
+ * of the adjustment UI for both the inspector and the toolbar).
  */
-function renderAdjustmentFields(
+export function renderAdjustmentFields(
 	nodes: readonly CanvasImageNode[],
 	commitPatchAll: CommitPatchAll,
 	t: CanvasT,
@@ -360,7 +393,10 @@ function renderAdjustmentFields(
 		<Section title={t("canvas.inspector.adjustments", "Adjustments")}>
 			<FieldRow label={t("canvas.inspector.adjustPreset", "Preset")}>
 				<Select
-					items={presetIds.map((id) => ({ value: id, label: id }))}
+					items={presetIds.map((id) => ({
+						value: id,
+						label: t(...ADJUST_PRESET_LABELS[id]),
+					}))}
 					value={activePreset ?? ""}
 					onValueChange={(next) => {
 						if (!next) return;
@@ -384,7 +420,7 @@ function renderAdjustmentFields(
 					<SelectContent>
 						{presetIds.map((id) => (
 							<SelectItem key={id} value={id}>
-								{id}
+								{t(...ADJUST_PRESET_LABELS[id])}
 							</SelectItem>
 						))}
 					</SelectContent>
