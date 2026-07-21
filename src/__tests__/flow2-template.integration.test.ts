@@ -188,9 +188,7 @@ describe("Flow 2 — Edit a Template (PRD 0012 §17.4)", () => {
 		const brandResult = applyBrandColors(s.getIR(), BRAND_KIT);
 		expect(brandResult.command).not.toBeNull();
 		if (brandResult.command) s.commit(brandResult.command);
-		const bg = s
-			.getIR()
-			.pages[0]?.root.children.find((n) => n.type === "rect");
+		const bg = s.getIR().pages[0]?.root.children.find((n) => n.type === "rect");
 		if (!bg) throw new Error("background rect missing");
 		// The literal fill was lifted into a BrandTokenRef object.
 		expect(typeof bg.fill).not.toBe("string");
@@ -231,13 +229,13 @@ describe("Flow 2 — Edit a Template (PRD 0012 §17.4)", () => {
 		// AC-013: page resize undoes/redoes cleanly.
 		let ir = s.historyStore.getState().undo(s.getIR());
 		h.setIR(ir);
-		expect(
-			s.getIR().pages.find((p) => p.id === sourcePageId)?.size.width,
-		).toBe(800);
+		expect(s.getIR().pages.find((p) => p.id === sourcePageId)?.size.width).toBe(
+			800,
+		);
 		ir = s.historyStore.getState().redo(s.getIR());
 		h.setIR(ir);
-		expect(
-			s.getIR().pages.find((p) => p.id === sourcePageId)?.size.width,
-		).toBe(400);
+		expect(s.getIR().pages.find((p) => p.id === sourcePageId)?.size.width).toBe(
+			400,
+		);
 	});
 });

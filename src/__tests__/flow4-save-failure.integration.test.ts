@@ -105,7 +105,12 @@ describe("Flow 4 — Save Failure (PRD 0012 §17.4)", () => {
 			getIR: s.getIR,
 			historyStore: s.historyStore,
 			saveStatusStore,
-			autoSave: { debounceMs: 100, maxWaitMs: 500, maxRetries: 1, retryBaseMs: 50 },
+			autoSave: {
+				debounceMs: 100,
+				maxWaitMs: 500,
+				maxRetries: 1,
+				retryBaseMs: 50,
+			},
 			onSaveStateChange: (state) => states.push(state),
 			now: () => FIXED_TS,
 		});

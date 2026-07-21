@@ -127,14 +127,18 @@ describe("FR-160 persistence lifecycle", () => {
 				<DirtyProbe />
 			</CanvasStudio>,
 		);
-		await act(async () => { /* flush effects */ });
+		await act(async () => {
+			/* flush effects */
+		});
 		expect(adapter.save).not.toHaveBeenCalled();
 
 		unmount();
 
 		expect(adapter.save).toHaveBeenCalledTimes(1);
 		expect(inputs[0]?.signal.aborted).toBe(false);
-		await act(async () => { /* flush effects */ });
+		await act(async () => {
+			/* flush effects */
+		});
 	});
 
 	it("clean unmount does not call the adapter at all", async () => {
@@ -147,7 +151,9 @@ describe("FR-160 persistence lifecycle", () => {
 				autoSave={false}
 			/>,
 		);
-		await act(async () => { /* flush effects */ });
+		await act(async () => {
+			/* flush effects */
+		});
 		unmount();
 		expect(adapter.save).not.toHaveBeenCalled();
 	});
@@ -170,7 +176,9 @@ describe("FR-160 persistence lifecycle", () => {
 				<DirtyProbe />
 			</CanvasStudio>,
 		);
-		await act(async () => { /* flush effects */ });
+		await act(async () => {
+			/* flush effects */
+		});
 
 		const event = new Event("beforeunload", { cancelable: true });
 		act(() => {
@@ -200,7 +208,9 @@ describe("FR-160 persistence lifecycle", () => {
 				autoSave={false}
 			/>,
 		);
-		await act(async () => { /* flush effects */ });
+		await act(async () => {
+			/* flush effects */
+		});
 
 		const event = new Event("beforeunload", { cancelable: true });
 		act(() => {

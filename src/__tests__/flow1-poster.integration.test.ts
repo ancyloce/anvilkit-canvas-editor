@@ -122,7 +122,9 @@ describe("Flow 1 — Create a Poster (PRD 0012 §17.4)", () => {
 		// 5. Crop the image through the crop actions (one undo entry).
 		const image = findImage(s.getIR());
 		expect(beginCrop(s, image.id)).toBe(true);
-		s.cropStore.getState().setDraft({ x: 0.1, y: 0.1, width: 0.6, height: 0.6 });
+		s.cropStore
+			.getState()
+			.setDraft({ x: 0.1, y: 0.1, width: 0.6, height: 0.6 });
 		commitCrop(s);
 		expect(findImage(s.getIR()).crop).toEqual({
 			x: 0.1,
