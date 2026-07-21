@@ -12,6 +12,7 @@ import {
 import { Label, Tag, Text, Transformer } from "react-konva";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { draggedIdsKey } from "../perf/active-nodes.js";
+import { findNodeById } from "../stage/find-node-by-id.js";
 import {
 	activeAnchorName,
 	type ChromeTheme,
@@ -273,7 +274,7 @@ function useTransformBadges(
 		const text = sizeTextRef.current;
 		if (!stage || !label || !text) return;
 		const [firstId] = selectionStore.getState().selectedIds;
-		const node = firstId ? stage.findOne(`.${firstId}`) : null;
+		const node = firstId ? findNodeById(stage, firstId) : null;
 		const angle = normalizeAngle(node?.rotation?.() ?? 0);
 		text.text(`${Math.round(angle)}°`);
 		positionBadgeAtCursor();
@@ -310,7 +311,7 @@ function useTransformerNodeSync({
 		if (!stage || !tr) return;
 		const nodes: Konva.Node[] = [];
 		for (const id of selectedIds) {
-			const n = stage.findOne(`.${id}`);
+			const n = findNodeById(stage, id);
 			if (n) nodes.push(n);
 		}
 		tr.nodes(nodes);
@@ -351,7 +352,7 @@ function useTransformerNodeSync({
 			if (!tr) return;
 			const nodes: Konva.Node[] = [];
 			for (const id of selectionStore.getState().selectedIds) {
-				const n = stage.findOne(`.${id}`);
+				const n = findNodeById(stage, id);
 				if (n) nodes.push(n);
 			}
 			tr.nodes(nodes);

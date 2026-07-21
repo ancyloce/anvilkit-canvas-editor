@@ -6,6 +6,7 @@ import type {
 	CanvasNodeRotateCommand,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
+import { findNodeById } from "../stage/find-node-by-id.js";
 import {
 	aspectFitScaleY,
 	nodeRenderOffset,
@@ -128,7 +129,7 @@ export function selectionBox(
 	let maxY = Number.NEGATIVE_INFINITY;
 	let found = false;
 	for (const id of ids) {
-		const node = stage.findOne(`.${id}`);
+		const node = findNodeById(stage, id);
 		if (!node) continue;
 		const r = node.getClientRect({
 			relativeTo: (layer ?? undefined) as Konva.Container | undefined,
@@ -198,7 +199,7 @@ export function collectTransformEndCommands(
 ): CanvasCommand[] {
 	const cmds: CanvasCommand[] = [];
 	for (const id of selectedIds) {
-		const knode = stage.findOne(`.${id}`) as Konva.Node | undefined;
+		const knode = findNodeById(stage, id);
 		const irNode = childById.get(id);
 		if (!knode || !irNode) continue;
 		// Locked nodes are protected from resize/rotate. If one slipped into
