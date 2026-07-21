@@ -37,8 +37,15 @@ const EDITABLE_TAG = /^(INPUT|TEXTAREA|SELECT)$/;
  */
 function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 	const ctx = useCanvasStudio();
-	const { stage, selectionStore, getIR, activePageId, commit, commitBatch } =
-		ctx;
+	const {
+		stage,
+		selectionStore,
+		getIR,
+		activePageId,
+		commit,
+		commitBatch,
+		commitCoalesced,
+	} = ctx;
 	const nudgeStep = opts.nudgeStep ?? 1;
 	const rotateStep = opts.rotateStep ?? 1;
 	// FR-041/043 space-hold Hand tool: the tool active when Space was first
@@ -55,6 +62,26 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 			if (cmds.length === 0) return;
 			if (cmds.length > 1) commitBatch(cmds);
 			else if (cmds[0]) commit(cmds[0]);
+		};
+
+		// Nudge/resize/rotate repeat on every OS key-repeat while a key is held
+		// (E-18): a 2s hold would otherwise flood history with ~30 undo entries
+		// and ~30 collab broadcasts. Coalesce dispatches sharing the same key +
+		// modifier + selection into one undo entry, the same way a drag does.
+		const dispatchCoalesced = (
+			cmds: CanvasCommand[],
+			mergeKey: string,
+		): void => {
+			if (cmds.length === 0) return;
+			if (!commitCoalesced) {
+				dispatch(cmds);
+				return;
+			}
+			if (cmds.length === 1 && cmds[0]) {
+				commitCoalesced(cmds[0], mergeKey);
+				return;
+			}
+			commitCoalesced({ type: "batch", commands: cmds }, mergeKey);
 		};
 
 		const onKeyDown = (e: KeyboardEvent): void => {
@@ -97,8 +124,19 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 				const isRedo = e.key === "y" || e.key === "Y" || e.shiftKey;
 				const history = ctx.historyStore.getState();
 				if (isRedo ? !history.canRedo() : !history.canUndo()) return;
-				const next = isRedo ? history.redo(getIR()) : history.undo(getIR());
-				ctx.sceneStore?.getState().setIR(next);
+				// Prefer the context-level seam — it fires onChange/onChanges like
+				// every other commit (E-20). Partial test contexts without it fall
+				// back to the pre-P0-9 direct historyStore -> sceneStore wiring;
+				// the store itself is crash-safe either way (a stale inverse is
+				// dropped, not thrown).
+				if (isRedo) {
+					if (ctx.redo) ctx.redo();
+					else ctx.sceneStore?.getState().setIR(history.redo(getIR()));
+				} else if (ctx.undo) {
+					ctx.undo();
+				} else {
+					ctx.sceneStore?.getState().setIR(history.undo(getIR()));
+				}
 				return;
 			}
 			// Group / ungroup (⌘G / ⌘⇧G). group-actions read the selection + handle
@@ -212,7 +250,7 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 			}
 			if (cmds) {
 				e.preventDefault();
-				dispatch(cmds);
+				dispatchCoalesced(cmds, `${e.key}:${shift}:${ids.join(",")}`);
 			}
 		};
 
@@ -244,6 +282,7 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 		activePageId,
 		commit,
 		commitBatch,
+		commitCoalesced,
 		ctx,
 		nudgeStep,
 		rotateStep,

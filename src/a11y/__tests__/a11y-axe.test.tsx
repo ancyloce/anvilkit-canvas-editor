@@ -187,10 +187,14 @@ describe("a11y — keyboard path parity (A11Y-2)", () => {
 		const node = page.root.children[0];
 		expect(node).toBeDefined();
 		// The mouse path, the keyboard layer, and the pure builder must agree —
-		// identical commands mean identical undo and collab behavior.
-		expect(h.studioCtx.commit).toHaveBeenCalledTimes(1);
-		expect(h.studioCtx.commit).toHaveBeenCalledWith(
+		// identical commands mean identical undo and collab behavior. Routed
+		// through `commitCoalesced` (E-18), not plain `commit` — see
+		// useCanvasKeyboard-nudge.test.tsx for the coalescing behavior itself.
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledWith(
 			nudgeCommand(node as never, 1, 0),
+			expect.any(String),
 		);
 	});
 });
