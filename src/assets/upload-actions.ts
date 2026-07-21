@@ -190,6 +190,14 @@ export async function uploadFilesImpl(
 		});
 		return [];
 	}
+	// Captured before any upload starts. Each `uploadSingleFile` only
+	// validates against ITS OWN resolve time — a task that finished (and
+	// returned ok:true) BEFORE a later document replacement never gets a
+	// chance to re-check, so the batch-level insert below re-validates
+	// against the document this batch actually started against (E-6):
+	// otherwise an earlier success can commit into a document the upload was
+	// never intended for.
+	const targetDocumentId = ctx.getIR().id;
 	const results = await Promise.all(
 		files.map((file) => uploadSingleFile(ctx, file)),
 	);
@@ -201,6 +209,7 @@ export async function uploadFilesImpl(
 			description: errors[0],
 		});
 	}
+	if (ctx.getIR().id !== targetDocumentId) return [];
 	const uploaded = results.flatMap((r) => (r.ok ? r.assets : []));
 	if (uploaded.length === 0) return [];
 	return insertAssetsImpl(ctx, uploaded, position);

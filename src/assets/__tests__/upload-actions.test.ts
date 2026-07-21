@@ -270,6 +270,58 @@ describe("uploadFilesImpl (B-10, FR-091/092)", () => {
 		expect(uploadStore.getState().tasks).toHaveLength(0);
 	});
 
+	it("does not insert an EARLIER success into a document replaced mid-batch (E-6)", async () => {
+		const releases: Array<() => void> = [];
+		const uploader: CanvasAssetUploader = {
+			upload: (files) => {
+				const f = files[0];
+				// "a.png" settles immediately — well before any replacement.
+				if (f?.name === "a.png") {
+					return Promise.resolve([{ id: "up-a", uri: "https://cdn/a.png" }]);
+				}
+				return new Promise((resolve) => {
+					releases.push(() =>
+						resolve([{ id: `up-${f?.name}`, uri: `https://cdn/${f?.name}` }]),
+					);
+				});
+			},
+		};
+		const { h, uploadStore, toaster } = setup(uploader);
+		const pending = uploadFilesImpl(
+			h.studioCtx,
+			[file("a.png"), file("b.png")],
+			undefined,
+			toaster,
+		);
+		// Let "a.png"'s upload -> settled() -> succeed() chain fully run — its
+		// OWN check correctly passes here, before anything has reset.
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(
+			uploadStore.getState().tasks.find((t) => t.file.name === "a.png")?.status,
+		).toBe("done");
+
+		// The document is replaced while "b.png" is still in flight — a real
+		// `replaceDocumentSnapshot` resets the upload store AND swaps the IR.
+		uploadStore.getState().reset();
+		h.setIR(
+			createCanvasIR({
+				id: "doc-2",
+				pages: [createPage({ id: "p2" })],
+				now: () => FIXED_TS,
+			}),
+		);
+		const releaseB = releases[0];
+		if (!releaseB) throw new Error("no release for b.png");
+		releaseB();
+
+		const ids = await pending;
+		// "a.png"'s already-succeeded upload must NOT land in the replaced
+		// document, even though its own settled() check passed.
+		expect(ids).toEqual([]);
+		expect(h.commits).toHaveLength(0);
+	});
+
 	it("failed uploads create NO nodes, mark tasks failed, toast the error", async () => {
 		const uploader: CanvasAssetUploader = {
 			upload: async () => {
