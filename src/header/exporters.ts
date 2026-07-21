@@ -74,13 +74,11 @@ function toExportWarnings(
  * pixel ratio; `quality` applies to the lossy formats (Konva forwards it to
  * `canvas.toDataURL`) and is a no-op for PNG.
  *
- * Content-only (no transformer handles, guides, or remote-presence chrome —
- * `exportStageContentDataURL`), and at the page's real 1:1 scale/position —
- * not whatever pan/zoom the user's viewport happened to be at (E-8). The
- * default dialog/headless export path is already safe (routed through an
- * offscreen `rasterizePage`); this brings the built-in exporters — reachable
- * via the still-shipped, root-exported `<ExportMenu>` and direct imports —
- * up to the same standard. Scale/position are restored in a `finally`.
+ * Content-only (no transformer handles, guides, or remote-presence chrome),
+ * and at the page's real 1:1 scale/position — not whatever pan/zoom the
+ * user's viewport happened to be at. `exportStageContentDataURL` itself
+ * snapshots/neutralizes/restores the stage's scale and position (E-8, E-14),
+ * so every caller — this one included — gets that guarantee for free.
  */
 function rasterExporter(
 	mimeType: "image/png" | "image/jpeg" | "image/webp",
@@ -90,24 +88,11 @@ function rasterExporter(
 		if (!stage) {
 			throw new Error(`${ext.toUpperCase()} export needs a ready Konva stage.`);
 		}
-		const prevScale = stage.scale();
-		const prevPosition = stage.position();
-		stage.scale({ x: 1, y: 1 });
-		stage.position({ x: 0, y: 0 });
-		let url: string;
-		try {
-			url = exportStageContentDataURL(stage, {
-				pixelRatio: 2 * (resolution || 1),
-				mimeType,
-				...(mimeType !== "image/png" && quality !== undefined
-					? { quality }
-					: {}),
-			});
-		} finally {
-			stage.scale(prevScale);
-			stage.position(prevPosition);
-			if (typeof stage.batchDraw === "function") stage.batchDraw();
-		}
+		const url = exportStageContentDataURL(stage, {
+			pixelRatio: 2 * (resolution || 1),
+			mimeType,
+			...(mimeType !== "image/png" && quality !== undefined ? { quality } : {}),
+		});
 		return {
 			filename: exportFilename(ir, ext),
 			data: url,
