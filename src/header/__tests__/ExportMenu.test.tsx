@@ -102,3 +102,25 @@ describe("ExportMenu — fidelity warnings (FR-041/UX-007, canvas-m3-008)", () =
 		});
 	});
 });
+
+describe("ExportMenu — quality normalization (E-9)", () => {
+	it("normalizes the 0-100 quality slider to 0-1 before calling the exporter", async () => {
+		const pngExporter: CanvasExporter = vi.fn(() => ({
+			filename: "design.png",
+			data: "data:image/png;base64,AAAA",
+			mimeType: "image/png",
+		}));
+		const { getByTestId } = renderMenu({ png: pngExporter });
+		fireEvent.click(getByTestId("canvas-export-trigger"));
+		fireEvent.click(getByTestId("canvas-export-png"));
+		fireEvent.click(getByTestId("canvas-export-save"));
+		await waitFor(() => {
+			expect(pngExporter).toHaveBeenCalled();
+		});
+		const request = (pngExporter as ReturnType<typeof vi.fn>).mock
+			.calls[0]?.[1] as { quality: number };
+		// Default slider value is 90 (0-100 scale) — must reach the exporter
+		// as 0.9 (0-1 scale, what Konva's toDataURL expects), not raw 90.
+		expect(request.quality).toBeCloseTo(0.9);
+	});
+});

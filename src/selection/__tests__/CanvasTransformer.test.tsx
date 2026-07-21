@@ -88,7 +88,14 @@ function fixtureIR(): CanvasIR {
 
 function makeFakeStage(nodes: Record<string, Konva.Node>): Konva.Stage {
 	return {
-		findOne: (sel: string) => nodes[sel.replace(/^\./, "")] ?? null,
+		// `findNodeById` (E-13) selects via a predicate, not a `.`-selector
+		// string — match real Konva's `findOne(fn)` semantics here too.
+		findOne: (selector: (node: { id(): string }) => boolean) => {
+			for (const [id, node] of Object.entries(nodes)) {
+				if (selector({ id: () => id, ...node })) return node;
+			}
+			return null;
+		},
 	} as unknown as Konva.Stage;
 }
 
@@ -375,18 +382,20 @@ describe("CanvasTransformer", () => {
 			b: { x: 80, y: 10, w: 60, h: 80 },
 		};
 		const stage = {
-			findOne: (sel: string) => {
-				const r = rects[sel.replace(/^\./, "")];
-				return r
-					? {
-							getClientRect: () => ({
-								x: r.x,
-								y: r.y,
-								width: r.w,
-								height: r.h,
-							}),
-						}
-					: null;
+			findOne: (selector: (node: { id(): string }) => boolean) => {
+				for (const [id, r] of Object.entries(rects)) {
+					const node = {
+						id: () => id,
+						getClientRect: () => ({
+							x: r.x,
+							y: r.y,
+							width: r.w,
+							height: r.h,
+						}),
+					};
+					if (selector(node)) return node;
+				}
+				return null;
 			},
 		} as unknown as Konva.Stage;
 		const box = selectionBox(stage, ["a", "b"], null);
@@ -402,7 +411,12 @@ describe("CanvasTransformer", () => {
 		// Konva node instance out from under the transformer mid-drag.
 		const nodeMap: Record<string, Konva.Node> = { rectA: nodeA };
 		const stage = {
-			findOne: (sel: string) => nodeMap[sel.replace(/^\./, "")] ?? null,
+			findOne: (selector: (node: { id(): string }) => boolean) => {
+				for (const [id, node] of Object.entries(nodeMap)) {
+					if (selector({ id: () => id, ...node })) return node;
+				}
+				return null;
+			},
 		} as unknown as Konva.Stage;
 		const { ctx } = makeCtx(stage, ir);
 		ctx.selectionStore.getState().setSelection(["rectA"]);

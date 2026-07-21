@@ -87,6 +87,7 @@ vi.mock("../render/rasterize-page.js", () => ({
 }));
 
 import { CanvasStudio, type Tool, useCanvasStudio } from "../index.js";
+import { GRID_CHROME_GROUP_NAME } from "../stage/Grid.js";
 
 function KbSelectProbe({ ids }: { ids: readonly string[] }): null {
 	const ctx = useCanvasStudio();
@@ -162,19 +163,21 @@ describe("CanvasStudio integration", () => {
 		// The merged layers still expose their former sub-sections as named
 		// Groups, in the same paint order, so the pre-consolidation isolation
 		// (background under objects; guides under selection) is preserved. The
-		// "grid" group (FR-112) sits between background and objects so grid
+		// grid group (FR-112) sits between background and objects so grid
 		// lines paint above the page fill but under content — and its name is
 		// what `export-stage.ts` hides during live-stage serialization.
 		const groupsByName = dedupeByName(groupCalls());
 		expect(Array.from(groupsByName.keys())).toEqual([
 			"background",
-			"grid",
+			GRID_CHROME_GROUP_NAME,
 			"objects",
 			"guides",
 			"selection",
 		]);
 		expect(groupsByName.get("background")?.props.listening).toBe(false);
-		expect(groupsByName.get("grid")?.props.listening).toBe(false);
+		expect(groupsByName.get(GRID_CHROME_GROUP_NAME)?.props.listening).toBe(
+			false,
+		);
 	});
 
 	it("routes a dragged node into the drag layer, leaving the rest in objects (I2-5)", () => {
