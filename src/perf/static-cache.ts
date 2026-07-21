@@ -8,6 +8,7 @@ import {
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { useEffect, useRef } from "react";
+import { findNodeById } from "../stage/find-node-by-id.js";
 import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
 import type { SelectionStoreApi } from "../stores/selection-store.js";
@@ -108,12 +109,12 @@ export function applyGroupCache(
 	const next = new Set(ids);
 	for (const id of prev) {
 		if (next.has(id)) continue;
-		const node = stage.findOne(`.${id}`);
+		const node = findNodeById(stage, id);
 		if (node && typeof node.clearCache === "function") node.clearCache();
 	}
 	for (const id of next) {
 		if (prev.has(id)) continue;
-		const node = stage.findOne(`.${id}`);
+		const node = findNodeById(stage, id);
 		if (node && typeof node.cache === "function") node.cache();
 	}
 	return next;
@@ -187,7 +188,7 @@ export function useStaticGroupCache(args: StaticGroupCacheArgs): void {
 				nextFingerprints.set(id, node);
 				if (!prevCachedIds.has(id)) continue; // just entered — already fresh
 				if (fingerprintRef.current.get(id) === node) continue; // unchanged
-				const knode = stage.findOne(`.${id}`);
+				const knode = findNodeById(stage, id);
 				if (knode && typeof knode.cache === "function") knode.cache();
 			}
 			fingerprintRef.current = nextFingerprints;
