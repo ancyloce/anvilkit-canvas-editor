@@ -1,4 +1,8 @@
-import { type CanvasIR, createCanvasIR, createPage } from "@anvilkit/canvas-core";
+import {
+	type CanvasIR,
+	createCanvasIR,
+	createPage,
+} from "@anvilkit/canvas-core";
 import { cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -141,7 +145,10 @@ describe("Grid (FR-112)", () => {
 		for (const subdivisions of [0, 1]) {
 			calls.length = 0;
 			cleanup();
-			const { h } = renderGrid({ gridSize: 100, gridSubdivisions: subdivisions });
+			const { h } = renderGrid({
+				gridSize: 100,
+				gridSubdivisions: subdivisions,
+			});
 			const vs = h.studioCtx.viewportStore.getState();
 			expect(linesByStroke(vs.subGridColor)).toHaveLength(0);
 			expect(linesByStroke(vs.gridColor)).toHaveLength(4);
@@ -181,7 +188,8 @@ describe("Grid (FR-112)", () => {
 		// 2 → 4 (1080 / 4 = 270 <= 512). Interior lines: 269 per axis.
 		expect(main).toHaveLength(269 * 2);
 		const verticals = main.filter(
-			(c) => (c.props.points as number[])[1] === 0 &&
+			(c) =>
+				(c.props.points as number[])[1] === 0 &&
 				(c.props.points as number[])[3] === 1080 &&
 				(c.props.points as number[])[0] === (c.props.points as number[])[2],
 		);

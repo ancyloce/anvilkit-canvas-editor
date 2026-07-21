@@ -25,3 +25,21 @@ export function nodeRenderOffset(node: CanvasNode): { x: number; y: number } {
 	}
 	return { x: 0, y: 0 };
 }
+
+/**
+ * `Konva.RegularPolygon`/`Konva.Star` take a single `radius` (no independent
+ * width/height), so `CanvasNodeRenderer` fills a non-square bounding box by
+ * layering this ratio ON TOP OF the node's own `transform.scaleY` when
+ * setting the live Konva node's `scaleY` prop. Interaction code reading
+ * `knode.scaleY()` back off the stage (transformer commit) MUST divide by
+ * this SAME ratio to recover the IR-space scale the user's gesture actually
+ * produced — otherwise the aspect-fit factor gets baked in a second time.
+ * Single source of truth for that composition, mirroring
+ * {@link nodeRenderOffset}.
+ */
+export function aspectFitScaleY(bounds: {
+	width: number;
+	height: number;
+}): number {
+	return bounds.width > 0 ? bounds.height / bounds.width : 1;
+}

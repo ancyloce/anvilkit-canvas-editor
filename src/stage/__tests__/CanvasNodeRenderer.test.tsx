@@ -49,7 +49,8 @@ vi.mock("react-konva", () => ({
 
 const useImageMock = vi.fn(() => [null, "loading"]);
 vi.mock("use-image", () => ({
-	default: (uri: string) => useImageMock(uri),
+	default: (uri: string, crossOrigin?: string) =>
+		useImageMock(uri, crossOrigin),
 }));
 
 import {
@@ -261,6 +262,27 @@ describe("CanvasNodeRenderer", () => {
 		expect(callsOfType("Image")[0]?.props.image).toBe(fakeImg);
 	});
 
+	it("loads the image in CORS mode so an exported stage doesn't taint (E-1)", () => {
+		const fakeImg = { src: "data:image/png;base64,XXX" } as HTMLImageElement;
+		useImageMock.mockReturnValueOnce([fakeImg, "loaded"]);
+		const image = createImage({
+			id: "i1",
+			bounds: { width: 100, height: 100 },
+			assetId: "a1",
+		});
+		render(
+			<CanvasAssetsContext.Provider
+				value={{ a1: { id: "a1", uri: "https://example.com/a.png" } }}
+			>
+				<CanvasNodeRenderer node={image} />
+			</CanvasAssetsContext.Provider>,
+		);
+		expect(useImageMock).toHaveBeenCalledWith(
+			"https://example.com/a.png",
+			"anonymous",
+		);
+	});
+
 	it("passes the crop rect to Image when the node has a crop", () => {
 		const fakeImg = { src: "data:image/png;base64,XXX" } as HTMLImageElement;
 		useImageMock.mockReturnValueOnce([fakeImg, "loaded"]);
@@ -457,6 +479,27 @@ describe("CanvasNodeRenderer", () => {
 		);
 		expect(callsOfType("Image")).toHaveLength(1);
 		expect(callsOfType("Image")[0]?.props.image).toBe(fakeImg);
+	});
+
+	it("loads the svg asset in CORS mode too (E-1)", () => {
+		const fakeImg = { src: "https://example.com/a.svg" } as HTMLImageElement;
+		useImageMock.mockReturnValueOnce([fakeImg, "loaded"]);
+		const svg = createSvg({
+			id: "s1",
+			bounds: { width: 100, height: 100 },
+			assetId: "a1",
+		});
+		render(
+			<CanvasAssetsContext.Provider
+				value={{ a1: { id: "a1", uri: "https://example.com/a.svg" } }}
+			>
+				<CanvasNodeRenderer node={svg} />
+			</CanvasAssetsContext.Provider>,
+		);
+		expect(useImageMock).toHaveBeenCalledWith(
+			"https://example.com/a.svg",
+			"anonymous",
+		);
 	});
 
 	const placeholderFixture = (
@@ -950,6 +993,33 @@ describe("CanvasNodeRenderer — video / audio", () => {
 		// No editor chrome outside a studio context.
 		expect(callsOfType("Rect")).toHaveLength(0);
 		expect(callsOfType("Text")).toHaveLength(0);
+	});
+
+	it("loads the video poster in CORS mode too (E-1)", () => {
+		const fakeImg = {
+			src: "https://example.com/poster.png",
+		} as HTMLImageElement;
+		useImageMock.mockReturnValueOnce([fakeImg, "loaded"]);
+		render(
+			<CanvasAssetsContext.Provider
+				value={{
+					poster1: { id: "poster1", uri: "https://example.com/poster.png" },
+				}}
+			>
+				<CanvasNodeRenderer
+					node={createVideo({
+						id: "v1",
+						bounds: { width: 100, height: 60 },
+						assetId: "asset-1",
+						poster: "poster1",
+					})}
+				/>
+			</CanvasAssetsContext.Provider>,
+		);
+		expect(useImageMock).toHaveBeenCalledWith(
+			"https://example.com/poster.png",
+			"anonymous",
+		);
 	});
 
 	it("video with a dangling poster assetId falls back to the placeholder like no poster at all", () => {

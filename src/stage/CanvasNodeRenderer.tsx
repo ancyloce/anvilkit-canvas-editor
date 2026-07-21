@@ -74,7 +74,7 @@ import {
 	ISOLATION_DIM_OPACITY,
 	IsolationRenderContext,
 } from "./isolation-render-context.js";
-import { nodeRenderOffset } from "./node-render-offset.js";
+import { aspectFitScaleY, nodeRenderOffset } from "./node-render-offset.js";
 
 export interface CanvasNodeRendererProps {
 	node: CanvasNode;
@@ -431,21 +431,6 @@ function CanvasEllipseNodeRenderer({ node }: { node: CanvasEllipseNode }) {
 	);
 }
 
-/**
- * `Konva.RegularPolygon` and `Konva.Star` (used below) are both centered at
- * `(x, y)` like `Konva.Ellipse`, but unlike Ellipse they take a single
- * `radius` — no separate radiusX/radiusY for a non-square bounding box. A
- * uniform `radius = bounds.width / 2` plus this aspect-fit `scaleY`
- * (layered on TOP of the node's own `transform.scaleY`, matching how bounds
- * and transform.scale already compose for every other kind) stretches the
- * shape to fill a non-square box the same way core's SVG vertex helper does
- * (`computePolygonVertices`/`computeStarVertices` support independent
- * rx/ry), so the stage and an export agree.
- */
-function aspectFitScaleY(bounds: { width: number; height: number }): number {
-	return bounds.width > 0 ? bounds.height / bounds.width : 1;
-}
-
 function CanvasPolygonNodeRenderer({ node }: { node: CanvasPolygonNode }) {
 	const base = commonProps(node);
 	const offset = nodeRenderOffset(node);
@@ -791,7 +776,10 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 	const isInteractive = use(CanvasStudioContext) !== null;
 	const t = useCanvasT();
 	const asset = useCanvasAsset(node.assetId);
-	const [image, status] = useImage(asset?.uri ?? "");
+	// CORS mode (E-1): a cross-origin source (e.g. an Unsplash hotlink the
+	// asset manager stores as-is) otherwise taints the canvas, so
+	// `stage.toDataURL()` throws SecurityError on export/thumbnail/save.
+	const [image, status] = useImage(asset?.uri ?? "", "anonymous");
 	// FR-170: a toast for the "unresolvable asset reference" case specifically
 	// — NOT the `status === "failed"` (load error) case below, which is a
 	// different, already-visible failure mode.
@@ -925,7 +913,8 @@ function CanvasSvgNodeRenderer({ node }: { node: CanvasSvgNode }) {
 	const isInteractive = use(CanvasStudioContext) !== null;
 	const t = useCanvasT();
 	const asset = useCanvasAsset(node.assetId);
-	const [image, status] = useImage(asset?.uri ?? "");
+	// CORS mode (E-1) — see CanvasImageNodeRenderer above.
+	const [image, status] = useImage(asset?.uri ?? "", "anonymous");
 	// FR-170: same "unresolvable asset reference" toast the image renderer
 	// fires — shares the module-level batch so a mixed image+svg document
 	// still coalesces into one toast.
@@ -1220,7 +1209,8 @@ function CanvasVideoNodeRenderer({ node }: { node: CanvasVideoNode }) {
 	// Hooks cannot be conditional, so probe unconditionally like the frame
 	// placeholder does — an empty assetId resolves to `undefined`.
 	const posterAsset = useCanvasAsset(node.poster ?? "");
-	const [image, status] = useImage(posterAsset?.uri ?? "");
+	// CORS mode (E-1) — see CanvasImageNodeRenderer above.
+	const [image, status] = useImage(posterAsset?.uri ?? "", "anonymous");
 	const hasPoster = node.poster !== undefined && status === "loaded" && !!image;
 
 	if (!hasPoster && !isInteractive) {
