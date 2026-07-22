@@ -4004,14 +4004,14 @@
 					]
 				},
 				{
-					"id": 581,
+					"id": 595,
 					"name": "AddPageOptions",
 					"variant": "declaration",
 					"kind": 256,
 					"flags": {},
 					"children": [
 						{
-							"id": 582,
+							"id": 596,
 							"name": "name",
 							"variant": "declaration",
 							"kind": 1024,
@@ -4024,7 +4024,7 @@
 							}
 						},
 						{
-							"id": 583,
+							"id": 597,
 							"name": "size",
 							"variant": "declaration",
 							"kind": 1024,
@@ -4047,8 +4047,8 @@
 						{
 							"title": "Properties",
 							"children": [
-								582,
-								583
+								596,
+								597
 							]
 						}
 					]
@@ -4845,14 +4845,14 @@
 					]
 				},
 				{
-					"id": 621,
+					"id": 635,
 					"name": "BrandPanelProps",
 					"variant": "declaration",
 					"kind": 256,
 					"flags": {},
 					"children": [
 						{
-							"id": 622,
+							"id": 636,
 							"name": "className",
 							"variant": "declaration",
 							"kind": 1024,
@@ -4869,7 +4869,7 @@
 						{
 							"title": "Properties",
 							"children": [
-								622
+								636
 							]
 						}
 					]
@@ -20545,14 +20545,14 @@
 					]
 				},
 				{
-					"id": 570,
+					"id": 584,
 					"name": "ClonePageOptions",
 					"variant": "declaration",
 					"kind": 256,
 					"flags": {},
 					"children": [
 						{
-							"id": 571,
+							"id": 585,
 							"name": "name",
 							"variant": "declaration",
 							"kind": 1024,
@@ -20577,7 +20577,7 @@
 						{
 							"title": "Properties",
 							"children": [
-								571
+								585
 							]
 						}
 					]
@@ -22326,14 +22326,14 @@
 					]
 				},
 				{
-					"id": 579,
+					"id": 593,
 					"name": "PageNavigatorProps",
 					"variant": "declaration",
 					"kind": 256,
 					"flags": {},
 					"children": [
 						{
-							"id": 580,
+							"id": 594,
 							"name": "id",
 							"variant": "declaration",
 							"kind": 1024,
@@ -22358,7 +22358,7 @@
 						{
 							"title": "Properties",
 							"children": [
-								580
+								594
 							]
 						}
 					]
@@ -24084,14 +24084,14 @@
 					]
 				},
 				{
-					"id": 613,
+					"id": 627,
 					"name": "SizePresetPickerProps",
 					"variant": "declaration",
 					"kind": 256,
 					"flags": {},
 					"children": [
 						{
-							"id": 614,
+							"id": 628,
 							"name": "onSelect",
 							"variant": "declaration",
 							"kind": 1024,
@@ -24109,21 +24109,21 @@
 							"type": {
 								"type": "reflection",
 								"declaration": {
-									"id": 615,
+									"id": 629,
 									"name": "__type",
 									"variant": "declaration",
 									"kind": 65536,
 									"flags": {},
 									"signatures": [
 										{
-											"id": 616,
+											"id": 630,
 											"name": "__type",
 											"variant": "signature",
 											"kind": 4096,
 											"flags": {},
 											"parameters": [
 												{
-													"id": 617,
+													"id": 631,
 													"name": "preset",
 													"variant": "param",
 													"kind": 32768,
@@ -24154,7 +24154,7 @@
 						{
 							"title": "Properties",
 							"children": [
-								614
+								628
 							]
 						}
 					]
@@ -25555,7 +25555,7 @@
 					}
 				},
 				{
-					"id": 625,
+					"id": 572,
 					"name": "CampaignResizeResult",
 					"variant": "declaration",
 					"kind": 2097152,
@@ -25570,7 +25570,7 @@
 								"kind": "inline-tag",
 								"tag": "@link",
 								"text": "resizeActivePageToVariants",
-								"target": 632
+								"target": 579
 							},
 							{
 								"kind": "text",
@@ -25608,14 +25608,14 @@
 							{
 								"type": "reflection",
 								"declaration": {
-									"id": 626,
+									"id": 573,
 									"name": "__type",
 									"variant": "declaration",
 									"kind": 65536,
 									"flags": {},
 									"children": [
 										{
-											"id": 627,
+											"id": 574,
 											"name": "ok",
 											"variant": "declaration",
 											"kind": 1024,
@@ -25626,7 +25626,7 @@
 											}
 										},
 										{
-											"id": 628,
+											"id": 575,
 											"name": "pageIds",
 											"variant": "declaration",
 											"kind": 1024,
@@ -25648,8 +25648,8 @@
 										{
 											"title": "Properties",
 											"children": [
-												627,
-												628
+												574,
+												575
 											]
 										}
 									]
@@ -25658,14 +25658,14 @@
 							{
 								"type": "reflection",
 								"declaration": {
-									"id": 629,
+									"id": 576,
 									"name": "__type",
 									"variant": "declaration",
 									"kind": 65536,
 									"flags": {},
 									"children": [
 										{
-											"id": 631,
+											"id": 578,
 											"name": "message",
 											"variant": "declaration",
 											"kind": 1024,
@@ -25676,7 +25676,7 @@
 											}
 										},
 										{
-											"id": 630,
+											"id": 577,
 											"name": "ok",
 											"variant": "declaration",
 											"kind": 1024,
@@ -25691,8 +25691,8 @@
 										{
 											"title": "Properties",
 											"children": [
-												631,
-												630
+												578,
+												577
 											]
 										}
 									]
@@ -27338,14 +27338,14 @@
 					"defaultValue": "3"
 				},
 				{
-					"id": 584,
+					"id": 598,
 					"name": "addPage",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 585,
+							"id": 599,
 							"name": "addPage",
 							"variant": "signature",
 							"kind": 4096,
@@ -27368,7 +27368,7 @@
 							},
 							"parameters": [
 								{
-									"id": 586,
+									"id": 600,
 									"name": "ctx",
 									"variant": "param",
 									"kind": 32768,
@@ -27381,14 +27381,14 @@
 									}
 								},
 								{
-									"id": 587,
+									"id": 601,
 									"name": "opts",
 									"variant": "param",
 									"kind": 32768,
 									"flags": {},
 									"type": {
 										"type": "reference",
-										"target": 581,
+										"target": 595,
 										"name": "AddPageOptions",
 										"package": "@anvilkit/canvas-editor"
 									},
@@ -27500,14 +27500,14 @@
 					]
 				},
 				{
-					"id": 618,
+					"id": 632,
 					"name": "BrandPanel",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 619,
+							"id": 633,
 							"name": "BrandPanel",
 							"variant": "signature",
 							"kind": 4096,
@@ -27554,14 +27554,14 @@
 							},
 							"parameters": [
 								{
-									"id": 620,
+									"id": 634,
 									"name": "__namedParameters",
 									"variant": "param",
 									"kind": 32768,
 									"flags": {},
 									"type": {
 										"type": "reference",
-										"target": 621,
+										"target": 635,
 										"name": "BrandPanelProps",
 										"package": "@anvilkit/canvas-editor"
 									}
@@ -27591,14 +27591,14 @@
 					]
 				},
 				{
-					"id": 623,
+					"id": 570,
 					"name": "CampaignResizePanel",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 624,
+							"id": 571,
 							"name": "CampaignResizePanel",
 							"variant": "signature",
 							"kind": 4096,
@@ -27793,14 +27793,14 @@
 					]
 				},
 				{
-					"id": 572,
+					"id": 586,
 					"name": "clonePage",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 573,
+							"id": 587,
 							"name": "clonePage",
 							"variant": "signature",
 							"kind": 4096,
@@ -27887,7 +27887,7 @@
 							},
 							"parameters": [
 								{
-									"id": 574,
+									"id": 588,
 									"name": "page",
 									"variant": "param",
 									"kind": 32768,
@@ -27904,14 +27904,14 @@
 									}
 								},
 								{
-									"id": 575,
+									"id": 589,
 									"name": "opts",
 									"variant": "param",
 									"kind": 32768,
 									"flags": {},
 									"type": {
 										"type": "reference",
-										"target": 570,
+										"target": 584,
 										"name": "ClonePageOptions",
 										"package": "@anvilkit/canvas-editor"
 									},
@@ -28666,14 +28666,14 @@
 					]
 				},
 				{
-					"id": 588,
+					"id": 602,
 					"name": "deletePage",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 589,
+							"id": 603,
 							"name": "deletePage",
 							"variant": "signature",
 							"kind": 4096,
@@ -28704,7 +28704,7 @@
 							},
 							"parameters": [
 								{
-									"id": 590,
+									"id": 604,
 									"name": "ctx",
 									"variant": "param",
 									"kind": 32768,
@@ -28717,7 +28717,7 @@
 									}
 								},
 								{
-									"id": 591,
+									"id": 605,
 									"name": "pageId",
 									"variant": "param",
 									"kind": 32768,
@@ -28728,7 +28728,7 @@
 									}
 								},
 								{
-									"id": 592,
+									"id": 606,
 									"name": "toaster",
 									"variant": "param",
 									"kind": 32768,
@@ -28881,14 +28881,14 @@
 					]
 				},
 				{
-					"id": 593,
+					"id": 607,
 					"name": "duplicateCurrentPage",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 594,
+							"id": 608,
 							"name": "duplicateCurrentPage",
 							"variant": "signature",
 							"kind": 4096,
@@ -28911,7 +28911,7 @@
 							},
 							"parameters": [
 								{
-									"id": 595,
+									"id": 609,
 									"name": "ctx",
 									"variant": "param",
 									"kind": 32768,
@@ -29833,28 +29833,28 @@
 					]
 				},
 				{
-					"id": 576,
+					"id": 590,
 					"name": "PageNavigator",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 577,
+							"id": 591,
 							"name": "PageNavigator",
 							"variant": "signature",
 							"kind": 4096,
 							"flags": {},
 							"parameters": [
 								{
-									"id": 578,
+									"id": 592,
 									"name": "__namedParameters",
 									"variant": "param",
 									"kind": 32768,
 									"flags": {},
 									"type": {
 										"type": "reference",
-										"target": 579,
+										"target": 593,
 										"name": "PageNavigatorProps",
 										"package": "@anvilkit/canvas-editor"
 									}
@@ -30195,14 +30195,14 @@
 					]
 				},
 				{
-					"id": 596,
+					"id": 610,
 					"name": "renamePage",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 597,
+							"id": 611,
 							"name": "renamePage",
 							"variant": "signature",
 							"kind": 4096,
@@ -30233,7 +30233,7 @@
 							},
 							"parameters": [
 								{
-									"id": 598,
+									"id": 612,
 									"name": "ctx",
 									"variant": "param",
 									"kind": 32768,
@@ -30246,7 +30246,7 @@
 									}
 								},
 								{
-									"id": 599,
+									"id": 613,
 									"name": "pageId",
 									"variant": "param",
 									"kind": 32768,
@@ -30257,7 +30257,7 @@
 									}
 								},
 								{
-									"id": 600,
+									"id": 614,
 									"name": "name",
 									"variant": "param",
 									"kind": 32768,
@@ -30285,14 +30285,14 @@
 					]
 				},
 				{
-					"id": 601,
+					"id": 615,
 					"name": "reorderPage",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 602,
+							"id": 616,
 							"name": "reorderPage",
 							"variant": "signature",
 							"kind": 4096,
@@ -30323,7 +30323,7 @@
 							},
 							"parameters": [
 								{
-									"id": 603,
+									"id": 617,
 									"name": "ctx",
 									"variant": "param",
 									"kind": 32768,
@@ -30336,7 +30336,7 @@
 									}
 								},
 								{
-									"id": 604,
+									"id": 618,
 									"name": "pageId",
 									"variant": "param",
 									"kind": 32768,
@@ -30347,7 +30347,7 @@
 									}
 								},
 								{
-									"id": 605,
+									"id": 619,
 									"name": "toIndex",
 									"variant": "param",
 									"kind": 32768,
@@ -30366,14 +30366,14 @@
 					]
 				},
 				{
-					"id": 632,
+					"id": 579,
 					"name": "resizeActivePageToVariants",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 633,
+							"id": 580,
 							"name": "resizeActivePageToVariants",
 							"variant": "signature",
 							"kind": 4096,
@@ -30404,7 +30404,7 @@
 							},
 							"parameters": [
 								{
-									"id": 634,
+									"id": 581,
 									"name": "ctx",
 									"variant": "param",
 									"kind": 32768,
@@ -30417,7 +30417,7 @@
 									}
 								},
 								{
-									"id": 635,
+									"id": 582,
 									"name": "sourcePageId",
 									"variant": "param",
 									"kind": 32768,
@@ -30428,7 +30428,7 @@
 									}
 								},
 								{
-									"id": 636,
+									"id": 583,
 									"name": "presets",
 									"variant": "param",
 									"kind": 32768,
@@ -30454,7 +30454,7 @@
 							],
 							"type": {
 								"type": "reference",
-								"target": 625,
+								"target": 572,
 								"name": "CampaignResizeResult",
 								"package": "@anvilkit/canvas-editor"
 							}
@@ -30906,28 +30906,28 @@
 					]
 				},
 				{
-					"id": 610,
+					"id": 624,
 					"name": "SizePresetPicker",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 611,
+							"id": 625,
 							"name": "SizePresetPicker",
 							"variant": "signature",
 							"kind": 4096,
 							"flags": {},
 							"parameters": [
 								{
-									"id": 612,
+									"id": 626,
 									"name": "__namedParameters",
 									"variant": "param",
 									"kind": 32768,
 									"flags": {},
 									"type": {
 										"type": "reference",
-										"target": 613,
+										"target": 627,
 										"name": "SizePresetPickerProps",
 										"package": "@anvilkit/canvas-editor"
 									}
@@ -30948,14 +30948,14 @@
 					]
 				},
 				{
-					"id": 606,
+					"id": 620,
 					"name": "switchToPage",
 					"variant": "declaration",
 					"kind": 64,
 					"flags": {},
 					"signatures": [
 						{
-							"id": 607,
+							"id": 621,
 							"name": "switchToPage",
 							"variant": "signature",
 							"kind": 4096,
@@ -30978,7 +30978,7 @@
 							},
 							"parameters": [
 								{
-									"id": 608,
+									"id": 622,
 									"name": "ctx",
 									"variant": "param",
 									"kind": 32768,
@@ -30991,7 +30991,7 @@
 									}
 								},
 								{
-									"id": 609,
+									"id": 623,
 									"name": "pageId",
 									"variant": "param",
 									"kind": 32768,
@@ -32597,10 +32597,10 @@
 				{
 					"title": "Interfaces",
 					"children": [
-						581,
+						595,
 						109,
 						113,
-						621,
+						635,
 						885,
 						94,
 						98,
@@ -32643,7 +32643,7 @@
 						999,
 						789,
 						1031,
-						570,
+						584,
 						647,
 						1217,
 						1017,
@@ -32655,7 +32655,7 @@
 						666,
 						722,
 						684,
-						579,
+						593,
 						1148,
 						1154,
 						903,
@@ -32665,7 +32665,7 @@
 						910,
 						819,
 						930,
-						613,
+						627,
 						1160,
 						706,
 						1009,
@@ -32679,7 +32679,7 @@
 					"title": "Type Aliases",
 					"children": [
 						1114,
-						625,
+						572,
 						13,
 						428,
 						433,
@@ -32722,14 +32722,14 @@
 				{
 					"title": "Functions",
 					"children": [
-						584,
+						598,
 						125,
-						618,
-						623,
+						632,
+						570,
 						204,
 						1023,
 						1028,
-						572,
+						586,
 						644,
 						88,
 						545,
@@ -32740,10 +32740,10 @@
 						761,
 						875,
 						1220,
-						588,
+						602,
 						967,
 						552,
-						593,
+						607,
 						989,
 						1138,
 						637,
@@ -32755,20 +32755,20 @@
 						719,
 						742,
 						681,
-						576,
+						590,
 						1145,
 						1151,
 						724,
 						815,
-						596,
-						601,
-						632,
+						610,
+						615,
+						579,
 						129,
 						977,
 						562,
 						697,
-						610,
-						606,
+						624,
+						620,
 						1157,
 						729,
 						703,
@@ -51553,338 +51553,338 @@
 		},
 		"570": {
 			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/CampaignResizePanel.tsx",
+			"qualifiedName": "CampaignResizePanel"
+		},
+		"571": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/CampaignResizePanel.tsx",
+			"qualifiedName": "CampaignResizePanel"
+		},
+		"572": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "CampaignResizeResult"
+		},
+		"573": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "__type"
+		},
+		"574": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "__type.ok"
+		},
+		"575": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "__type.pageIds"
+		},
+		"576": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "__type"
+		},
+		"577": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "__type.ok"
+		},
+		"578": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "__type.message"
+		},
+		"579": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "resizeActivePageToVariants"
+		},
+		"580": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "resizeActivePageToVariants"
+		},
+		"581": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "ctx"
+		},
+		"582": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "sourcePageId"
+		},
+		"583": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/campaign-resize-actions.ts",
+			"qualifiedName": "presets"
+		},
+		"584": {
+			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/clone-page.ts",
 			"qualifiedName": "ClonePageOptions"
 		},
-		"571": {
+		"585": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/clone-page.ts",
 			"qualifiedName": "ClonePageOptions.name"
 		},
-		"572": {
+		"586": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/clone-page.ts",
 			"qualifiedName": "clonePage"
 		},
-		"573": {
+		"587": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/clone-page.ts",
 			"qualifiedName": "clonePage"
 		},
-		"574": {
+		"588": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/clone-page.ts",
 			"qualifiedName": "page"
 		},
-		"575": {
+		"589": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/clone-page.ts",
 			"qualifiedName": "opts"
 		},
-		"576": {
+		"590": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/PageNavigator.tsx",
 			"qualifiedName": "PageNavigator"
 		},
-		"577": {
+		"591": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/PageNavigator.tsx",
 			"qualifiedName": "PageNavigator"
 		},
-		"578": {
+		"592": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/PageNavigator.tsx",
 			"qualifiedName": "__0"
 		},
-		"579": {
+		"593": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/PageNavigator.tsx",
 			"qualifiedName": "PageNavigatorProps"
 		},
-		"580": {
+		"594": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/PageNavigator.tsx",
 			"qualifiedName": "PageNavigatorProps.id"
 		},
-		"581": {
+		"595": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
 			"qualifiedName": "AddPageOptions"
 		},
-		"582": {
+		"596": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
 			"qualifiedName": "AddPageOptions.name"
 		},
-		"583": {
+		"597": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
 			"qualifiedName": "AddPageOptions.size"
 		},
-		"584": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "addPage"
-		},
-		"585": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "addPage"
-		},
-		"586": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "ctx"
-		},
-		"587": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "opts"
-		},
-		"588": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "deletePage"
-		},
-		"589": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "deletePage"
-		},
-		"590": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "ctx"
-		},
-		"591": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "pageId"
-		},
-		"592": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "toaster"
-		},
-		"593": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "duplicateCurrentPage"
-		},
-		"594": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "duplicateCurrentPage"
-		},
-		"595": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "ctx"
-		},
-		"596": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "renamePage"
-		},
-		"597": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "renamePage"
-		},
 		"598": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "ctx"
+			"qualifiedName": "addPage"
 		},
 		"599": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "pageId"
+			"qualifiedName": "addPage"
 		},
 		"600": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "name"
+			"qualifiedName": "ctx"
 		},
 		"601": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "reorderPage"
+			"qualifiedName": "opts"
 		},
 		"602": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "reorderPage"
+			"qualifiedName": "deletePage"
 		},
 		"603": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "ctx"
+			"qualifiedName": "deletePage"
 		},
 		"604": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "pageId"
+			"qualifiedName": "ctx"
 		},
 		"605": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "toIndex"
+			"qualifiedName": "pageId"
 		},
 		"606": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "switchToPage"
+			"qualifiedName": "toaster"
 		},
 		"607": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "switchToPage"
+			"qualifiedName": "duplicateCurrentPage"
 		},
 		"608": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "ctx"
+			"qualifiedName": "duplicateCurrentPage"
 		},
 		"609": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/page-actions.ts",
-			"qualifiedName": "pageId"
+			"qualifiedName": "ctx"
 		},
 		"610": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/SizePresetPicker.tsx",
-			"qualifiedName": "SizePresetPicker"
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "renamePage"
 		},
 		"611": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "renamePage"
+		},
+		"612": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "ctx"
+		},
+		"613": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "pageId"
+		},
+		"614": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "name"
+		},
+		"615": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "reorderPage"
+		},
+		"616": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "reorderPage"
+		},
+		"617": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "ctx"
+		},
+		"618": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "pageId"
+		},
+		"619": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "toIndex"
+		},
+		"620": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "switchToPage"
+		},
+		"621": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "switchToPage"
+		},
+		"622": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "ctx"
+		},
+		"623": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/page-actions.ts",
+			"qualifiedName": "pageId"
+		},
+		"624": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/SizePresetPicker.tsx",
 			"qualifiedName": "SizePresetPicker"
 		},
-		"612": {
+		"625": {
+			"packageName": "@anvilkit/canvas-editor",
+			"packagePath": "src/pages/SizePresetPicker.tsx",
+			"qualifiedName": "SizePresetPicker"
+		},
+		"626": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/SizePresetPicker.tsx",
 			"qualifiedName": "__0"
 		},
-		"613": {
+		"627": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/SizePresetPicker.tsx",
 			"qualifiedName": "SizePresetPickerProps"
 		},
-		"614": {
+		"628": {
 			"packageName": "@anvilkit/canvas-editor",
 			"packagePath": "src/pages/SizePresetPicker.tsx",
 			"qualifiedName": "SizePresetPickerProps.onSelect"
 		},
-		"615": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/SizePresetPicker.tsx",
-			"qualifiedName": "__type"
-		},
-		"616": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/SizePresetPicker.tsx",
-			"qualifiedName": "__type"
-		},
-		"617": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/pages/SizePresetPicker.tsx",
-			"qualifiedName": "preset"
-		},
-		"618": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/BrandPanel.tsx",
-			"qualifiedName": "BrandPanel"
-		},
-		"619": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/BrandPanel.tsx",
-			"qualifiedName": "BrandPanel"
-		},
-		"620": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/BrandPanel.tsx",
-			"qualifiedName": "__0"
-		},
-		"621": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/BrandPanel.tsx",
-			"qualifiedName": "BrandPanelProps"
-		},
-		"622": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/BrandPanel.tsx",
-			"qualifiedName": "BrandPanelProps.className"
-		},
-		"623": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/CampaignResizePanel.tsx",
-			"qualifiedName": "CampaignResizePanel"
-		},
-		"624": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/CampaignResizePanel.tsx",
-			"qualifiedName": "CampaignResizePanel"
-		},
-		"625": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
-			"qualifiedName": "CampaignResizeResult"
-		},
-		"626": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
-			"qualifiedName": "__type"
-		},
-		"627": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
-			"qualifiedName": "__type.ok"
-		},
-		"628": {
-			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
-			"qualifiedName": "__type.pageIds"
-		},
 		"629": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
+			"packagePath": "src/pages/SizePresetPicker.tsx",
 			"qualifiedName": "__type"
 		},
 		"630": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
-			"qualifiedName": "__type.ok"
+			"packagePath": "src/pages/SizePresetPicker.tsx",
+			"qualifiedName": "__type"
 		},
 		"631": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
-			"qualifiedName": "__type.message"
+			"packagePath": "src/pages/SizePresetPicker.tsx",
+			"qualifiedName": "preset"
 		},
 		"632": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
-			"qualifiedName": "resizeActivePageToVariants"
+			"packagePath": "src/panels/BrandPanel.tsx",
+			"qualifiedName": "BrandPanel"
 		},
 		"633": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
-			"qualifiedName": "resizeActivePageToVariants"
+			"packagePath": "src/panels/BrandPanel.tsx",
+			"qualifiedName": "BrandPanel"
 		},
 		"634": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
-			"qualifiedName": "ctx"
+			"packagePath": "src/panels/BrandPanel.tsx",
+			"qualifiedName": "__0"
 		},
 		"635": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
-			"qualifiedName": "sourcePageId"
+			"packagePath": "src/panels/BrandPanel.tsx",
+			"qualifiedName": "BrandPanelProps"
 		},
 		"636": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/campaign-resize-actions.ts",
-			"qualifiedName": "presets"
+			"packagePath": "src/panels/BrandPanel.tsx",
+			"qualifiedName": "BrandPanelProps.className"
 		},
 		"637": {
 			"packageName": "@anvilkit/canvas-editor",
