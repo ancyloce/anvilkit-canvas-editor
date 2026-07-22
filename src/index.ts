@@ -108,6 +108,9 @@ export {
 	useCanvasStudioActions,
 	webpExporter,
 } from "./header/index.js";
+export { CampaignResizePanel } from "./pages/CampaignResizePanel.js";
+export type { CampaignResizeResult } from "./pages/campaign-resize-actions.js";
+export { resizeActivePageToVariants } from "./pages/campaign-resize-actions.js";
 // ── Pages ────────────────────────────────────────────────────────────────────
 export { type ClonePageOptions, clonePage } from "./pages/clone-page.js";
 export {
@@ -129,9 +132,6 @@ export {
 } from "./pages/SizePresetPicker.js";
 // ── Panels + inspector field primitives ──────────────────────────────────────
 export { BrandPanel, type BrandPanelProps } from "./panels/BrandPanel.js";
-export { CampaignResizePanel } from "./panels/CampaignResizePanel.js";
-export type { CampaignResizeResult } from "./panels/campaign-resize-actions.js";
-export { resizeActivePageToVariants } from "./panels/campaign-resize-actions.js";
 export {
 	ElementsPanel,
 	type ElementsPanelProps,
