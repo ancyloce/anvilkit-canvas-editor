@@ -3,6 +3,9 @@
 	"version": "0.1.2-rc.1",
 	"description": "React + Konva editor UI for AnvilKit Canvas Studio. Loads inside <Studio> via next/dynamic({ ssr: false }).",
 	"type": "module",
+	"engines": {
+		"node": ">=22.13"
+	},
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.js",
 	"types": "./dist/index.d.ts",
