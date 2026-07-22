@@ -19,7 +19,7 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
-import { CampaignResizePanel } from "../panels/CampaignResizePanel.js";
+import { CampaignResizePanel } from "./CampaignResizePanel.js";
 import { SizePresetPicker } from "./SizePresetPicker.js";
 
 export interface PageSettingsDialogProps {
