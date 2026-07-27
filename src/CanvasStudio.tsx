@@ -51,6 +51,7 @@ import type {
 import { PageNavigator } from "./pages/PageNavigator.js";
 import { draggedIdsKey } from "./perf/active-nodes.js";
 import { useStaticGroupCache } from "./perf/static-cache.js";
+import { loadCanvasDocument } from "./persistence/load-pipeline.js";
 import { RecoverDraftPrompt } from "./persistence/RecoverDraftPrompt.js";
 import {
 	type CanvasRecoveryAdapter,
@@ -210,6 +211,18 @@ export interface CanvasStudioProps {
 	 * warns while unsaved (FR-163), and pending changes flush on unmount.
 	 */
 	persistenceAdapter?: CanvasPersistenceAdapter;
+	/**
+	 * Fires when {@link CanvasPersistenceAdapter.load} rejects, or when the
+	 * document it resolves fails to parse, migrate, or validate (T-M0-04).
+	 *
+	 * Separate from {@link onError} on purpose: that one is the FR-172 render
+	 * error-boundary callback and carries a `React.ErrorInfo`, which a load
+	 * failure has no honest value for. A rejected load leaves `initialIR`
+	 * mounted and editable rather than breaking the editor, so the host needs
+	 * a way to hear about it — otherwise a document silently fails to load and
+	 * the user edits the wrong content.
+	 */
+	onLoadError?: (error: Error) => void;
 	/**
 	 * FR-164 local recovery (C-10). When present, the editor mirrors the
 	 * document into this adapter (debounced after each commit), clears it on
@@ -730,6 +743,7 @@ export function CanvasStudio({
 	renderShell,
 	continuousCreation = false,
 	persistenceAdapter,
+	onLoadError,
 	recoveryAdapter,
 	autoSave,
 	onSaveStateChange,
@@ -864,6 +878,53 @@ export function CanvasStudio({
 		],
 	);
 	const replaceDocument = useReplaceDocument(documentStores);
+
+	// T-M0-04: host-driven load. `CanvasPersistenceAdapter.load` shipped as an
+	// optional method that nothing ever called — `<CanvasStudio>` mounted
+	// `initialIR` directly, so there was no entry path for a persisted
+	// document to be migrated or validated on the way in. When the adapter
+	// implements `load`, fetch it, run the one load pipeline, and swap the
+	// document via `replaceDocument` (never a bare `setIR`, which leaves the
+	// other document stores stale — P0-9).
+	//
+	// A host that does NOT implement `load` is unaffected: `initialIR` is used
+	// exactly as before, and this effect returns immediately.
+	const onLoadErrorRef = useHostCallbackRef(onLoadError);
+	const initialDocumentId = initialIR.id;
+	useEffect(() => {
+		const load = persistenceAdapter?.load;
+		if (!persistenceAdapter || !load) return;
+		// The mount must not be blocked on the network, and a response that
+		// arrives after unmount (or after the adapter changed) must not write
+		// into a torn-down store.
+		let cancelled = false;
+		void (async () => {
+			try {
+				const raw = await load.call(persistenceAdapter, initialDocumentId);
+				if (cancelled) return;
+				replaceDocument(
+					loadCanvasDocument(raw, runtime ? { runtime } : {}),
+					"initial-load",
+				);
+			} catch (error) {
+				if (cancelled) return;
+				// A failed load leaves `initialIR` mounted and editable. Throwing
+				// here would take the whole editor down over a transport error.
+				onLoadErrorRef.current?.(
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [
+		persistenceAdapter,
+		initialDocumentId,
+		replaceDocument,
+		runtime,
+		onLoadErrorRef,
+	]);
 
 	// B-08 save lifecycle. The controller subscribes to history state identity;
 	// stable `save`/`canLeave` wrappers go into context so consumers never
