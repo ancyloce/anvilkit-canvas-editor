@@ -111,6 +111,7 @@
 		"format": "pnpm exec biome check --write package.json tsconfig.json rslib.config.ts vitest.config.ts src",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
 		"test:watch": "vitest",
 		"publint": "publint",
 		"check:publint": "node ./scripts/check-publint.mjs",
@@ -120,6 +121,7 @@
 		"check:bundle-budget": "node ./scripts/check-bundle-budget.mjs",
 		"check:api-snapshot": "node ./scripts/check-api-snapshot.mjs",
 		"check:all": "pnpm check:publint && pnpm check:circular && pnpm check:layering && pnpm check:peer-deps && pnpm check:bundle-budget && pnpm check:api-snapshot",
+		"verify": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm check:all",
 		"update:api-snapshot": "node ./scripts/check-api-snapshot.mjs --update",
 		"docs:shortcuts": "node ./scripts/generate-shortcut-reference.mjs",
 		"size": "size-limit"
