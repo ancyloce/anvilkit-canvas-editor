@@ -1,5 +1,6 @@
 "use client";
 
+import type { CanvasIR } from "@anvilkit/canvas-core";
 import * as React from "react";
 import { useEffect, useRef } from "react";
 import {
@@ -7,6 +8,7 @@ import {
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
 import { useCanvasDialogs } from "../context/dialog-context.js";
+import { loadCanvasDocument } from "./load-pipeline.js";
 import type { CanvasRecoveryAdapter } from "./recovery.js";
 
 /**
@@ -17,11 +19,27 @@ import type { CanvasRecoveryAdapter } from "./recovery.js";
  * nothing itself — the workspace's dialog host presents the choice; headless
  * embeds fall back to the dialog context's documented auto-confirm, i.e.
  * the newer local draft wins (the data-preserving direction).
+ *
+ * T-M0-05: the snapshot goes through the same load pipeline as
+ * {@link CanvasPersistenceAdapter.load}. It previously did not — a snapshot
+ * was handed straight to `replaceDocument`, so whatever sat in IndexedDB was
+ * mounted unvalidated, including a draft written by an older version of the
+ * app whose IR predates the current one. Recovery storage is long-lived by
+ * design (it exists to survive a crash), which makes it the entry path most
+ * likely to hold a stale document version, and it was the only one with no
+ * migrate seam at all.
+ *
+ * A snapshot that cannot parse, migrate, or validate is **discarded and
+ * reported**, not offered: prompting someone to restore a draft that cannot
+ * load only converts a silent failure into a confusing one.
  */
 export function RecoverDraftPrompt({
 	adapter,
+	onRecoveryError,
 }: {
 	adapter: CanvasRecoveryAdapter;
+	/** Reports a snapshot that had to be discarded because it failed to load. */
+	onRecoveryError?: (error: Error) => void;
 }): React.JSX.Element | null {
 	const stores = useCanvasStores();
 	const dialogs = useCanvasDialogs();
@@ -39,6 +57,29 @@ export function RecoverDraftPrompt({
 				if (cancelled || !snapshot) return;
 				const loadedAt = stores.getIR().metadata.updatedAt;
 				if (snapshot.savedAt <= loadedAt) return;
+
+				// Validate BEFORE prompting (T-M0-05). A snapshot that cannot
+				// load is discarded outright: offering to restore a draft that
+				// will then fail turns a silent problem into a confusing one,
+				// and leaving it in storage means re-prompting on every mount.
+				let recovered: CanvasIR;
+				try {
+					recovered = loadCanvasDocument(
+						snapshot.ir,
+						stores.runtime ? { runtime: stores.runtime } : {},
+					);
+				} catch (error) {
+					await adapter.clear(documentId).catch(() => {
+						// Best-effort, as everywhere else in this path.
+					});
+					if (!cancelled) {
+						onRecoveryError?.(
+							error instanceof Error ? error : new Error(String(error)),
+						);
+					}
+					return;
+				}
+
 				const restore = await dialogs.confirm({
 					title: t("canvas.recovery.title", "Recover unsaved changes?"),
 					description: t(
@@ -50,7 +91,8 @@ export function RecoverDraftPrompt({
 				});
 				if (cancelled) return;
 				if (restore) {
-					stores.replaceDocument?.(snapshot.ir, "recovery");
+					// The migrated/validated document — never `snapshot.ir` raw.
+					stores.replaceDocument?.(recovered, "recovery");
 				} else {
 					await adapter.clear(documentId);
 				}
@@ -61,7 +103,7 @@ export function RecoverDraftPrompt({
 		return () => {
 			cancelled = true;
 		};
-	}, [adapter, stores, dialogs, t]);
+	}, [adapter, stores, dialogs, t, onRecoveryError]);
 
 	return null;
 }
