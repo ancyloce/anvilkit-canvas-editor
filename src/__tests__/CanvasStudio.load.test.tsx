@@ -246,3 +246,102 @@ describe("T-M0-04 host-driven load", () => {
 		expect(onLoadError).not.toHaveBeenCalled();
 	});
 });
+
+/**
+ * T-M0-05 — recovery restores through the same pipeline as load.
+ *
+ * `RecoverDraftPrompt` previously handed `snapshot.ir` straight to
+ * `replaceDocument`: no parse, no migration, no validation. Recovery storage
+ * is long-lived by design (it exists to survive a crash), which makes it the
+ * entry path most likely to hold a document written by an older version of
+ * the app — and it was the only one with no migrate seam at all.
+ *
+ * The dialog context auto-confirms outside a dialog host, so these headless
+ * mounts take the "restore" branch without a UI interaction.
+ */
+describe("T-M0-05 recovery restore", () => {
+	const NEWER = "2026-07-28T00:00:00.000Z";
+
+	function recoveryAdapterWith(ir: unknown) {
+		const store = new Map<string, unknown>([
+			["doc-1", { documentId: "doc-1", ir, revision: 1, savedAt: NEWER }],
+		]);
+		return {
+			adapter: {
+				write: vi.fn(async () => undefined),
+				read: vi.fn(async (id: string) => (store.get(id) ?? null) as never),
+				clear: vi.fn(async (id: string) => {
+					store.delete(id);
+				}),
+			},
+			store,
+		};
+	}
+
+	it("migrates an older-version snapshot before mounting it", async () => {
+		// Exactly the case the missing seam broke: a draft written before the
+		// app's IR version moved on.
+		const legacy = { ...fixtureIR("doc-1", "recovered-rect"), version: "1" };
+		const { adapter } = recoveryAdapterWith(legacy);
+		const seen: CanvasIR[] = [];
+
+		render(
+			<CanvasStudio
+				initialIR={fixtureIR("doc-1", "initial-rect")}
+				initialActivePageId="p1"
+				recoveryAdapter={adapter}
+			>
+				<IRProbe onIR={(ir) => seen.push(ir)} />
+			</CanvasStudio>,
+		);
+		await act(async () => {
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		const mounted = seen.at(-1) as CanvasIR;
+		const root = mounted.pages[0]?.root as
+			| { children: readonly { id: string }[] }
+			| undefined;
+		expect(root?.children[0]?.id).toBe("recovered-rect");
+		// Migrated, not mounted at its stored version.
+		expect(mounted.version).not.toBe("1");
+	});
+
+	it("discards a corrupt snapshot instead of mounting it, and reports", async () => {
+		const { adapter, store } = recoveryAdapterWith({
+			version: "3",
+			garbage: true,
+		});
+		const onLoadError = vi.fn();
+		const seen: CanvasIR[] = [];
+
+		render(
+			<CanvasStudio
+				initialIR={fixtureIR("doc-1", "initial-rect")}
+				initialActivePageId="p1"
+				recoveryAdapter={adapter}
+				onLoadError={onLoadError}
+			>
+				<IRProbe onIR={(ir) => seen.push(ir)} />
+			</CanvasStudio>,
+		);
+		await act(async () => {
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		expect(onLoadError).toHaveBeenCalledTimes(1);
+		// Cleared, so the next mount does not re-offer an unloadable draft.
+		expect(adapter.clear).toHaveBeenCalledWith("doc-1");
+		expect(store.has("doc-1")).toBe(false);
+
+		// The loaded document is untouched — a bad draft must not cost the
+		// user the version they actually have.
+		const mounted = seen.at(-1) as CanvasIR;
+		const root = mounted.pages[0]?.root as
+			| { children: readonly { id: string }[] }
+			| undefined;
+		expect(root?.children[0]?.id).toBe("initial-rect");
+	});
+});

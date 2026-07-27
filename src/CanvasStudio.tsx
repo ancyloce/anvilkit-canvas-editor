@@ -212,8 +212,11 @@ export interface CanvasStudioProps {
 	 */
 	persistenceAdapter?: CanvasPersistenceAdapter;
 	/**
-	 * Fires when {@link CanvasPersistenceAdapter.load} rejects, or when the
-	 * document it resolves fails to parse, migrate, or validate (T-M0-04).
+	 * Fires when a document could not be brought into the editor: either
+	 * {@link CanvasPersistenceAdapter.load} rejected, or the document it
+	 * resolved failed to parse, migrate, or validate (T-M0-04) — or a
+	 * {@link CanvasRecoveryAdapter} snapshot failed the same pipeline and was
+	 * discarded rather than restored (T-M0-05).
 	 *
 	 * Separate from {@link onError} on purpose: that one is the FR-172 render
 	 * error-boundary callback and carries a `React.ErrorInfo`, which a load
@@ -890,6 +893,11 @@ export function CanvasStudio({
 	// A host that does NOT implement `load` is unaffected: `initialIR` is used
 	// exactly as before, and this effect returns immediately.
 	const onLoadErrorRef = useHostCallbackRef(onLoadError);
+	// Stable so `<RecoverDraftPrompt>`'s effect does not re-run per render.
+	const reportLoadError = useCallback(
+		(error: Error) => onLoadErrorRef.current?.(error),
+		[onLoadErrorRef],
+	);
 	const initialDocumentId = initialIR.id;
 	useEffect(() => {
 		const load = persistenceAdapter?.load;
@@ -1312,7 +1320,10 @@ export function CanvasStudio({
 	const stageWithRecovery = recoveryAdapter ? (
 		<>
 			{stageNode}
-			<RecoverDraftPrompt adapter={recoveryAdapter} />
+			<RecoverDraftPrompt
+				adapter={recoveryAdapter}
+				onRecoveryError={reportLoadError}
+			/>
 		</>
 	) : (
 		stageNode
