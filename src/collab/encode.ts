@@ -1,8 +1,5 @@
-import {
-	type CanvasIR,
-	type CanvasRuntime,
-	migrateCanvasIR,
-} from "@anvilkit/canvas-core";
+import type { CanvasIR, CanvasRuntime } from "@anvilkit/canvas-core";
+import { loadCanvasDocument } from "../persistence/load-pipeline.js";
 
 /**
  * Serialize a {@link CanvasIR} to a stable JSON string with sorted object
@@ -34,8 +31,12 @@ export function encodeCanvasIR(ir: CanvasIR): string {
  * try/catch (never throw out of a Yjs observer).
  */
 export function decodeCanvasIR(raw: string, runtime?: CanvasRuntime): CanvasIR {
-	const parsed = JSON.parse(raw);
-	return runtime ? runtime.migrate(parsed) : migrateCanvasIR(parsed);
+	// Delegates to the editor's one load pipeline (T-M0-04) rather than
+	// repeating parse+migrate+validate here. `persistence/` is rank 1 and
+	// `collab/` is rank 2, so this is the only direction the shared seam can
+	// travel — and it keeps a future IR migration from applying to the collab
+	// path but not the load path, or vice versa.
+	return loadCanvasDocument(raw, runtime ? { runtime } : {});
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
