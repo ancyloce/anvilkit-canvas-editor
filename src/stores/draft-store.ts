@@ -5,6 +5,18 @@ import { createStore, type StoreApi } from "zustand/vanilla";
  * the marquee selection box. Lives outside `CanvasIR` because it never commits
  * — `clearDraft()` runs on pointerup (and on tool change / unmount).
  */
+/** T-M4-06 — flow-insertion preview carried by a `move` draft. */
+export interface LayoutDropPreview {
+	/** Target Auto Layout frame id. */
+	frameId: string;
+	/** Insertion index among the frame's remaining (non-dragged) flow children. */
+	index: number;
+	/** Drop-indicator segment in page space, for `DraftRenderer`. */
+	indicator: { x1: number; y1: number; x2: number; y2: number };
+	/** True when the Alt modifier requests Absolute insertion. */
+	absolute: boolean;
+}
+
 export interface NodeStart {
 	id: string;
 	x: number;
@@ -61,6 +73,13 @@ export type DrawDraft =
 			currentX: number;
 			currentY: number;
 			nodeStarts: NodeStart[];
+			/**
+			 * T-M4-06 flow-reorder preview: the Auto Layout frame under the
+			 * pointer plus the previewed insertion slot. Preview-only state — the
+			 * IR is never reordered during pointer movement; `onPointerUp` reads
+			 * this to commit. `null`/absent = no layout drop target.
+			 */
+			layoutDrop?: LayoutDropPreview | null;
 	  }
 	| {
 			type: "marquee";
