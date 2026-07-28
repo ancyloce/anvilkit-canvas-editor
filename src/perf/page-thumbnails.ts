@@ -1,6 +1,10 @@
 "use client";
 
-import type { CanvasAssetRef, CanvasPage } from "@anvilkit/canvas-core";
+import type {
+	CanvasAssetRef,
+	CanvasPage,
+	CanvasResolvedDocument,
+} from "@anvilkit/canvas-core";
 import { useEffect, useRef, useState } from "react";
 import { rasterizePage } from "../render/rasterize-page.js";
 
@@ -33,6 +37,14 @@ export interface PageThumbnailsArgs {
 	rasterize?: typeof rasterizePage;
 	/** Thumbnail render scale. Defaults to 1 (small previews). */
 	pixelRatio?: number;
+	/**
+	 * T-M3-10: the live resolution, so thumbnails of layout-bearing pages draw
+	 * resolved geometry like the live stage does. Previews cannot taint a
+	 * thumbnail — they only apply to selected (active-page) nodes and the
+	 * active page never rasterizes here. `pageThumbnailKey` stays a valid cache
+	 * key: resolution is a deterministic function of the fingerprinted page.
+	 */
+	resolvedDocument?: CanvasResolvedDocument;
 }
 
 /**
@@ -46,7 +58,7 @@ export interface PageThumbnailsArgs {
 export function usePageThumbnails(
 	args: PageThumbnailsArgs,
 ): Map<string, string> {
-	const { pages, activePageId, assets } = args;
+	const { pages, activePageId, assets, resolvedDocument } = args;
 	const rasterize = args.rasterize ?? rasterizePage;
 	const pixelRatio = args.pixelRatio ?? 1;
 	const [urls, setUrls] = useState<Map<string, string>>(new Map());
@@ -87,7 +99,12 @@ export function usePageThumbnails(
 			if (cached && cached.key === key) continue; // thumbnail still valid
 			if (pendingRef.current.get(page.id) === key) continue; // already in flight
 			pendingRef.current.set(page.id, key);
-			rasterize({ page, assets, pixelRatio })
+			rasterize({
+				page,
+				assets,
+				pixelRatio,
+				...(resolvedDocument ? { resolvedDocument } : {}),
+			})
 				.then((res) => {
 					if (cancelled) return;
 					cacheRef.current.set(page.id, { key, url: res.url });
@@ -106,7 +123,7 @@ export function usePageThumbnails(
 		return () => {
 			cancelled = true;
 		};
-	}, [pages, activePageId, assets, rasterize, pixelRatio]);
+	}, [pages, activePageId, assets, rasterize, pixelRatio, resolvedDocument]);
 
 	return urls;
 }
