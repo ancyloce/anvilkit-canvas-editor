@@ -1,6 +1,12 @@
 "use client";
 
-import { type CanvasNode, isContainerNode } from "@anvilkit/canvas-core";
+import {
+	type CanvasNode,
+	type CanvasResolvedNodeRecord,
+	type CanvasResolvedView,
+	isContainerNode,
+} from "@anvilkit/canvas-core";
+import * as React from "react";
 import { useSyncExternalStore } from "react";
 import {
 	useCanvasStudio,
@@ -48,6 +54,31 @@ function flatten(nodes: readonly CanvasNode[], level = 1): FlatItem[] {
 }
 
 /**
+ * T-M3-09: flatten from the RESOLVED tree, so traversal order follows the
+ * resolved flow order (`childIds`) by construction rather than by the
+ * coincidence that v1 flow order equals document order — which is what makes
+ * future flow-reversal work (RTL, ordering features) safe here. Labels and
+ * announcements still read the SOURCE node.
+ */
+function flattenResolved(
+	view: CanvasResolvedView,
+	records: readonly CanvasResolvedNodeRecord[],
+	level = 1,
+): FlatItem[] {
+	const out: FlatItem[] = [];
+	for (const record of records) {
+		out.push({ node: record.node, level });
+		const children = view.getChildren(record.id);
+		if (children.length > 0) {
+			out.push(...flattenResolved(view, children, level + 1));
+		}
+	}
+	return out;
+}
+
+const NOOP_SUBSCRIBE = () => () => undefined;
+
+/**
  * Off-canvas screen-reader proxy for the scene (a11y): a visually-hidden
  * `role="tree"` mirror of the active page's nodes. Konva renders to `<canvas>`
  * (invisible to assistive tech), so this exposes a real, focusable DOM tree —
@@ -68,8 +99,21 @@ export function SceneAccessibilityTree(): React.JSX.Element {
 		() => ctx.selectionStore.getState().selectedIds,
 	);
 
+	// T-M3-09: build from the resolved view when the store is present; the raw
+	// walk stays as the storeless fallback (partial test contexts).
+	const resolvedView = useSyncExternalStore(
+		ctx.resolvedDocumentStore
+			? ctx.resolvedDocumentStore.subscribe
+			: NOOP_SUBSCRIBE,
+		() => ctx.resolvedDocumentStore?.getState().view,
+		() => undefined,
+	);
 	const page = ctx.ir.pages.find((p) => p.id === ctx.activePageId);
-	const items = page ? flatten(page.root.children) : [];
+	const items = page
+		? resolvedView
+			? flattenResolved(resolvedView, resolvedView.getChildren(page.root.id))
+			: flatten(page.root.children)
+		: [];
 	// O(1) membership per row instead of scanning `selectedIds` for every item.
 	const selectedSet = new Set(selectedIds);
 

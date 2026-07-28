@@ -1,9 +1,11 @@
 import {
+	type CanvasNode,
 	createCanvasIR,
 	createFrame,
 	createGroup,
 	createPage,
 	createRect,
+	insertNode,
 } from "@anvilkit/canvas-core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,7 +13,10 @@ import {
 	CanvasStudioContext,
 	type CanvasStudioContextValue,
 } from "@/context/canvas-studio-context.js";
+import { createFieldPreviewStore } from "@/stores/field-preview-store.js";
 import { createFocusStore } from "@/stores/focus-store.js";
+import { createResolvedDocumentStore } from "@/stores/resolved-document-store.js";
+import { createSceneStore } from "@/stores/scene-store.js";
 import { createSelectionStore } from "@/stores/selection-store.js";
 import { SceneAccessibilityTree } from "../SceneAccessibilityTree.js";
 
@@ -115,5 +120,75 @@ describe("SceneAccessibilityTree", () => {
 		const items = screen.getAllByRole("treeitem");
 		expect(items).toHaveLength(2); // f, inner
 		expect(items[1]?.getAttribute("aria-level")).toBe("2");
+	});
+
+	// T-M3-09 (TS-39): with the resolved store, traversal comes from the
+	// resolved tree's childIds — flow order by construction.
+	it("builds from the resolved view when the store is present", () => {
+		const frame: CanvasNode = {
+			...createFrame({
+				id: "f1",
+				name: "Card",
+				bounds: { width: 200, height: 100 },
+			}),
+			autoLayout: {
+				version: 1,
+				direction: "horizontal",
+				padding: { top: 0, right: 0, bottom: 0, left: 0 },
+				gap: 10,
+				primaryAlign: "start",
+				crossAlign: "start",
+			},
+			children: [
+				createRect({
+					id: "r1",
+					name: "First",
+					bounds: { width: 40, height: 20 },
+				}),
+				createRect({
+					id: "r2",
+					name: "Second",
+					bounds: { width: 40, height: 20 },
+				}),
+			],
+		} as CanvasNode;
+		const page = createPage({ id: "p1" });
+		let ir = createCanvasIR({ id: "ir-1", pages: [page], now: () => "T" });
+		ir = insertNode(ir, { parentId: page.root.id, node: frame });
+
+		const sceneStore = createSceneStore({ initialIR: ir });
+		const fieldPreviewStore = createFieldPreviewStore();
+		const resolvedDocumentStore = createResolvedDocumentStore({
+			sceneStore,
+			fieldPreviewStore,
+		});
+		const disconnect = resolvedDocumentStore.connect();
+		try {
+			const ctx = {
+				ir,
+				activePageId: "p1",
+				focusStore: createFocusStore(),
+				selectionStore: createSelectionStore(),
+				resolvedDocumentStore,
+			} as unknown as CanvasStudioContextValue;
+			mountTree(ctx);
+			const items = screen.getAllByRole("treeitem");
+			// Pre-order over the RESOLVED tree: frame, then its flow children.
+			expect(items.map((el) => el.textContent)).toEqual([
+				"Card",
+				"First",
+				"Second",
+			]);
+			expect(items[0]?.getAttribute("aria-level")).toBe("1");
+			expect(items[1]?.getAttribute("aria-level")).toBe("2");
+			// Order equals the resolved flow order, not merely the raw array.
+			const view = resolvedDocumentStore.getState().view;
+			expect(view.getChildren("f1").map((r) => r.sourceNodeId)).toEqual([
+				"r1",
+				"r2",
+			]);
+		} finally {
+			disconnect();
+		}
 	});
 });
