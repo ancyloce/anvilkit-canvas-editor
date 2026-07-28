@@ -2,6 +2,7 @@ import type {
 	CanvasCommand,
 	CanvasIR,
 	CanvasNode,
+	CanvasResolvedGeometry,
 } from "@anvilkit/canvas-core";
 import type { JSX } from "react";
 import type { Tool } from "../tools/tool-types.js";
@@ -17,7 +18,17 @@ import type { Tool } from "../tools/tool-types.js";
 /** Draws a custom node kind to react-konva. */
 export interface CanvasKindRenderer {
 	readonly kind: string;
-	readonly render: (props: { node: CanvasNode }) => JSX.Element | null;
+	/**
+	 * T-M3-08: `resolved` carries the node's resolved-layout geometry when a
+	 * resolution is available (its `localTransform`/`bounds` are already
+	 * substituted into `node`; the record adds world-space data). OPTIONAL and
+	 * additive — an existing renderer typed `(props: { node }) => …` remains
+	 * assignable, so no published extension breaks.
+	 */
+	readonly render: (props: {
+		node: CanvasNode;
+		resolved?: CanvasResolvedGeometry;
+	}) => JSX.Element | null;
 }
 
 /** Renders the inspector fields for a custom node kind. */
