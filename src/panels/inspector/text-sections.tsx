@@ -11,6 +11,7 @@ import {
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { Switch } from "@anvilkit/ui/components/animate-ui/components/base/switch";
+import * as React from "react";
 import type { BrandKit } from "../../brand/brand-kit.js";
 import {
 	resolveFillForDisplay,
@@ -18,7 +19,7 @@ import {
 } from "../../brand/resolve-brand-token.js";
 import type { CanvasT } from "../../context/canvas-studio-context.js";
 import { measureGlyphWidth } from "../../text/canvas-glyph-measurer.js";
-import { observeFontFamily } from "../../text/font-status.js";
+import { fontManifestHash, observeFontFamily } from "../../text/font-status.js";
 import { getCachedLayout } from "../../text/layout-cache.js";
 import { layoutRichText } from "../../text/rich-text-layout.js";
 import { DEFAULT_RICH_TEXT_STYLE } from "../../text/rich-text-style.js";
@@ -255,16 +256,21 @@ export function renderRichTextFields(
 	// (it depends on that node's own paragraphs/bounds) — shrink-to-fit/expand
 	// act on the first selected node only, same as `path`'s "Edit points".
 	const fontStatus = observeFontFamily(fontFamilyResolved.value);
-	const measured = getCachedLayout(node.paragraphs, node.width, wrap, () =>
-		layoutRichText(
-			{
-				paragraphs: node.paragraphs,
-				width: node.width,
-				wrap,
-				defaults: DEFAULT_RICH_TEXT_STYLE,
-			},
-			measureGlyphWidth,
-		),
+	const measured = getCachedLayout(
+		node.paragraphs,
+		node.width,
+		wrap,
+		() =>
+			layoutRichText(
+				{
+					paragraphs: node.paragraphs,
+					width: node.width,
+					wrap,
+					defaults: DEFAULT_RICH_TEXT_STYLE,
+				},
+				measureGlyphWidth,
+			),
+		{ defaults: DEFAULT_RICH_TEXT_STYLE, manifestHash: fontManifestHash() },
 	);
 	const overflowing =
 		overflow !== "auto-height" &&
