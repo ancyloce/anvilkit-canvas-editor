@@ -3,10 +3,12 @@ import {
 	type AffineMatrix,
 	type CanvasNode,
 	type CanvasPage,
+	type CanvasResolvedDocument,
 	isContainerNode,
 	multiplyMatrix,
 	nodeWorldAabb,
 	toAffineMatrix,
+	toResolvedNodeId,
 } from "@anvilkit/canvas-core";
 
 /**
@@ -22,6 +24,7 @@ import {
 export function buildSelectionExportPage(
 	page: CanvasPage,
 	selectedIds: readonly string[],
+	resolved?: CanvasResolvedDocument,
 ): CanvasPage | null {
 	const selected = new Set(selectedIds);
 	if (selected.size === 0) return null;
@@ -35,9 +38,16 @@ export function buildSelectionExportPage(
 		maxY: Number.NEGATIVE_INFINITY,
 	};
 	let found = false;
+	// T-M3-07: this walk already composes ancestors FROM THE PAGE ROOT
+	// (including the root's own transform), which is exactly the resolver's
+	// world space — so a resolved record's AABB substitutes 1:1, bringing Auto
+	// Layout geometry along. The stored-geometry walk remains the fallback for
+	// callers without a resolution.
 	const measure = (node: CanvasNode, parent: AffineMatrix): void => {
 		if (selected.has(node.id)) {
-			const aabb = nodeWorldAabb(node, parent);
+			const aabb =
+				resolved?.records.get(toResolvedNodeId(node.id))?.geometry.worldAabb ??
+				nodeWorldAabb(node, parent);
 			bounds.minX = Math.min(bounds.minX, aabb.minX);
 			bounds.minY = Math.min(bounds.minY, aabb.minY);
 			bounds.maxX = Math.max(bounds.maxX, aabb.maxX);
