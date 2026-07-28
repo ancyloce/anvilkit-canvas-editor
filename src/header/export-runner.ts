@@ -5,10 +5,12 @@ import type {
 	CanvasPage,
 	CanvasResolvedDocument,
 } from "@anvilkit/canvas-core";
+import { resolveCanvasLayout } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { BrandKit } from "../brand/brand-kit.js";
 import { rasterizePage } from "../render/rasterize-page.js";
 import { buildSelectionExportPage } from "../render/selection-export.js";
+import { createCanvasLayoutMeasurementProvider } from "../text/canvas-text-measurer.js";
 import type {
 	CanvasExportArtifact,
 	CanvasExporter,
@@ -153,6 +155,26 @@ export interface RenderPageArtifactInput {
  * (`isHostOverride`); everything else calls the injected `exporter` with
  * `docIr` (a properly scoped IR — see {@link resolveExportSelection}).
  */
+/**
+ * T-M3-10: one resolution per exported document object. `docIr` may be a
+ * SCOPED document (a synthetic selection page, a filtered page list), whose
+ * top-level transforms differ from the live document's — so the correct tree
+ * is a resolution of `docIr` ITSELF, never the studio store's (which also
+ * carries previews). The `WeakMap` makes the per-page export loop resolve the
+ * shared document once and evicts with it.
+ */
+const exportResolutions = new WeakMap<CanvasIR, CanvasResolvedDocument>();
+function exportResolutionFor(ir: CanvasIR): CanvasResolvedDocument {
+	let resolved = exportResolutions.get(ir);
+	if (!resolved) {
+		resolved = resolveCanvasLayout(ir, {
+			measurement: createCanvasLayoutMeasurementProvider(),
+		});
+		exportResolutions.set(ir, resolved);
+	}
+	return resolved;
+}
+
 export async function renderPageArtifact(
 	input: RenderPageArtifactInput,
 ): Promise<CanvasExportArtifact> {
@@ -166,6 +188,7 @@ export async function renderPageArtifact(
 			mimeType: RASTER_MIME[format],
 			quality: request.quality,
 			includeBackground: input.includeBackground ?? true,
+			resolvedDocument: exportResolutionFor(docIr),
 		});
 		return { filename: `${page.id}.${format}`, data: url, mimeType };
 	}

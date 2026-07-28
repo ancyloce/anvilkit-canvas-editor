@@ -8,6 +8,7 @@ import type {
 } from "@anvilkit/canvas-core";
 import { resolveBrandToken } from "../brand/resolve-brand-token.js";
 import { exportStageContentDataURL } from "../render/export-stage.js";
+import { createCanvasLayoutMeasurementProvider } from "../text/canvas-text-measurer.js";
 import type {
 	CanvasExportArtifact,
 	CanvasExporter,
@@ -134,8 +135,19 @@ export const svgExporter: CanvasExporter = async ({
 	activePageId,
 	brandKit,
 }) => {
-	const { serializePageToSvg } = await import("@anvilkit/canvas-core");
+	const {
+		layoutIssuesToExportWarnings,
+		resolveCanvasLayout,
+		serializePageToSvg,
+	} = await import("@anvilkit/canvas-core");
+	// T-M3-10: one resolution of the COMMITTED document per export operation —
+	// the serializer never resolves itself (TD §12.4), and resolving here
+	// (rather than reusing the live store) keeps previews out of exports.
+	const resolved = resolveCanvasLayout(ir, {
+		measurement: createCanvasLayoutMeasurementProvider(),
+	});
 	const { svg, warnings } = await serializePageToSvg(ir, activePageId, {
+		resolvedDocument: resolved,
 		...(brandKit
 			? {
 					resolveBrandToken: (
@@ -149,7 +161,14 @@ export const svgExporter: CanvasExporter = async ({
 		filename: exportFilename(ir, "svg"),
 		data: svg,
 		mimeType: "image/svg+xml",
-		warnings: toExportWarnings(warnings),
+		// T-M3-03 (AL-INTEGRATE-003): layout diagnostics ride into the export
+		// result through the ONE shared map, alongside the serializer's own.
+		warnings: [
+			...toExportWarnings(warnings),
+			...layoutIssuesToExportWarnings(resolved.diagnostics, {
+				pageId: activePageId,
+			}),
+		],
 	};
 };
 
@@ -164,10 +183,22 @@ export const pdfExporter: CanvasExporter = async (
 	{ ir, brandKit },
 	request,
 ) => {
-	const [{ serializeDocumentToPdf }, { rasterizePage }] = await Promise.all([
+	const [
+		{
+			layoutIssuesToExportWarnings,
+			resolveCanvasLayout,
+			serializeDocumentToPdf,
+		},
+		{ rasterizePage },
+	] = await Promise.all([
 		import("@anvilkit/canvas-core"),
 		import("../render/rasterize-page.js"),
 	]);
+	// T-M3-10: ONE resolution of the committed document, shared by every
+	// page's offscreen raster — raster and PDF derive from one resolved stage.
+	const resolved = resolveCanvasLayout(ir, {
+		measurement: createCanvasLayoutMeasurementProvider(),
+	});
 	const rasters = [];
 	for (const page of ir.pages) {
 		// Bug 4 (FR-154): check BETWEEN page iterations, mirroring the check the
@@ -179,6 +210,7 @@ export const pdfExporter: CanvasExporter = async (
 			assets: ir.assets,
 			...(brandKit ? { brandKit } : {}),
 			pixelRatio: 2 * (request.resolution || 1),
+			resolvedDocument: resolved,
 		});
 		rasters.push({ pageId: page.id, image: url });
 	}
@@ -191,7 +223,11 @@ export const pdfExporter: CanvasExporter = async (
 		filename: exportFilename(ir, "pdf"),
 		data: pdf,
 		mimeType: "application/pdf",
-		warnings: toExportWarnings(warnings),
+		// T-M3-03: layout diagnostics surface in the PDF result too.
+		warnings: [
+			...toExportWarnings(warnings),
+			...layoutIssuesToExportWarnings(resolved.diagnostics),
+		],
 	};
 };
 

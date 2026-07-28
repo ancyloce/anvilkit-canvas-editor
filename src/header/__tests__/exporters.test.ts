@@ -1,4 +1,11 @@
-import { createCanvasIR, createPage } from "@anvilkit/canvas-core";
+import type { CanvasNode } from "@anvilkit/canvas-core";
+import {
+	createCanvasIR,
+	createFrame,
+	createPage,
+	createRect,
+	insertNode,
+} from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -7,6 +14,7 @@ import {
 	jsonExporter,
 	pngExporter,
 	sanitizeExportFilename,
+	svgExporter,
 	webpExporter,
 } from "../exporters.js";
 
@@ -166,6 +174,81 @@ describe("built-in raster exporters (B-18, AC-010)", () => {
 			"svg",
 			"webp",
 		]);
+	});
+});
+
+/**
+ * T-M3-10 (AC: no export path emits LAYOUT_UNRESOLVED in normal operation)
+ * and T-M3-03 (TS-45, integration): the built-in SVG exporter resolves the
+ * committed document itself, serializes resolved geometry, and surfaces
+ * layout diagnostics in the export result.
+ */
+describe("svgExporter resolved-layout path (T-M3-10)", () => {
+	/** 200-wide frame, gap 30, two 150-wide children (stored stale at x=0) —
+	 * flows r2 to x=180 AND overflows, so a diagnostic must surface. */
+	function layoutFixture() {
+		const frame: CanvasNode = {
+			...createFrame({ id: "f1", bounds: { width: 200, height: 100 } }),
+			autoLayout: {
+				version: 1,
+				direction: "horizontal",
+				padding: { top: 0, right: 0, bottom: 0, left: 0 },
+				gap: 30,
+				primaryAlign: "start",
+				crossAlign: "start",
+			},
+			children: [
+				createRect({ id: "r1", bounds: { width: 150, height: 20 } }),
+				createRect({ id: "r2", bounds: { width: 150, height: 20 } }),
+			],
+		} as CanvasNode;
+		const page = createPage({ id: "p1" });
+		let ir = createCanvasIR({
+			id: "doc-1",
+			title: "Poster",
+			pages: [page],
+			now: () => NOW,
+		});
+		ir = insertNode(ir, { parentId: page.root.id, node: frame });
+		return ir;
+	}
+
+	it("emits resolved geometry, no LAYOUT_UNRESOLVED, and mapped layout diagnostics", async () => {
+		const ir = layoutFixture();
+		const artifact = await svgExporter(
+			{ ir, activePageId: "p1" } as Parameters<typeof svgExporter>[0],
+			{} as Parameters<typeof svgExporter>[1],
+		);
+		const codes = (artifact.warnings ?? []).map((w) => w.code);
+		// The acceptance criterion: the built-in export path supplies its own
+		// resolution, so the serializer never warns unresolved.
+		expect(codes).not.toContain("LAYOUT_UNRESOLVED");
+		// Resolved flow geometry was emitted (stored geometry had r2 at x=0).
+		expect(String(artifact.data)).toContain("translate(180 0)");
+		// TS-45: the overflow diagnostic rides into the export result via the
+		// shared severity→level map, stamped with the page.
+		const overflow = (artifact.warnings ?? []).find(
+			(w) => w.code === "layout-insufficient-space",
+		);
+		expect(overflow).toBeDefined();
+		expect(overflow?.level).toBe("warn");
+		expect(overflow?.pageId).toBe("p1");
+	});
+
+	it("emits no layout warnings for a document without layout intent", async () => {
+		const ir = createCanvasIR({
+			id: "doc-1",
+			title: "Poster",
+			pages: [createPage({ id: "p1" })],
+			now: () => NOW,
+		});
+		const artifact = await svgExporter(
+			{ ir, activePageId: "p1" } as Parameters<typeof svgExporter>[0],
+			{} as Parameters<typeof svgExporter>[1],
+		);
+		const codes = (artifact.warnings ?? []).map((w) => w.code);
+		expect(codes).not.toContain("LAYOUT_UNRESOLVED");
+		expect(codes.some((code) => code.startsWith("layout-"))).toBe(false);
 	});
 });
 
