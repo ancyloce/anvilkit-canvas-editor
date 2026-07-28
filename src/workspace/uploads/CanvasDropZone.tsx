@@ -1,6 +1,7 @@
 "use client";
 
 import type { CanvasCommand } from "@anvilkit/canvas-core";
+import * as React from "react";
 import { type ReactNode, useRef, useState } from "react";
 import {
 	insertAssetsImpl,
@@ -18,6 +19,7 @@ import {
 	buildReplaceImageCommands,
 	wellImage,
 } from "../../selection/frame-image-actions.js";
+import { resolvedPageSpace } from "../../stage/resolved-page-space.js";
 import { type CanvasDropTarget, resolveDropTarget } from "./drop-target.js";
 
 /**
@@ -68,7 +70,12 @@ function targetAtClientPoint(
 		.getIR()
 		.pages.find((p) => p.id === ctx.pagesStore.getState().activePageId);
 	if (!page) return undefined;
-	return resolveDropTarget(page.root.children, world);
+	return resolveDropTarget(
+		page.root.children,
+		world,
+		undefined,
+		resolvedPageSpace(ctx.resolvedDocumentStore),
+	);
 }
 
 /**

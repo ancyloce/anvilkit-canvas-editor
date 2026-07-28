@@ -10,6 +10,7 @@ import {
 	toAffineMatrix,
 } from "@anvilkit/canvas-core";
 import { isImageWell } from "../../selection/frame-image-actions.js";
+import type { ResolvedPageSpace } from "../../stage/resolved-page-space.js";
 
 const IDENTITY: AffineMatrix = [1, 0, 0, 1, 0, 0];
 
@@ -42,26 +43,31 @@ export function resolveDropTarget(
 	nodes: readonly CanvasNode[],
 	world: { x: number; y: number },
 	parentMatrix: AffineMatrix = IDENTITY,
+	space?: ResolvedPageSpace | null,
 ): CanvasDropTarget | undefined {
+	// T-M3-07: with a resolved page space, containment comes from resolved
+	// records (Auto Layout geometry included); the recursion's matrix chain is
+	// only the fallback for storeless contexts.
+	const contains = (node: CanvasNode): boolean =>
+		space?.pointIn(node.id, world) ?? pointInNode(node, world, parentMatrix);
 	let target: CanvasDropTarget | undefined;
 	for (const node of nodes) {
 		if (node.visible === false || node.locked === true) continue;
-		if (isImageNode(node) && pointInNode(node, world, parentMatrix)) {
+		if (isImageNode(node) && contains(node)) {
 			target = { kind: "image", node };
 			continue;
 		}
 		if (!isContainerNode(node)) continue;
 		const frame = isFrameNode(node) ? node : null;
-		const inside = frame ? pointInNode(frame, world, parentMatrix) : true;
+		const inside = frame ? contains(frame) : true;
 		if (frame?.clip && !inside) continue;
 		if (frame && inside && isImageWell(frame)) {
 			target = { kind: "well", frame };
 		}
-		const worldMatrix = multiplyMatrix(
-			parentMatrix,
-			toAffineMatrix(node.transform),
-		);
-		const inner = resolveDropTarget(node.children, world, worldMatrix);
+		const worldMatrix =
+			space?.matrixOf(node.id) ??
+			multiplyMatrix(parentMatrix, toAffineMatrix(node.transform));
+		const inner = resolveDropTarget(node.children, world, worldMatrix, space);
 		if (inner) target = inner;
 	}
 	return target;
