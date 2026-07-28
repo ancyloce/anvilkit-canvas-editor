@@ -1,5 +1,6 @@
 import { findNode } from "@anvilkit/canvas-core";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
+import { resolvedPageSpace } from "../stage/resolved-page-space.js";
 
 /**
  * @file Viewport actions (A-07, PRD 0012 FR-043/FR-040 zoom rows). Pure
@@ -67,6 +68,11 @@ export function zoomToSelectionImpl(ctx: CanvasStudioContextValue): void {
 	const size = viewport.viewportSize;
 	if (!size || size.width <= 0 || size.height <= 0) return;
 	const ir = ctx.getIR();
+	// T-M3-07: the fit box comes from resolved page-space AABBs when the store
+	// is present — ancestor-composed and rotation-aware, where the old naive
+	// `transform + bounds` box framed the wrong region for nested or rotated
+	// selections (the genuine bug the M0 coordinate suite records unpinned).
+	const space = resolvedPageSpace(ctx.resolvedDocumentStore);
 	let minX = Number.POSITIVE_INFINITY;
 	let minY = Number.POSITIVE_INFINITY;
 	let maxX = Number.NEGATIVE_INFINITY;
@@ -76,6 +82,14 @@ export function zoomToSelectionImpl(ctx: CanvasStudioContextValue): void {
 		const found = findNode(ir, id);
 		if (!found) continue;
 		any = true;
+		const extent = space?.aabbOf(id);
+		if (extent) {
+			minX = Math.min(minX, extent.minX);
+			minY = Math.min(minY, extent.minY);
+			maxX = Math.max(maxX, extent.maxX);
+			maxY = Math.max(maxY, extent.maxY);
+			continue;
+		}
 		const { x, y } = found.node.transform;
 		minX = Math.min(minX, x);
 		minY = Math.min(minY, y);
