@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useSyncExternalStore } from "react";
 import { Ellipse, Line, Rect, RegularPolygon, Star } from "react-konva";
 import { useCanvasStores } from "../context/canvas-studio-context.js";
@@ -20,8 +21,26 @@ export function DraftRenderer(): React.JSX.Element | null {
 		() => draftStore.getState().draft,
 	);
 	if (!draft) return null;
-	// 'move' (Konva direct-mutation) and 'pan' (viewport-only) have no visual draft.
-	if (draft.type === "move" || draft.type === "pan") return null;
+	// 'move' renders only the T-M4-06 flow-insertion indicator (the nodes
+	// themselves move by Konva direct mutation); 'pan' is viewport-only.
+	if (draft.type === "move") {
+		const drop = draft.layoutDrop;
+		if (!drop) return null;
+		return (
+			<Line
+				points={[
+					drop.indicator.x1,
+					drop.indicator.y1,
+					drop.indicator.x2,
+					drop.indicator.y2,
+				]}
+				stroke={DRAFT_STROKE_COLOR}
+				strokeWidth={2}
+				listening={false}
+			/>
+		);
+	}
+	if (draft.type === "pan") return null;
 	const { startX, startY, currentX, currentY } = draft;
 	if (draft.type === "marquee") {
 		return (

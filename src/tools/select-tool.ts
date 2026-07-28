@@ -1,17 +1,30 @@
 import {
+	applyMatrix,
+	type CanvasAnyNodeUpdateCommand,
+	type CanvasCommand,
 	type CanvasNode,
 	type CanvasNodeMoveCommand,
+	findNode,
+	invertMatrix,
 	marqueeHits,
 	marqueeHitsResolved,
+	parentOf,
 	type ResolvedHitTarget,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
+import {
+	computeInsertionIndex,
+	computeInsertionIndicator,
+	type FlowChildRect,
+} from "../auto-layout/reorder.js";
 import { isolationScopeChildren } from "../selection/isolation.js";
 import { getOtherNodeRects } from "../snap/get-node-rect.js";
 import { computeSnap } from "../snap/snap-engine.js";
 import { findNodeById } from "../stage/find-node-by-id.js";
 import { nodeRenderOffset } from "../stage/node-render-offset.js";
 import { resolvedPageSpace } from "../stage/resolved-page-space.js";
+import type { LayoutDropPreview, NodeStart } from "../stores/draft-store.js";
+import { findFrameHitAtPoint } from "./frame-target.js";
 import type { Tool, ToolContext, ToolPointerEvent } from "./tool-types.js";
 
 /**
@@ -142,6 +155,167 @@ function snapMoveDelta(
 	};
 }
 
+/**
+ * T-M4-06: the flow-insertion preview for a move gesture. Finds the Auto
+ * Layout frame under the pointer (resolved geometry), maps the pointer into
+ * frame-local space, and derives the insertion slot + page-space indicator
+ * from the remaining flow children's resolved footprints. Pure computation —
+ * never touches the IR; `null` when there is no eligible target (no resolved
+ * store, no frame under the pointer, frame has no layout, or the target sits
+ * inside the dragged subtree).
+ */
+function computeLayoutDrop(
+	e: ToolPointerEvent,
+	ctx: ToolContext,
+	draggedIds: ReadonlySet<string>,
+): LayoutDropPreview | null {
+	const store = ctx.resolvedDocumentStore;
+	const space = resolvedPageSpace(store);
+	if (!store || !space) return null;
+	const page = ctx.getIR().pages.find((p) => p.id === ctx.activePageId);
+	if (!page) return null;
+	const hit = findFrameHitAtPoint(
+		page.root.children,
+		e.point,
+		undefined,
+		space,
+	);
+	const layout = hit?.frame.autoLayout;
+	if (!hit || !layout) return null;
+	if (draggedIds.has(hit.frame.id)) return null;
+	const view = store.getState().view;
+	// Never target a frame inside the dragged subtree.
+	let cursor = view.getRecord(hit.frame.id);
+	while (cursor?.parentId) {
+		const parent = view.getRecord(cursor.parentId);
+		if (!parent) break;
+		if (draggedIds.has(parent.sourceNodeId)) return null;
+		cursor = parent;
+	}
+	const [localX, localY] = applyMatrix(
+		invertMatrix(hit.worldMatrix),
+		e.point.x,
+		e.point.y,
+	);
+	const flowChildren: FlowChildRect[] = [];
+	for (const childRecord of view.getChildren(hit.frame.id)) {
+		if (draggedIds.has(childRecord.sourceNodeId)) continue;
+		if (childRecord.node.layoutItem?.positioning === "absolute") continue;
+		flowChildren.push({
+			id: childRecord.sourceNodeId,
+			footprint: childRecord.geometry.layoutFootprint,
+		});
+	}
+	const index = computeInsertionIndex(flowChildren, layout.direction, {
+		x: localX,
+		y: localY,
+	});
+	const frameBounds =
+		view.getRecord(hit.frame.id)?.geometry.bounds ?? hit.frame.bounds;
+	const indicator = computeInsertionIndicator(
+		flowChildren,
+		layout.direction,
+		index,
+		{ minX: 0, minY: 0, maxX: frameBounds.width, maxY: frameBounds.height },
+	);
+	const [ix1, iy1] = applyMatrix(hit.worldMatrix, indicator.x1, indicator.y1);
+	const [ix2, iy2] = applyMatrix(hit.worldMatrix, indicator.x2, indicator.y2);
+	const absolute = "altKey" in e.evt ? e.evt.altKey === true : false;
+	return {
+		frameId: hit.frame.id,
+		index,
+		indicator: { x1: ix1, y1: iy1, x2: ix2, y2: iy2 },
+		absolute,
+	};
+}
+
+/**
+ * Commit a previewed layout drop (T-M4-06 steps 5–6): a pure flow reorder
+ * when every dragged node already lives in the target frame, else a
+ * `node.reparent` + transform correction per node — plus the Absolute intent
+ * write when the Alt modifier was held. ONE history entry. Returns `true`
+ * when the drop was handled (even as a no-op), so the caller skips the plain
+ * `node.move` path.
+ */
+function commitLayoutDrop(
+	ctx: ToolContext,
+	nodeStarts: readonly NodeStart[],
+	drop: LayoutDropPreview,
+	dx: number,
+	dy: number,
+): boolean {
+	const ir = ctx.getIR();
+	const draggedIds = nodeStarts.map((s) => s.id);
+	const parents = draggedIds.map((id) => parentOf(ir, id)?.parent ?? null);
+	if (parents.some((p) => p === null)) return false;
+	const sameParent = parents.every((p) => p?.id === drop.frameId);
+	const space = resolvedPageSpace(ctx.resolvedDocumentStore);
+	const cmds: CanvasCommand[] = [];
+
+	if (sameParent && !drop.absolute) {
+		const frameChildren = parents[0]?.children ?? [];
+		const before = frameChildren.map((c) => c.id);
+		const remaining = before.filter((id) => !draggedIds.includes(id));
+		const target = [...remaining];
+		target.splice(drop.index, 0, ...draggedIds);
+		if (target.join(" ") === before.join(" ")) return true;
+		draggedIds.forEach((id, k) => {
+			cmds.push({ type: "node.reorder", nodeId: id, toIndex: drop.index + k });
+		});
+	} else {
+		for (const [k, start] of nodeStarts.entries()) {
+			const found = findNode(ir, start.id);
+			const parent = parents[k];
+			if (!found || !parent) continue;
+			const node = found.node;
+			const pageOrigin = space?.originOf(start.id);
+			const frameMatrix = space?.matrixOf(drop.frameId);
+			const local =
+				pageOrigin && frameMatrix
+					? applyMatrix(
+							invertMatrix(frameMatrix),
+							pageOrigin.x + dx,
+							pageOrigin.y + dy,
+						)
+					: null;
+			if (parent.id !== drop.frameId) {
+				cmds.push({
+					type: "node.reparent",
+					nodeId: start.id,
+					toParentId: drop.frameId,
+					toIndex: drop.index + k,
+				});
+			}
+			const patch: Record<string, unknown> = {};
+			if (local) {
+				patch.transform = { ...node.transform, x: local[0], y: local[1] };
+			}
+			if (drop.absolute) {
+				patch.layoutItem = { ...node.layoutItem, positioning: "absolute" };
+			}
+			if (Object.keys(patch).length > 0) {
+				cmds.push({
+					type: "node.update",
+					nodeId: start.id,
+					kind: node.type,
+					patch,
+				} as CanvasAnyNodeUpdateCommand);
+			}
+		}
+	}
+
+	const first = cmds[0];
+	if (!first) return true;
+	if (cmds.length > 1 && ctx.commitBatch) {
+		ctx.commitBatch(cmds, "Move");
+	} else if (cmds.length === 1) {
+		ctx.commit(first);
+	} else {
+		for (const cmd of cmds) ctx.commit(cmd);
+	}
+	return true;
+}
+
 export const selectTool: Tool = {
 	id: "select",
 	cursor: "default",
@@ -245,10 +419,18 @@ export const selectTool: Tool = {
 					y: start.y + dy + offset.y,
 				});
 			}
+			// T-M4-06: refresh the flow-insertion preview. Preview state only —
+			// the IR is NEVER reordered during pointer movement (NFR-PERF-003).
+			const layoutDrop = computeLayoutDrop(
+				e,
+				ctx,
+				new Set(draft.nodeStarts.map((s) => s.id)),
+			);
 			ctx.draftStore.getState().setDraft({
 				...draft,
 				currentX: e.point.x,
 				currentY: e.point.y,
+				layoutDrop,
 			});
 		} else if (draft.type === "marquee") {
 			ctx.draftStore.getState().setDraft({
@@ -276,6 +458,20 @@ export const selectTool: Tool = {
 			if (
 				Math.abs(dx) < MIN_MOVE_DISTANCE &&
 				Math.abs(dy) < MIN_MOVE_DISTANCE
+			) {
+				return;
+			}
+			// T-M4-06: a previewed layout drop commits a reorder/reparent instead
+			// of a stale `node.move` (flow positions are resolver-owned).
+			if (
+				draft.layoutDrop &&
+				commitLayoutDrop(
+					ctx,
+					draft.nodeStarts,
+					draft.layoutDrop,
+					e.point.x - draft.startX,
+					e.point.y - draft.startY,
+				)
 			) {
 				return;
 			}
