@@ -6,6 +6,7 @@ import type {
 	CanvasNode,
 } from "@anvilkit/canvas-core";
 import { Input } from "@anvilkit/ui/input";
+import * as React from "react";
 import { type ReactNode, use, useCallback, useState } from "react";
 import {
 	CanvasStudioContext,
@@ -100,6 +101,15 @@ export function FieldRow({
 export interface FieldContractTarget<T> {
 	nodes: readonly CanvasNode[];
 	buildPatch: (node: CanvasNode, value: T) => Record<string, unknown>;
+	/**
+	 * Command-builder seam (T-M4-02): when present, commit dispatches this
+	 * command per node instead of wrapping `buildPatch` in a `node.update` —
+	 * the vehicle for `frame.set-layout` Inspector fields. Preview always
+	 * flows through `buildPatch` + the preview store regardless, and commit
+	 * still runs through the same coalescing pipeline; this hook only swaps
+	 * what command is built.
+	 */
+	buildCommand?: (node: CanvasNode, value: T) => CanvasCommand;
 }
 
 /**
@@ -144,13 +154,15 @@ export function useFieldContract<T>(
 			if (!contract || !ctx) return;
 			ctx.fieldPreviewStore?.getState().clearPreviews();
 			const cmds = contract.nodes.map(
-				(node) =>
-					({
-						type: "node.update",
-						nodeId: node.id,
-						kind: node.type,
-						patch: contract.buildPatch(node, value),
-					}) as CanvasAnyNodeUpdateCommand,
+				(node): CanvasCommand =>
+					contract.buildCommand
+						? contract.buildCommand(node, value)
+						: ({
+								type: "node.update",
+								nodeId: node.id,
+								kind: node.type,
+								patch: contract.buildPatch(node, value),
+							} as CanvasAnyNodeUpdateCommand),
 			);
 			const first = cmds[0];
 			if (!first) return;

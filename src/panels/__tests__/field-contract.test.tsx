@@ -1,4 +1,4 @@
-import { createRect } from "@anvilkit/canvas-core";
+import { createFrame, createRect } from "@anvilkit/canvas-core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -308,6 +308,113 @@ describe("§10 field-input contract (B-12)", () => {
 		fireEvent.change(input, { target: { value: "0.7" } });
 		fireEvent.blur(input);
 		expect(h.studioCtx.commit).toHaveBeenCalledTimes(1);
+	});
+
+	it("buildCommand seam: commit dispatches the built command through the same coalescing pipeline (T-M4-02)", () => {
+		const autoLayout = {
+			version: 1,
+			direction: "horizontal",
+			padding: { top: 0, right: 0, bottom: 0, left: 0 },
+			gap: 10,
+			primaryAlign: "start",
+			crossAlign: "start",
+		} as const;
+		const frame = {
+			...createFrame({ id: "f1", bounds: { width: 200, height: 100 } }),
+			autoLayout,
+		};
+		const h = setup(() => (
+			<NumberField
+				label="Gap"
+				value={10}
+				dataTestId="f-gap"
+				contract={{
+					nodes: [frame],
+					buildPatch: (_n, v) => ({ autoLayout: { ...autoLayout, gap: v } }),
+					buildCommand: (n, v) => ({
+						type: "frame.set-layout",
+						nodeId: n.id,
+						layout: { ...autoLayout, gap: v },
+					}),
+				}}
+			/>
+		));
+		const input = screen.getByTestId("f-gap");
+		// Preview still flows through buildPatch + the preview store.
+		fireEvent.change(input, { target: { value: "24" } });
+		expect(previews(h)).toEqual({
+			f1: { autoLayout: { ...autoLayout, gap: 24 } },
+		});
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+		fireEvent.blur(input);
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledWith(
+			{
+				type: "frame.set-layout",
+				nodeId: "f1",
+				layout: { ...autoLayout, gap: 24 },
+			},
+			"field:f-gap:f1",
+		);
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(previews(h)).toEqual({});
+	});
+
+	it("buildCommand seam: multi-selection wraps built commands in one batch", () => {
+		const autoLayout = {
+			version: 1,
+			direction: "vertical",
+			padding: { top: 0, right: 0, bottom: 0, left: 0 },
+			gap: 4,
+			primaryAlign: "start",
+			crossAlign: "start",
+		} as const;
+		const fa = {
+			...createFrame({ id: "fa", bounds: { width: 100, height: 100 } }),
+			autoLayout,
+		};
+		const fb = {
+			...createFrame({ id: "fb", bounds: { width: 100, height: 100 } }),
+			autoLayout,
+		};
+		const h = setup(() => (
+			<NumberField
+				label="Gap"
+				value={4}
+				mixed
+				dataTestId="f-gap"
+				contract={{
+					nodes: [fa, fb],
+					buildPatch: (_n, v) => ({ autoLayout: { ...autoLayout, gap: v } }),
+					buildCommand: (n, v) => ({
+						type: "frame.set-layout",
+						nodeId: n.id,
+						layout: { ...autoLayout, gap: v },
+					}),
+				}}
+			/>
+		));
+		const input = screen.getByTestId("f-gap");
+		fireEvent.change(input, { target: { value: "12" } });
+		fireEvent.blur(input);
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledWith(
+			{
+				type: "batch",
+				commands: [
+					{
+						type: "frame.set-layout",
+						nodeId: "fa",
+						layout: { ...autoLayout, gap: 12 },
+					},
+					{
+						type: "frame.set-layout",
+						nodeId: "fb",
+						layout: { ...autoLayout, gap: 12 },
+					},
+				],
+			},
+			"field:f-gap:fa,fb",
+		);
 	});
 
 	it("legacy onCommit path (no contract) still commits on blur only", () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import type { CanvasNode, CanvasPage } from "@anvilkit/canvas-core";
+import * as React from "react";
 import { useSyncExternalStore } from "react";
 import {
 	useCanvasStudio,
@@ -14,6 +15,7 @@ import {
 	useCommitPatchAll,
 } from "./fields.js";
 import { AppearanceSection } from "./inspector/appearance-section.js";
+import { AutoLayoutSection } from "./inspector/auto-layout-section.js";
 import { BrandComplianceWarnings } from "./inspector/brand-warnings.js";
 import { summarizeSelection } from "./inspector/selection-summary.js";
 import { TransformSection } from "./inspector/transform-section.js";
@@ -140,6 +142,7 @@ export function PropertyInspector({
 					/>
 				</Section>
 				<TransformSection nodes={nodes} />
+				<AutoLayoutSection nodes={nodes} />
 				<AppearanceSection nodes={nodes} t={t} />
 				{summary.sharedKind !== null
 					? renderTypeSpecificFields(nodes, commitPatchAll, ctx, t)
