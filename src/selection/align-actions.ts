@@ -5,9 +5,11 @@ import {
 	distributeRects,
 	findNode,
 	type SnapRect,
+	snapRectFromExtent,
 	tidyUpRects,
 } from "@anvilkit/canvas-core";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
+import { resolvedPageSpace } from "../stage/resolved-page-space.js";
 
 interface SelItem {
 	id: string;
@@ -18,6 +20,11 @@ interface SelItem {
 
 function selectedItems(ctx: CanvasStudioContextValue): SelItem[] {
 	const ir = ctx.getIR();
+	// T-M3-07: rects come from the resolved page space when available — the
+	// visual (rotation-aware, Auto-Layout-corrected) boxes — while `x`/`y`
+	// stay the node's LOCAL transform coords, since the deltas the rects
+	// produce are applied as local moves.
+	const space = resolvedPageSpace(ctx.resolvedDocumentStore);
 	const out: SelItem[] = [];
 	for (const id of ctx.selectionStore.getState().selectedIds) {
 		const found = findNode(ir, id);
@@ -25,16 +32,19 @@ function selectedItems(ctx: CanvasStudioContextValue): SelItem[] {
 			continue;
 		}
 		const { x, y } = found.node.transform;
+		const extent = space?.aabbOf(id);
 		out.push({
 			id,
 			x,
 			y,
-			rect: {
-				x,
-				y,
-				width: found.node.bounds.width,
-				height: found.node.bounds.height,
-			},
+			rect: extent
+				? snapRectFromExtent(extent)
+				: {
+						x,
+						y,
+						width: found.node.bounds.width,
+						height: found.node.bounds.height,
+					},
 		});
 	}
 	return out;
