@@ -4,9 +4,11 @@ import {
 	type CanvasAssetRef,
 	type CanvasNode,
 	type CanvasPage,
+	type CanvasResolvedDocument,
 	isContainerNode,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
+import * as React from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { Rect } from "react-konva";
@@ -15,6 +17,7 @@ import { EMPTY_BRAND_KIT } from "../brand/brand-kit.js";
 import { CanvasAssetsContext } from "../stage/CanvasAssetsContext.js";
 import { CanvasBrandKitContext } from "../stage/CanvasBrandKitContext.js";
 import { CanvasNodeRenderer } from "../stage/CanvasNodeRenderer.js";
+import { CanvasResolvedDocumentContext } from "../stage/CanvasResolvedDocumentContext.js";
 import { CanvasStage } from "../stage/CanvasStage.js";
 import { RenderLayer } from "../stage/RenderLayer.js";
 import { pageBackgroundFill } from "./page-background.js";
@@ -54,6 +57,14 @@ export interface RasterizePageInput {
 	 * to black; the export dialog disables the option there.
 	 */
 	readonly includeBackground?: boolean;
+	/**
+	 * T-M3-10: a resolution of the document this page belongs to. When present
+	 * the offscreen render draws RESOLVED geometry (via
+	 * `CanvasResolvedDocumentContext`) — the same tree the live stage shows —
+	 * without mounting a studio context, so the pass stays non-interactive and
+	 * preview-free. Omit for documents without layout intent.
+	 */
+	readonly resolvedDocument?: CanvasResolvedDocument;
 }
 
 export interface RasterizePageResult {
@@ -105,32 +116,36 @@ export async function rasterizePage(
 		root = createRoot(container);
 		flushSync(() => {
 			root?.render(
-				<CanvasAssetsContext.Provider value={assets}>
-					<CanvasBrandKitContext.Provider value={brandKit}>
-						<CanvasStage
-							width={page.size.width}
-							height={page.size.height}
-							onReady={(s) => {
-								stage = s;
-							}}
-						>
-							{includeBackground ? (
-								<RenderLayer name="background" listening={false}>
-									<Rect
-										x={0}
-										y={0}
-										width={page.size.width}
-										height={page.size.height}
-										fill={pageBackgroundFill(page.background)}
-									/>
+				<CanvasResolvedDocumentContext.Provider
+					value={input.resolvedDocument ?? null}
+				>
+					<CanvasAssetsContext.Provider value={assets}>
+						<CanvasBrandKitContext.Provider value={brandKit}>
+							<CanvasStage
+								width={page.size.width}
+								height={page.size.height}
+								onReady={(s) => {
+									stage = s;
+								}}
+							>
+								{includeBackground ? (
+									<RenderLayer name="background" listening={false}>
+										<Rect
+											x={0}
+											y={0}
+											width={page.size.width}
+											height={page.size.height}
+											fill={pageBackgroundFill(page.background)}
+										/>
+									</RenderLayer>
+								) : null}
+								<RenderLayer name="objects" listening={false}>
+									<CanvasNodeRenderer node={page.root} />
 								</RenderLayer>
-							) : null}
-							<RenderLayer name="objects" listening={false}>
-								<CanvasNodeRenderer node={page.root} />
-							</RenderLayer>
-						</CanvasStage>
-					</CanvasBrandKitContext.Provider>
-				</CanvasAssetsContext.Provider>,
+							</CanvasStage>
+						</CanvasBrandKitContext.Provider>
+					</CanvasAssetsContext.Provider>
+				</CanvasResolvedDocumentContext.Provider>,
 			);
 		});
 
