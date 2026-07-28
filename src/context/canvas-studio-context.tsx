@@ -16,6 +16,7 @@ import type {
 	CanvasAssetUploader,
 	CanvasPickedAsset,
 } from "../assets/adapter-types.js";
+import type { CanvasLayoutEventHandler } from "../auto-layout/events.js";
 import type { BrandKit } from "../brand/brand-kit.js";
 import type {
 	CanvasKindInspector,
@@ -269,6 +270,14 @@ export interface CanvasStudioContextValue {
 	 * Select on completion.
 	 */
 	continuousCreation?: boolean;
+	/**
+	 * T-M4-10: true when the host opted into the Auto Layout
+	 * creation/conversion UI (`<CanvasStudio autoLayout>`), default false.
+	 * Gates ONLY creation/conversion affordances — never read/render/export.
+	 */
+	autoLayoutCreationEnabled?: boolean;
+	/** T-M4-11: host observer for the six PRD §12 layout events. */
+	onLayoutEvent?: CanvasLayoutEventHandler;
 	/**
 	 * Save lifecycle (B-08, FR-160/161). Always provided by `<CanvasStudio>`;
 	 * optional in the type only for partial test contexts. Without a
