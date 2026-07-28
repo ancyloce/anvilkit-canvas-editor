@@ -120,6 +120,9 @@ async function exportImpl(
 		scope,
 		...(request.pageIds ? { pageIds: request.pageIds } : {}),
 		selectedIds,
+		...(ctx.resolvedDocumentStore
+			? { resolvedDocument: ctx.resolvedDocumentStore.getState().resolved }
+			: {}),
 	});
 
 	const artifacts: CanvasExportResultArtifact[] = [];

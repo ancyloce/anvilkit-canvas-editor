@@ -212,6 +212,11 @@ export default function ExportDialog({
 					scope: effectiveScope,
 					pageIds,
 					selectedIds,
+					...(ctx.resolvedDocumentStore
+						? {
+								resolvedDocument: ctx.resolvedDocumentStore.getState().resolved,
+							}
+						: {}),
 				});
 			} catch (err) {
 				if (err instanceof CanvasExportEmptyError) {

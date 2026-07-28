@@ -1,6 +1,10 @@
 "use client";
 
-import type { CanvasIR, CanvasPage } from "@anvilkit/canvas-core";
+import type {
+	CanvasIR,
+	CanvasPage,
+	CanvasResolvedDocument,
+} from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { BrandKit } from "../brand/brand-kit.js";
 import { rasterizePage } from "../render/rasterize-page.js";
@@ -50,6 +54,12 @@ export interface ResolveExportScopeInput {
 	readonly pageIds?: readonly string[];
 	/** Node ids for `scope: "selection"` (FR-031 export selection). */
 	readonly selectedIds?: readonly string[];
+	/**
+	 * T-M3-07: the live resolution, so a selection export frames Auto Layout
+	 * nodes at their resolved geometry. Optional — callers without one fall
+	 * back to stored geometry.
+	 */
+	readonly resolvedDocument?: CanvasResolvedDocument;
 }
 
 export interface ResolvedExportSelection {
@@ -82,7 +92,11 @@ export function resolveExportSelection(
 	if (scope === "selection") {
 		const active = ir.pages.find((p) => p.id === activePageId) ?? ir.pages[0];
 		const page = active
-			? buildSelectionExportPage(active, input.selectedIds ?? [])
+			? buildSelectionExportPage(
+					active,
+					input.selectedIds ?? [],
+					input.resolvedDocument,
+				)
 			: null;
 		if (!page) throw new CanvasExportEmptyError();
 		return { page, ir: { ...ir, pages: [page] } };
