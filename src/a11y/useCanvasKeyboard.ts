@@ -13,6 +13,7 @@ import {
 import { progressiveSelectAllImpl } from "../selection/isolation.js";
 import type { ToolId } from "../stores/tool-store.js";
 import {
+	flowReorderCommands,
 	nudgeCommand,
 	resizeStepCommand,
 	rotateStepCommand,
@@ -213,6 +214,23 @@ function useCanvasKeyboard(opts: CanvasKeyboardOptions = {}): void {
 			}
 
 			const shift = e.shiftKey;
+			// T-M4-08: flow children reorder on primary-axis arrows — the same
+			// single `node.reorder` the drag path commits, one history entry per
+			// press (deliberately NOT coalesced, matching one-drop-one-entry).
+			if (
+				!shift &&
+				(e.key === "ArrowLeft" ||
+					e.key === "ArrowRight" ||
+					e.key === "ArrowUp" ||
+					e.key === "ArrowDown")
+			) {
+				const flow = flowReorderCommands(ir, nodes, e.key);
+				if (flow) {
+					e.preventDefault();
+					if (flow.length > 0) dispatch(flow);
+					return;
+				}
+			}
 			let cmds: CanvasCommand[] | null = null;
 			switch (e.key) {
 				case "ArrowLeft":

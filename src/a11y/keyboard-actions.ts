@@ -1,9 +1,12 @@
 import {
+	type CanvasCommand,
+	type CanvasIR,
 	type CanvasNode,
 	type CanvasNodeMoveCommand,
 	type CanvasNodeResizeCommand,
 	type CanvasNodeRotateCommand,
 	isContainerNode,
+	parentOf,
 } from "@anvilkit/canvas-core";
 
 /**
@@ -11,6 +14,49 @@ import {
  * DOM-free and unit-testable; every edit produces the SAME `CanvasCommand` a
  * mouse gesture would, so undo/history/collab are identical.
  */
+
+export type ArrowKeyName = "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
+
+/**
+ * T-M4-08: keyboard flow reorder. When EVERY node is a Flow child of an Auto
+ * Layout frame, a primary-axis arrow moves it one slot within its parent —
+ * the SAME single `node.reorder` per node the drag path commits (flow order
+ * IS `children` order; focus is id-keyed, so it travels with the node).
+ * Cross-axis arrows return an empty array: handled, deliberately a no-op
+ * (nudging a flow child would only write a stale transform the resolver
+ * overrides). Returns `null` when any node is not a flow child — the caller
+ * falls through to the plain nudge path.
+ */
+export function flowReorderCommands(
+	ir: CanvasIR,
+	nodes: readonly CanvasNode[],
+	key: ArrowKeyName,
+): CanvasCommand[] | null {
+	if (nodes.length === 0) return null;
+	const cmds: CanvasCommand[] = [];
+	for (const node of nodes) {
+		if (node.layoutItem?.positioning === "absolute") return null;
+		const parent = parentOf(ir, node.id)?.parent;
+		if (!parent || parent.type !== "frame" || !parent.autoLayout) return null;
+		const horizontal = parent.autoLayout.direction === "horizontal";
+		const delta =
+			key === (horizontal ? "ArrowLeft" : "ArrowUp")
+				? -1
+				: key === (horizontal ? "ArrowRight" : "ArrowDown")
+					? 1
+					: 0;
+		if (delta === 0) continue;
+		const idx = parent.children.findIndex((c) => c.id === node.id);
+		if (idx < 0) continue;
+		const toIndex = Math.min(
+			Math.max(idx + delta, 0),
+			parent.children.length - 1,
+		);
+		if (toIndex === idx) continue;
+		cmds.push({ type: "node.reorder", nodeId: node.id, toIndex });
+	}
+	return cmds;
+}
 
 /** Move a node by (dx, dy) — a `node.move` command. */
 export function nudgeCommand(

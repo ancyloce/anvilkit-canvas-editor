@@ -1,6 +1,15 @@
-import { createFrame, createGroup, createRect } from "@anvilkit/canvas-core";
+import {
+	createCanvasIR,
+	createFrame,
+	createGroup,
+	createPage,
+	createRect,
+	findNode,
+	insertNode,
+} from "@anvilkit/canvas-core";
 import { describe, expect, it } from "vitest";
 import {
+	flowReorderCommands,
 	nextFocusId,
 	nudgeCommand,
 	resizeStepCommand,
@@ -110,5 +119,100 @@ describe("keyboard-actions — nextFocusId", () => {
 		expect(nextFocusId(framed, "b", "ArrowDown")).toBe("c");
 		expect(nextFocusId(framed, "c", "ArrowDown")).toBe("d");
 		expect(nextFocusId(framed, "b", "ArrowUp")).toBe("f");
+	});
+});
+
+describe("keyboard-actions — flowReorderCommands (T-M4-08, TS-37)", () => {
+	const LAYOUT = {
+		version: 1,
+		direction: "horizontal",
+		padding: { top: 0, right: 0, bottom: 0, left: 0 },
+		gap: 10,
+		primaryAlign: "start",
+		crossAlign: "start",
+	} as const;
+
+	function layoutIr(direction: "horizontal" | "vertical" = "horizontal") {
+		const frame = {
+			...createFrame({ id: "f1", bounds: { width: 200, height: 100 } }),
+			autoLayout: { ...LAYOUT, direction },
+			children: [rect("r1"), rect("r2"), rect("r3")],
+		};
+		const page = createPage({ id: "p1" });
+		const ir = createCanvasIR({ id: "doc", pages: [page] });
+		return insertNode(ir, { parentId: page.root.id, node: frame });
+	}
+
+	function nodeIn(ir: ReturnType<typeof layoutIr>, id: string) {
+		const found = findNode(ir, id);
+		if (!found) throw new Error(`missing ${id}`);
+		return found.node;
+	}
+
+	it("primary-axis arrow emits the SAME single node.reorder the drag path commits", () => {
+		const ir = layoutIr();
+		expect(flowReorderCommands(ir, [nodeIn(ir, "r1")], "ArrowRight")).toEqual([
+			{ type: "node.reorder", nodeId: "r1", toIndex: 1 },
+		]);
+		expect(flowReorderCommands(ir, [nodeIn(ir, "r2")], "ArrowLeft")).toEqual([
+			{ type: "node.reorder", nodeId: "r2", toIndex: 0 },
+		]);
+	});
+
+	it("vertical frames map ArrowUp/ArrowDown instead", () => {
+		const ir = layoutIr("vertical");
+		expect(flowReorderCommands(ir, [nodeIn(ir, "r1")], "ArrowDown")).toEqual([
+			{ type: "node.reorder", nodeId: "r1", toIndex: 1 },
+		]);
+		expect(flowReorderCommands(ir, [nodeIn(ir, "r1")], "ArrowRight")).toEqual(
+			[],
+		);
+	});
+
+	it("cross-axis arrows are a handled no-op (never a stale nudge)", () => {
+		const ir = layoutIr();
+		expect(flowReorderCommands(ir, [nodeIn(ir, "r1")], "ArrowDown")).toEqual(
+			[],
+		);
+	});
+
+	it("boundary moves degrade to a handled no-op", () => {
+		const ir = layoutIr();
+		expect(flowReorderCommands(ir, [nodeIn(ir, "r1")], "ArrowLeft")).toEqual(
+			[],
+		);
+		expect(flowReorderCommands(ir, [nodeIn(ir, "r3")], "ArrowRight")).toEqual(
+			[],
+		);
+	});
+
+	it("returns null for non-flow contexts so the nudge path takes over", () => {
+		const ir = layoutIr();
+		// Top-level node: parent is the page-root group, not a layout frame.
+		const loose = insertNode(ir, {
+			parentId: ir.pages[0]?.root.id ?? "",
+			node: rect("loose"),
+		});
+		expect(
+			flowReorderCommands(loose, [nodeIn(loose, "loose")], "ArrowRight"),
+		).toBeNull();
+		// Absolute children opt out of flow.
+		const irAbs = (() => {
+			const frame = {
+				...createFrame({ id: "f1", bounds: { width: 200, height: 100 } }),
+				autoLayout: LAYOUT,
+				children: [
+					{ ...rect("r1"), layoutItem: { positioning: "absolute" as const } },
+				],
+			};
+			const page = createPage({ id: "p1" });
+			return insertNode(createCanvasIR({ id: "doc", pages: [page] }), {
+				parentId: page.root.id,
+				node: frame,
+			});
+		})();
+		expect(
+			flowReorderCommands(irAbs, [nodeIn(irAbs, "r1")], "ArrowRight"),
+		).toBeNull();
 	});
 });
