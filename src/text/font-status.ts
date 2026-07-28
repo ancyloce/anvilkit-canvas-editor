@@ -20,21 +20,52 @@ export type CanvasFontStatus =
 
 interface FontStatusState {
 	statuses: ReadonlyMap<string, CanvasFontStatus>;
+	/** Monotonic; bumps on every real status transition. See {@link fontManifestHash}. */
+	version: number;
 	setStatus: (family: string, status: CanvasFontStatus) => void;
 }
 
 const fontStatusStore: StoreApi<FontStatusState> =
 	createStore<FontStatusState>()((set) => ({
 		statuses: new Map(),
+		version: 0,
 		setStatus(family, status) {
 			set((state) => {
 				if (state.statuses.get(family) === status) return state;
 				const next = new Map(state.statuses);
 				next.set(family, status);
-				return { statuses: next };
+				return { statuses: next, version: state.version + 1 };
 			});
 		},
 	}));
+
+/**
+ * Identity of the font manifest in force, for measurement-cache keys
+ * (T-M3-04 step 4). Any font lifecycle transition changes it, so
+ * measurements made with fallback metrics before a font finished loading can
+ * never be served after it loads — the stale entries are simply never keyed
+ * again and are collected with their `paragraphs`. Also what the editor's
+ * `CanvasLayoutMeasurementProvider.manifestHash` reports to the resolver.
+ */
+export function fontManifestHash(): string {
+	return String(fontStatusStore.getState().version);
+}
+
+/**
+ * Subscribe to font-manifest changes (any status transition). Returns the
+ * unsubscribe. The resolved-document store uses this so a font load that
+ * changes metrics re-resolves Hug-sized text containers instead of leaving
+ * them at fallback-metric sizes until the next edit.
+ */
+export function subscribeFontManifest(listener: () => void): () => void {
+	let last = fontStatusStore.getState().version;
+	return fontStatusStore.subscribe((state) => {
+		if (state.version !== last) {
+			last = state.version;
+			listener();
+		}
+	});
+}
 
 /** Generic families the platform always has — never worth observing. */
 const GENERIC_FAMILIES = new Set([
@@ -103,5 +134,5 @@ export function useFontStatus(family: string | undefined): CanvasFontStatus {
 
 /** Test seam: reset the module registry between cases. */
 export function resetFontStatusesForTests(): void {
-	fontStatusStore.setState({ statuses: new Map() });
+	fontStatusStore.setState({ statuses: new Map(), version: 0 });
 }
