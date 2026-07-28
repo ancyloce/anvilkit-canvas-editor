@@ -1,4 +1,5 @@
 import {
+	CANVAS_IR_VERSION,
 	type CanvasIR,
 	createCanvasIR,
 	createCanvasRuntime,
@@ -64,7 +65,10 @@ describe("encodeCanvasIR / decodeCanvasIR", () => {
 		const ir = createCanvasIR({ id: "ir-1", title: "legacy" });
 		const v1Payload = JSON.stringify({ ...ir, version: "1" });
 		const decoded = decodeCanvasIR(v1Payload);
-		expect(decoded.version).toBe("2");
+		// Asserted against the constant, not a literal: the point is "decode
+		// upgrades to whatever this build writes", which must not need editing
+		// every time core bumps the IR version (it did, at IR v3).
+		expect(decoded.version).toBe(CANVAS_IR_VERSION);
 		expect(decoded.title).toBe("legacy");
 	});
 
@@ -94,9 +98,9 @@ describe("encodeCanvasIR / decodeCanvasIR", () => {
 		// The default (no runtime) path has no "legacy-v0" step registered.
 		expect(() => decodeCanvasIR(legacyPayload)).toThrow();
 
-		// The runtime-aware path chains legacy-v0 -> 1 -> 2 and validates.
+		// The runtime-aware path chains legacy-v0 -> 1 -> 2 -> 3 and validates.
 		const decoded = decodeCanvasIR(legacyPayload, runtime);
-		expect(decoded.version).toBe("2");
+		expect(decoded.version).toBe(CANVAS_IR_VERSION);
 		expect(decoded.title).toBe("ancient");
 	});
 
