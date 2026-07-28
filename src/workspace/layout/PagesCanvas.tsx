@@ -27,6 +27,7 @@ import { computeWheelZoom } from "@/actions/viewport-actions.js";
 import {
 	useCanvasStudio,
 	useCanvasT,
+	useResolvedDocument,
 } from "@/context/canvas-studio-context.js";
 import { useCanvasDialogs } from "@/context/dialog-context.js";
 import { useCanvasToaster } from "@/context/toast-context.js";
@@ -110,10 +111,12 @@ export function PagesCanvas({
 		});
 	}, []);
 	const pages = ctx.ir.pages;
+	const resolvedDocument = useResolvedDocument();
 	const thumbnails = usePageThumbnails({
 		pages,
 		activePageId,
 		assets: ctx.ir.assets,
+		...(resolvedDocument ? { resolvedDocument } : {}),
 	});
 	const addWidth = (pages[0]?.size.width ?? 0) * zoom;
 
