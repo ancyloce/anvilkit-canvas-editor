@@ -35,6 +35,11 @@ export type {
 	CanvasAssetUploader,
 	CanvasPickedAsset,
 } from "./assets/adapter-types.js";
+// ── Core editor + shell ──────────────────────────────────────────────────────
+export type {
+	CanvasLayoutEditorEvent,
+	CanvasLayoutEventHandler,
+} from "./auto-layout/events.js";
 // ── Brand kit ────────────────────────────────────────────────────────────────
 export type { BrandColor, BrandKit } from "./brand/brand-kit.js";
 export {
@@ -58,8 +63,11 @@ export {
 	CanvasErrorBoundary,
 	type CanvasErrorBoundaryProps,
 } from "./CanvasErrorBoundary.js";
-// ── Core editor + shell ──────────────────────────────────────────────────────
-export { CanvasStudio, type CanvasStudioProps } from "./CanvasStudio.js";
+export {
+	type CanvasAutoLayoutFlagOptions,
+	CanvasStudio,
+	type CanvasStudioProps,
+} from "./CanvasStudio.js";
 // ── Context + hooks ──────────────────────────────────────────────────────────
 export {
 	type CanvasIRGetter,

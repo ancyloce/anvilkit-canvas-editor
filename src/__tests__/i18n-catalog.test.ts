@@ -42,7 +42,15 @@ describe("i18n catalogs (A-11, OD-3: four bundled locales)", () => {
 	it("every canvas.* key referenced in src has a catalog entry", () => {
 		const used = new Set<string>();
 		collectSourceKeys(join(__dirname, ".."), used);
-		const missing = [...used].filter((key) => !(key in en)).sort();
+		// PRD §12 fixes the six layout analytics event identifiers in the
+		// `canvas.layout.*` namespace (`auto-layout/events.ts`). They are host
+		// event NAMES, not user-visible strings — never rendered, never
+		// translated — so the completeness scan must not read them as catalog
+		// keys. Message keys stay under `canvas.inspector.*` / `canvas.a11y.*`.
+		const EVENT_NAME_NAMESPACE = /^canvas\.layout\./;
+		const missing = [...used]
+			.filter((key) => !(key in en) && !EVENT_NAME_NAMESPACE.test(key))
+			.sort();
 		expect(missing).toEqual([]);
 	});
 

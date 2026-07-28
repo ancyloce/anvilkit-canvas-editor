@@ -20,6 +20,7 @@ import {
 } from "react";
 import { Group } from "react-konva";
 import { CanvasFocusRing } from "./a11y/CanvasFocusRing.js";
+import { LayoutAnnouncer } from "./a11y/LayoutAnnouncer.js";
 import { SceneAccessibilityTree } from "./a11y/SceneAccessibilityTree.js";
 import { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
 import { CanvasKeyboardLayer } from "./a11y/useCanvasKeyboard.js";
@@ -29,6 +30,10 @@ import type {
 	CanvasAssetPicker,
 	CanvasAssetUploader,
 } from "./assets/adapter-types.js";
+import {
+	type CanvasLayoutEventHandler,
+	createLayoutDiagnosticEmitter,
+} from "./auto-layout/events.js";
 import type { BrandKit } from "./brand/brand-kit.js";
 import { EMPTY_BRAND_KIT } from "./brand/brand-kit.js";
 import {
@@ -125,6 +130,15 @@ import { ToolInteractionLayer } from "./tools/ToolInteractionLayer.js";
 import { defaultToolRegistry } from "./tools/tool-registry.js";
 import type { ToolRegistry } from "./tools/tool-types.js";
 
+/**
+ * Object form of the {@link CanvasStudioProps.autoLayout} flag (A-2). The
+ * boolean shorthand `autoLayout: true` is equivalent to `{ creationUI: true }`.
+ */
+export interface CanvasAutoLayoutFlagOptions {
+	/** Enable the Auto Layout creation/conversion UI. Default false. */
+	creationUI?: boolean;
+}
+
 export interface CanvasStudioProps {
 	/**
 	 * Initial IR. Uncontrolled — subsequent prop updates do not replace the
@@ -206,6 +220,22 @@ export interface CanvasStudioProps {
 	 * (continuous creation). Default false — the editor returns to Select.
 	 */
 	continuousCreation?: boolean;
+	/**
+	 * T-M4-10 (AL-COMPAT-003): opt-in Auto Layout creation/conversion UI.
+	 * **Default OFF for the whole alpha/beta line** — flipping the default on
+	 * is a releasable behaviour change requiring release notes (PRD §19
+	 * Phase 4). Gates ONLY creation/conversion affordances: reading,
+	 * rendering, editing existing intent, and exporting are never gated at
+	 * any phase. Prop name provisional under OQ-5 (assumption A-2).
+	 */
+	autoLayout?: boolean | CanvasAutoLayoutFlagOptions;
+	/**
+	 * T-M4-11 (A-3, PRD §12): one optional callback carrying the six layout
+	 * events. `canvas.layout.diagnostic` fires on commit only — never during
+	 * preview — deduped within a commit by `(code, nodeId, axis)`. Payloads
+	 * carry no document content. Prop name provisional under OQ-5.
+	 */
+	onLayoutEvent?: CanvasLayoutEventHandler;
 	/**
 	 * FR-160 host persistence (B-08). When present, edits mark the document
 	 * dirty, auto-save runs per `autoSave` (default on), a beforeunload guard
@@ -754,6 +784,8 @@ export function CanvasStudio({
 	runtime,
 	renderShell,
 	continuousCreation = false,
+	autoLayout = false,
+	onLayoutEvent,
 	persistenceAdapter,
 	onLoadError,
 	recoveryAdapter,
@@ -1185,6 +1217,11 @@ export function CanvasStudio({
 			toolRegistry: effectiveToolRegistry,
 			runtime,
 			continuousCreation,
+			// T-M4-10: opt-in flag — only creation/conversion UI keys off this.
+			autoLayoutCreationEnabled:
+				autoLayout === true ||
+				(typeof autoLayout === "object" && autoLayout.creationUI === true),
+			...(onLayoutEvent ? { onLayoutEvent } : {}),
 			// Present only with a persistence adapter — the header's save
 			// indicator keys its visibility off this field (B-07).
 			...(persistenceAdapter ? { saveStatusStore } : {}),
@@ -1238,6 +1275,8 @@ export function CanvasStudio({
 			effectiveToolRegistry,
 			runtime,
 			continuousCreation,
+			autoLayout,
+			onLayoutEvent,
 			persistenceAdapter,
 			saveStatusStore,
 			save,
@@ -1250,6 +1289,23 @@ export function CanvasStudio({
 			uploadStore,
 		],
 	);
+
+	// T-M4-11: wire the commit-only diagnostic emitter (see events.ts for the
+	// preview-skip + hash-dedupe discipline).
+	useEffect(() => {
+		if (!onLayoutEvent) return;
+		return createLayoutDiagnosticEmitter(
+			{
+				subscribe: resolvedDocumentStore.subscribe,
+				getDiagnostics: () =>
+					resolvedDocumentStore.getState().resolved.diagnostics,
+				getInputHash: () => resolvedDocumentStore.getState().resolved.inputHash,
+				hasPreviews: () =>
+					Object.keys(fieldPreviewStore.getState().previews).length > 0,
+			},
+			onLayoutEvent,
+		);
+	}, [onLayoutEvent, resolvedDocumentStore, fieldPreviewStore]);
 
 	// Full value = stable half + live state. Changes on every commit (ir) and on
 	// page/stage changes — this is what `useCanvasStudio()` consumers subscribe to.
@@ -1352,6 +1408,7 @@ export function CanvasStudio({
 					>
 						<ToolAnnouncer />
 						<ZoomAnnouncer />
+						<LayoutAnnouncer />
 						{!hidePageNavigator && <PageNavigator />}
 						{stageWithRecovery}
 					</div>
