@@ -1,11 +1,13 @@
 import type {
 	CanvasAnyNodeUpdateCommand,
+	CanvasBounds,
 	CanvasCommand,
 	CanvasNode,
 	CanvasNodeResizeCommand,
 	CanvasNodeRotateCommand,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
+import { planResize } from "../auto-layout/resize-semantics.js";
 import { findNodeById } from "../stage/find-node-by-id.js";
 import {
 	aspectFitScaleY,
@@ -196,6 +198,13 @@ export function collectTransformEndCommands(
 	stage: Konva.Stage,
 	selectedIds: readonly string[],
 	childById: ReadonlyMap<string, CanvasNode>,
+	/**
+	 * T-M4-07: pre-gesture RESOLVED bounds per node. For a Hug/Fill axis the
+	 * stored bounds are a stale cache — the resolved size is both the render
+	 * baseline the Konva scale multiplied and the value a converted axis
+	 * captures. Optional so non-layout callers/tests are unchanged.
+	 */
+	getResolvedBounds?: (id: string) => CanvasBounds | undefined,
 ): CanvasCommand[] {
 	const cmds: CanvasCommand[] = [];
 	for (const id of selectedIds) {
@@ -252,6 +261,66 @@ export function collectTransformEndCommands(
 					},
 				} as CanvasAnyNodeUpdateCommand;
 				cmds.push(cmd);
+			}
+			continue;
+		}
+
+		// T-M4-07: a node whose layoutItem carries a Hug/Fill axis resizes
+		// against its RESOLVED bounds (what the Konva scale actually
+		// multiplied on screen), and a genuinely-resized elastic axis converts
+		// to Fixed at the gesture size — the other axis's mode is untouched.
+		const item = irNode.layoutItem;
+		const elastic =
+			item !== undefined &&
+			((item.widthSizing ?? "fixed") !== "fixed" ||
+				(item.heightSizing ?? "fixed") !== "fixed");
+		if (elastic && getResolvedBounds) {
+			knode.scaleX(1);
+			knode.scaleY(1);
+			const resolved = getResolvedBounds(id) ?? bounds;
+			const fitE = ASPECT_FIT_KINDS.has(irNode.type)
+				? aspectFitScaleY(resolved)
+				: 1;
+			const nextW = Math.max(MIN_DIMENSION, resolved.width * scaleX);
+			const nextH = Math.max(
+				MIN_DIMENSION,
+				resolved.height * (fitE > 0 ? scaleY / fitE : scaleY),
+			);
+			const plan = planResize(item, resolved, {
+				width: nextW,
+				height: nextH,
+			});
+			const offsetE = nodeRenderOffset({
+				...irNode,
+				bounds: { width: plan.width, height: plan.height },
+			} as CanvasNode);
+			const nextX = konvaX - offsetE.x;
+			const nextY = konvaY - offsetE.y;
+			const sizeChanged =
+				Math.abs(plan.width - resolved.width) > EPSILON ||
+				Math.abs(plan.height - resolved.height) > EPSILON;
+			const posChanged =
+				Math.abs(nextX - transform.x) > EPSILON ||
+				Math.abs(nextY - transform.y) > EPSILON;
+			if (sizeChanged || posChanged || plan.layoutItem) {
+				cmds.push({
+					type: "node.update",
+					nodeId: id,
+					kind: irNode.type,
+					patch: {
+						bounds: { width: plan.width, height: plan.height },
+						transform: { ...transform, x: nextX, y: nextY },
+						...(plan.layoutItem ? { layoutItem: plan.layoutItem } : {}),
+					},
+				} as CanvasAnyNodeUpdateCommand);
+			}
+			if (Math.abs(newRotation - transform.rotation) > EPSILON) {
+				cmds.push({
+					type: "node.rotate",
+					nodeId: id,
+					from: transform.rotation,
+					to: newRotation,
+				});
 			}
 			continue;
 		}

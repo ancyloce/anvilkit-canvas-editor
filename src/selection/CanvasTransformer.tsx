@@ -2,6 +2,7 @@
 
 import { type CanvasNode, findNode } from "@anvilkit/canvas-core";
 import Konva from "konva";
+import * as React from "react";
 import {
 	useCallback,
 	useEffect,
@@ -460,6 +461,8 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		commit,
 		commitBatch,
 		activePageId,
+		resolvedDocumentStore,
+		fieldPreviewStore,
 	} = useCanvasStudio();
 	// Hide the resize/rotate transformer while the crop editor owns the handles.
 	const croppingId = useSyncExternalStore(
@@ -615,7 +618,40 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		if (activeAnchorName(transformerRef.current) === "rotater")
 			refreshAngleBadge();
 		else refreshSizeBadge();
-	}, [refreshAngleBadge, refreshSizeBadge, sizeLabelRef]);
+		// T-M4-07: resizing an Auto Layout frame previews through the resolver
+		// overlay — pushing the live candidate bounds into the field preview
+		// store re-resolves children reflow on-screen without ever writing the
+		// IR. Cleared on transform end before the single gesture commit.
+		if (!stage || !fieldPreviewStore || !resolvedDocumentStore) return;
+		const ir = getIR();
+		const view = resolvedDocumentStore.getState().view;
+		const entries: Record<string, Record<string, unknown>> = {};
+		for (const id of selectedIds) {
+			const irNode = findNode(ir, id)?.node;
+			if (!irNode || irNode.type !== "frame" || !irNode.autoLayout) continue;
+			const knode = findNodeById(stage, id);
+			if (!knode) continue;
+			const base = view.getRecord(id)?.geometry.bounds ?? irNode.bounds;
+			entries[id] = {
+				bounds: {
+					width: Math.max(1, base.width * knode.scaleX()),
+					height: Math.max(1, base.height * knode.scaleY()),
+				},
+			};
+		}
+		if (Object.keys(entries).length > 0) {
+			fieldPreviewStore.getState().setPreviews(entries);
+		}
+	}, [
+		refreshAngleBadge,
+		refreshSizeBadge,
+		sizeLabelRef,
+		stage,
+		fieldPreviewStore,
+		resolvedDocumentStore,
+		getIR,
+		selectedIds,
+	]);
 
 	const onTransformEnd = useCallback(() => {
 		// Leave transform mode first: drop the size badge and restore every
@@ -644,9 +680,18 @@ export function CanvasTransformer(): React.JSX.Element | null {
 				})
 				.filter((entry) => entry !== undefined),
 		);
+		// T-M4-07: drop the live resolver-overlay preview before the commit —
+		// the gesture lands as exactly ONE history entry.
+		fieldPreviewStore?.getState().clearPreviews();
 		// Collect every node's resize/rotate command so a single gesture (incl.
 		// simultaneous resize + rotate, and multi-node transforms) is ONE undo entry.
-		const cmds = collectTransformEndCommands(stage, selectedIds, childById);
+		const view = resolvedDocumentStore?.getState().view;
+		const cmds = collectTransformEndCommands(
+			stage,
+			selectedIds,
+			childById,
+			view ? (id) => view.getRecord(id)?.geometry.bounds : undefined,
+		);
 		if (cmds.length > 1) {
 			commitBatch(cmds, "Transform");
 		} else if (cmds.length === 1 && cmds[0]) {
@@ -660,6 +705,8 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		commitBatch,
 		activePageId,
 		sizeLabelRef,
+		fieldPreviewStore,
+		resolvedDocumentStore,
 	]);
 
 	if (croppingId) return null;
