@@ -3,10 +3,13 @@
 import type {
 	CanvasExportWarning,
 	CanvasIR,
+	CanvasResolvedDocument,
+	CanvasResolvedNodeRecord,
 	CanvasRuntime,
 } from "@anvilkit/canvas-core";
+import { toResolvedNodeId } from "@anvilkit/canvas-core";
 import type Konva from "konva";
-import { createContext, use } from "react";
+import { createContext, use, useSyncExternalStore } from "react";
 import type { CanvasClipboardAdapter } from "../actions/clipboard-adapter.js";
 import type {
 	CanvasAssetPicker,
@@ -36,6 +39,7 @@ import type { PagesStoreApi } from "../stores/pages-store.js";
 import type { PathEditStoreApi } from "../stores/path-edit-store.js";
 import type { PenStoreApi } from "../stores/pen-store.js";
 import type { DocumentSnapshotSource } from "../stores/replace-document.js";
+import type { ResolvedDocumentStoreApi } from "../stores/resolved-document-store.js";
 import type { RulerGuideStoreApi } from "../stores/ruler-guide-store.js";
 import type { SaveStatusStoreApi } from "../stores/save-status-store.js";
 import type { SceneStoreApi } from "../stores/scene-store.js";
@@ -157,6 +161,17 @@ export interface CanvasStudioContextValue {
 	 * `<CanvasStudio>`.
 	 */
 	fieldPreviewStore?: FieldPreviewStoreApi;
+	/**
+	 * T-M3-05: the ONE resolved layout document per render context, derived
+	 * from `sceneStore` + `fieldPreviewStore` (+ the font manifest). Every
+	 * geometry consumer — renderer, hit-test, snap, selection, a11y tree,
+	 * thumbnails, export — reads THIS store rather than computing geometry
+	 * from raw IR, which is what guarantees they all see one resolved tree.
+	 * Optional for partial test contexts; always provided by `<CanvasStudio>`.
+	 * Consumers should memoise on record identity — untouched records are
+	 * reference-identical across resolutions (TD §5.4).
+	 */
+	resolvedDocumentStore?: ResolvedDocumentStoreApi;
 	/**
 	 * Replace the WHOLE document with an unrelated `CanvasIR` snapshot (P0-9) —
 	 * not a normal edit, so it does not go through {@link commit}. Resets undo/
@@ -390,6 +405,41 @@ export function useCanvasStores(): CanvasStudioStableValue {
 	if (merged) return merged;
 	throw new Error(
 		"useCanvasStores must be called inside a <CanvasStudio> tree.",
+	);
+}
+
+const NOOP_SUBSCRIBE = () => () => undefined;
+
+/**
+ * The whole current resolution (T-M3-05), reactively — re-renders on every
+ * resolution (commits AND previews). `undefined` outside a full studio
+ * context; callers fall back to raw stored-geometry helpers.
+ */
+export function useResolvedDocument(): CanvasResolvedDocument | undefined {
+	const store = use(CanvasStudioContext)?.resolvedDocumentStore;
+	return useSyncExternalStore(
+		store ? store.subscribe : NOOP_SUBSCRIBE,
+		() => store?.getState().resolved,
+		() => undefined,
+	);
+}
+
+/**
+ * The resolved record for one node (T-M3-05). Returns `undefined` outside a
+ * full studio context (partial test contexts, headless rasterization) —
+ * callers fall back to the node's stored geometry, which is identical for
+ * documents without layout intent. Subscribes on record IDENTITY: an edit
+ * elsewhere in the document leaves this node's record reference-identical
+ * across resolutions (TD §5.4) and causes no re-render here.
+ */
+export function useResolvedNodeRecord(
+	nodeId: string,
+): CanvasResolvedNodeRecord | undefined {
+	const store = use(CanvasStudioContext)?.resolvedDocumentStore;
+	return useSyncExternalStore(
+		store ? store.subscribe : NOOP_SUBSCRIBE,
+		() => store?.getState().resolved.records.get(toResolvedNodeId(nodeId)),
+		() => undefined,
 	);
 }
 
