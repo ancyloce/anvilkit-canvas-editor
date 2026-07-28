@@ -5,6 +5,7 @@ import { cn } from "@anvilkit/ui/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import * as React from "react";
 import { lazy, type ReactNode, useEffect, useMemo, useRef } from "react";
+import { LayoutAnnouncer } from "@/a11y/LayoutAnnouncer.js";
 import { ToolAnnouncer } from "@/a11y/ToolAnnouncer.js";
 import { ZoomAnnouncer } from "@/a11y/ZoomAnnouncer.js";
 import type { CanvasErrorDetailsInfo } from "@/CanvasErrorBoundary.js";
@@ -202,6 +203,7 @@ export function CanvasWorkspace({
 									) : null}
 									<ToolAnnouncer />
 									<ZoomAnnouncer />
+									<LayoutAnnouncer />
 									<WorkspaceHeader
 										onBack={onBack}
 										title={title}
