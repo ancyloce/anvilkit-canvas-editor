@@ -1,5 +1,6 @@
 import {
 	CANVAS_CLIPBOARD_VERSION,
+	CANVAS_LAYOUT_AUTO_CAPABILITY,
 	type CanvasAssetRef,
 	CanvasClipboardError,
 	type CanvasClipboardPayload,
@@ -140,11 +141,21 @@ function combinedBounds(roots: readonly CanvasNode[]) {
 	return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+/** True when any node in the subtree carries Auto Layout intent. */
+function subtreeHasLayoutIntent(node: CanvasNode): boolean {
+	if (node.type === "frame" && node.autoLayout != null) return true;
+	if (node.layoutItem != null) return true;
+	return isContainerNode(node) && node.children.some(subtreeHasLayoutIntent);
+}
+
 function buildClipboardPayload(
 	ctx: CanvasStudioContextValue,
 ): CanvasClipboardPayload | null {
 	const roots = topLevelSelectedNodes(ctx);
 	if (roots.length === 0) return null;
+	// T-M4-12/T-M1-11: a payload carrying layout intent declares the
+	// capability, so capability-checking readers can gate it.
+	const hasIntent = roots.some(subtreeHasLayoutIntent);
 	return {
 		version: CANVAS_CLIPBOARD_VERSION,
 		sourceDocumentId: ctx.getIR().id,
@@ -152,6 +163,9 @@ function buildClipboardPayload(
 		nodes: roots.map((n) => structuredClone(n)),
 		assetRefs: collectAssetRefs(ctx, roots),
 		bounds: combinedBounds(roots),
+		...(hasIntent
+			? { requiredCapabilities: [CANVAS_LAYOUT_AUTO_CAPABILITY] }
+			: {}),
 	};
 }
 
@@ -255,6 +269,24 @@ export async function pasteImpl(
 	for (const node of nodes) {
 		node.transform.x += PASTE_OFFSET;
 		node.transform.y += PASTE_OFFSET;
+		// T-M4-12: paste lands at the page top level — not inside an Auto
+		// Layout frame — so `fill` sizing has no parent to fill against.
+		// Normalise the INCOMING materialized copy (never the clipboard
+		// contents, which may be pasted again elsewhere): fill → fixed at the
+		// node's carried size; positioning and still-valid `hug` survive.
+		// Descendants keep everything — their copied parent came with them.
+		const item = node.layoutItem;
+		if (item?.widthSizing === "fill" || item?.heightSizing === "fill") {
+			node.layoutItem = {
+				...item,
+				...(item.widthSizing === "fill"
+					? { widthSizing: "fixed" as const }
+					: {}),
+				...(item.heightSizing === "fill"
+					? { heightSizing: "fixed" as const }
+					: {}),
+			};
+		}
 	}
 	const activePageId = ctx.pagesStore.getState().activePageId;
 	const cmds: CanvasCommand[] = [

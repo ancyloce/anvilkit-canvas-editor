@@ -1,8 +1,10 @@
 import {
 	type CanvasClipboardPayload,
 	type CanvasIR,
+	type CanvasNode,
 	type CanvasNodeCreateCommand,
 	createCanvasIR,
+	createFrame,
 	createGroup,
 	createImage,
 	createPage,
@@ -349,5 +351,108 @@ describe("system clipboard unavailable notice (FR-170)", () => {
 		expect(toasts.some((t) => t.title.includes("built-in clipboard"))).toBe(
 			false,
 		);
+	});
+});
+
+describe("Auto Layout clipboard semantics (T-M4-12)", () => {
+	const LAYOUT = {
+		version: 1,
+		direction: "horizontal",
+		padding: { top: 0, right: 0, bottom: 0, left: 0 },
+		gap: 8,
+		primaryAlign: "start",
+		crossAlign: "start",
+	} as const;
+
+	function layoutFixtureIR(): CanvasIR {
+		const p1 = createPage({ id: "p1" });
+		p1.root = createGroup({
+			id: "p1-root",
+			bounds: p1.root.bounds,
+			children: [
+				{
+					...createFrame({ id: "alf", bounds: { width: 200, height: 100 } }),
+					autoLayout: LAYOUT,
+					children: [
+						{
+							...createRect({ id: "fc", bounds: { width: 40, height: 20 } }),
+							layoutItem: {
+								positioning: "flow" as const,
+								widthSizing: "fill" as const,
+								heightSizing: "hug" as const,
+							},
+						},
+					],
+				},
+				createRect({ id: "plain", bounds: { width: 50, height: 50 } }),
+			],
+		});
+		return createCanvasIR({ id: "doc-1", pages: [p1], now: () => FIXED_TS });
+	}
+
+	function setupLayout() {
+		return makeHarness({ ir: layoutFixtureIR() });
+	}
+
+	it("copying layout-bearing nodes stamps requiredCapabilities on the payload", async () => {
+		const h = setupLayout();
+		h.studioCtx.selectionStore.getState().setSelection(["alf"]);
+		await copySelectionImpl(h.studioCtx);
+		expect(
+			internalClipboardStore.getState().payload?.requiredCapabilities,
+		).toEqual(["layout.auto.v1"]);
+	});
+
+	it("copying plain nodes leaves requiredCapabilities absent", async () => {
+		const h = setupLayout();
+		h.studioCtx.selectionStore.getState().setSelection(["plain"]);
+		await copySelectionImpl(h.studioCtx);
+		expect(
+			internalClipboardStore.getState().payload?.requiredCapabilities,
+		).toBeUndefined();
+	});
+
+	it("pasting a Fill child into free layout normalises fill→fixed, keeps hug + positioning, clipboard unmutated", async () => {
+		const h = setupLayout();
+		h.studioCtx.selectionStore.getState().setSelection(["fc"]);
+		await copySelectionImpl(h.studioCtx);
+		await pasteImpl(h.studioCtx);
+		const create = h.commits.find(
+			(c): c is CanvasNodeCreateCommand => c.type === "node.create",
+		);
+		expect(create?.node.layoutItem).toEqual({
+			positioning: "flow",
+			widthSizing: "fixed",
+			heightSizing: "hug",
+		});
+		// The clipboard contents stay untouched for future pastes elsewhere.
+		expect(
+			internalClipboardStore.getState().payload?.nodes[0]?.layoutItem,
+		).toEqual({
+			positioning: "flow",
+			widthSizing: "fill",
+			heightSizing: "hug",
+		});
+	});
+
+	it("pasting an Auto Layout frame preserves the frame and its children's intent", async () => {
+		const h = setupLayout();
+		h.studioCtx.selectionStore.getState().setSelection(["alf"]);
+		await copySelectionImpl(h.studioCtx);
+		await pasteImpl(h.studioCtx);
+		const create = h.commits.find(
+			(c): c is CanvasNodeCreateCommand => c.type === "node.create",
+		);
+		const frame = create?.node as CanvasNode & {
+			autoLayout?: unknown;
+			children?: readonly CanvasNode[];
+		};
+		expect(frame.autoLayout).toEqual(LAYOUT);
+		// Descendants keep everything — their copied parent came with them.
+		expect(frame.children?.[0]?.layoutItem).toEqual({
+			positioning: "flow",
+			widthSizing: "fill",
+			heightSizing: "hug",
+		});
 	});
 });
