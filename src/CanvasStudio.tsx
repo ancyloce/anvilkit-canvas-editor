@@ -104,6 +104,7 @@ import {
 	type DocumentStores,
 	replaceDocumentSnapshot,
 } from "./stores/replace-document.js";
+import { createResolvedDocumentStore } from "./stores/resolved-document-store.js";
 import { createRulerGuideStore } from "./stores/ruler-guide-store.js";
 import type { CanvasSaveState } from "./stores/save-status-store.js";
 import { createSaveStatusStore } from "./stores/save-status-store.js";
@@ -388,6 +389,13 @@ function useEditorStores({
 	const [isolationStore] = useState(() => createIsolationStore());
 	const [exportRequestStore] = useState(() => createExportRequestStore());
 	const [layerRenameStore] = useState(() => createLayerRenameStore());
+	// T-M3-05: derives one resolved layout document from scene + previews.
+	// Creation is inert; subscriptions attach in the `connect()` effect below,
+	// so a StrictMode double-invoke of this initializer leaks nothing.
+	const [resolvedDocumentStore] = useState(() =>
+		createResolvedDocumentStore({ sceneStore, fieldPreviewStore }),
+	);
+	useEffect(() => resolvedDocumentStore.connect(), [resolvedDocumentStore]);
 	return {
 		sceneStore,
 		historyStore,
@@ -408,6 +416,7 @@ function useEditorStores({
 		isolationStore,
 		exportRequestStore,
 		layerRenameStore,
+		resolvedDocumentStore,
 	};
 }
 
@@ -776,6 +785,7 @@ export function CanvasStudio({
 		isolationStore,
 		exportRequestStore,
 		layerRenameStore,
+		resolvedDocumentStore,
 	} = useEditorStores({ initialIR, initialActivePageId, initialTool, runtime });
 	const ir = useSyncExternalStore(
 		sceneStore.subscribe,
@@ -1154,6 +1164,7 @@ export function CanvasStudio({
 			undo,
 			redo,
 			fieldPreviewStore,
+			resolvedDocumentStore,
 			rulerGuideStore,
 			isolationStore,
 			exportRequestStore,
@@ -1207,6 +1218,7 @@ export function CanvasStudio({
 			undo,
 			redo,
 			fieldPreviewStore,
+			resolvedDocumentStore,
 			rulerGuideStore,
 			isolationStore,
 			exportRequestStore,
