@@ -23,6 +23,7 @@ import {
 import {
 	useCanvasStudio,
 	useCanvasT,
+	useResolvedDocument,
 } from "../context/canvas-studio-context.js";
 import { useCanvasDialogs } from "../context/dialog-context.js";
 import { useCanvasToaster } from "../context/toast-context.js";
@@ -73,10 +74,12 @@ export function PageNavigator({
 	);
 	const pages = ctx.ir.pages;
 	// I2-5 off-screen tiling: cached bitmap previews of non-active pages.
+	const resolvedDocument = useResolvedDocument();
 	const thumbnails = usePageThumbnails({
 		pages,
 		activePageId,
 		assets: ctx.ir.assets,
+		...(resolvedDocument ? { resolvedDocument } : {}),
 	});
 
 	const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
