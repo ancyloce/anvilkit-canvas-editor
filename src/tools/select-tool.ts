@@ -2,6 +2,8 @@ import {
 	type CanvasNode,
 	type CanvasNodeMoveCommand,
 	marqueeHits,
+	marqueeHitsResolved,
+	type ResolvedHitTarget,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { isolationScopeChildren } from "../selection/isolation.js";
@@ -9,6 +11,7 @@ import { getOtherNodeRects } from "../snap/get-node-rect.js";
 import { computeSnap } from "../snap/snap-engine.js";
 import { findNodeById } from "../stage/find-node-by-id.js";
 import { nodeRenderOffset } from "../stage/node-render-offset.js";
+import { resolvedPageSpace } from "../stage/resolved-page-space.js";
 import type { Tool, ToolContext, ToolPointerEvent } from "./tool-types.js";
 
 /**
@@ -108,13 +111,22 @@ function snapMoveDelta(
 	const node = selectionScope(ctx).find((c) => c.id === nodeId);
 	if (!node) return { dx, dy, guides: [] };
 	const vs = ctx.viewportStore.getState();
+	// T-M3-07: snap against RESOLVED geometry when the store is present — an
+	// Auto Layout sibling snaps at its flow position, not its stale stored one.
+	const space = resolvedPageSpace(ctx.resolvedDocumentStore);
+	const bounds = space?.boundsOf(nodeId) ?? node.bounds;
 	const candidate = {
 		x: nodeStart.x + dx,
 		y: nodeStart.y + dy,
-		width: node.bounds.width,
-		height: node.bounds.height,
+		width: bounds.width,
+		height: bounds.height,
 	};
-	const others = getOtherNodeRects(ir, ctx.activePageId, new Set([nodeId]));
+	const others = getOtherNodeRects(
+		ir,
+		ctx.activePageId,
+		new Set([nodeId]),
+		space,
+	);
 	// FR-112: grid snap is gated on the EXPLICIT snapToGridEnabled toggle, not
 	// on grid visibility (gridEnabled) — hiding the grid keeps snapping on.
 	const result = computeSnap({
@@ -297,13 +309,35 @@ export const selectTool: Tool = {
 
 			const marquee = { minX: x, minY: y, maxX: x + w, maxY: y + h };
 			// Locked nodes are skipped by the marquee — they can't be selected via
-			// the canvas (unlock via the layer panel to re-edit). marqueeHits uses
-			// each node's rotation-aware world AABB, replacing the earlier
-			// rotation-ignoring inline rect + local aabbIntersect. C-09: the
+			// the canvas (unlock via the layer panel to re-edit). C-09: the
 			// candidate set is the isolation scope (FR-055).
-			const hitIds = marqueeHits(selectionScope(ctx), marquee, {
-				skipLocked: true,
-			}).map((n) => n.id);
+			//
+			// T-M3-07: with the resolved store present, hits test each node's
+			// RESOLVED page-space AABB — ancestor-composed, so an isolation scope
+			// inside a transformed container matches where nodes actually are
+			// (the M0 suite pinned the old local-box behaviour as a KNOWN
+			// LIMITATION of the raw fallback, which lightweight tool tests still
+			// exercise). All-or-nothing: one missing record falls back wholesale
+			// rather than silently dropping candidates.
+			const scope = selectionScope(ctx);
+			const space = resolvedPageSpace(ctx.resolvedDocumentStore);
+			let targets: ResolvedHitTarget[] | null = null;
+			if (space) {
+				targets = [];
+				for (const candidate of scope) {
+					const target = space.targetOf(candidate);
+					if (!target) {
+						targets = null;
+						break;
+					}
+					targets.push(target);
+				}
+			}
+			const hitIds = targets
+				? marqueeHitsResolved(targets, marquee, { skipLocked: true }).map(
+						(t) => t.node.id,
+					)
+				: marqueeHits(scope, marquee, { skipLocked: true }).map((n) => n.id);
 
 			if (e.shiftKey) {
 				for (const id of hitIds) {

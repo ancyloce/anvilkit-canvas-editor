@@ -8,6 +8,7 @@ import {
 	pointInNode,
 	toAffineMatrix,
 } from "@anvilkit/canvas-core";
+import type { ResolvedPageSpace } from "../stage/resolved-page-space.js";
 
 const IDENTITY: AffineMatrix = [1, 0, 0, 1, 0, 0];
 
@@ -40,8 +41,9 @@ export function findFrameAtPoint(
 	nodes: readonly CanvasNode[],
 	world: Point,
 	parentMatrix: AffineMatrix = IDENTITY,
+	space?: ResolvedPageSpace | null,
 ): CanvasFrameNode | null {
-	return findFrameHitAtPoint(nodes, world, parentMatrix)?.frame ?? null;
+	return findFrameHitAtPoint(nodes, world, parentMatrix, space)?.frame ?? null;
 }
 
 export interface FrameHit {
@@ -59,21 +61,27 @@ export function findFrameHitAtPoint(
 	nodes: readonly CanvasNode[],
 	world: Point,
 	parentMatrix: AffineMatrix = IDENTITY,
+	space?: ResolvedPageSpace | null,
 ): FrameHit | null {
 	let hit: FrameHit | null = null;
 	for (const node of nodes) {
 		if (node.visible === false || node.locked === true) continue;
 		if (!isContainerNode(node)) continue;
 
+		// T-M3-07: with a resolved page space, containment and the frame's world
+		// matrix come from resolved records — Auto Layout geometry included —
+		// and the recursion's own matrix chain is only the fallback.
 		const frame = isFrameNode(node) ? node : null;
-		const inside = frame ? pointInNode(frame, world, parentMatrix) : true;
+		const inside = frame
+			? (space?.pointIn(frame.id, world) ??
+				pointInNode(frame, world, parentMatrix))
+			: true;
 		if (frame?.clip && !inside) continue;
 
-		const worldMatrix = multiplyMatrix(
-			parentMatrix,
-			toAffineMatrix(node.transform),
-		);
-		const inner = findFrameHitAtPoint(node.children, world, worldMatrix);
+		const worldMatrix =
+			space?.matrixOf(node.id) ??
+			multiplyMatrix(parentMatrix, toAffineMatrix(node.transform));
+		const inner = findFrameHitAtPoint(node.children, world, worldMatrix, space);
 		if (inner) {
 			hit = inner;
 			continue;

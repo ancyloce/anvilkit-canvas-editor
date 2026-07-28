@@ -5,6 +5,7 @@ import {
 	createFrame,
 	invertMatrix,
 } from "@anvilkit/canvas-core";
+import { resolvedPageSpace } from "../stage/resolved-page-space.js";
 import { snapPoint } from "./draw-snap.js";
 import { findFrameHitAtPoint } from "./frame-target.js";
 import type { Tool } from "./tool-types.js";
@@ -108,10 +109,15 @@ export const frameTool: Tool = {
 		const ir = ctx.getIR();
 		const page = ir.pages.find((p) => p.id === ctx.activePageId);
 		const hit = page
-			? findFrameHitAtPoint(page.root.children, {
-					x: draft.startX,
-					y: draft.startY,
-				})
+			? findFrameHitAtPoint(
+					page.root.children,
+					{
+						x: draft.startX,
+						y: draft.startY,
+					},
+					undefined,
+					resolvedPageSpace(ctx.resolvedDocumentStore),
+				)
 			: null;
 
 		const box = hit

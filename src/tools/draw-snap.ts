@@ -1,6 +1,7 @@
 import { getOtherNodeRects } from "../snap/get-node-rect.js";
 import { computeSnap } from "../snap/snap-engine.js";
 import type { SmartGuide } from "../snap/snap-types.js";
+import { resolvedPageSpace } from "../stage/resolved-page-space.js";
 import type { ToolContext } from "./tool-types.js";
 
 export interface PointSnapResult {
@@ -22,7 +23,12 @@ export function snapPoint(
 	excludeIds: ReadonlySet<string> = new Set(),
 ): PointSnapResult {
 	const vs = ctx.viewportStore.getState();
-	const others = getOtherNodeRects(ctx.getIR(), ctx.activePageId, excludeIds);
+	const others = getOtherNodeRects(
+		ctx.getIR(),
+		ctx.activePageId,
+		excludeIds,
+		resolvedPageSpace(ctx.resolvedDocumentStore),
+	);
 	const result = computeSnap({
 		candidate: { x: point.x, y: point.y, width: 0, height: 0 },
 		others: vs.snapToObjectsEnabled ? others : [],

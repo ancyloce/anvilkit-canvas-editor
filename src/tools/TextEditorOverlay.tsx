@@ -6,6 +6,7 @@ import type {
 	CanvasTextNode,
 } from "@anvilkit/canvas-core";
 import { findNode, resolveSpanStyle } from "@anvilkit/canvas-core";
+import * as React from "react";
 import {
 	type KeyboardEvent,
 	useCallback,
@@ -19,9 +20,13 @@ import {
 	resolveFillForDisplay,
 	resolveFontFamilyForDisplay,
 } from "../brand/resolve-brand-token.js";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import {
+	useCanvasStudio,
+	useResolvedDocument,
+} from "../context/canvas-studio-context.js";
 import { useCanvasBrandKit } from "../stage/CanvasBrandKitContext.js";
 import { resolveNodeWorldPosition } from "../stage/node-world-position.js";
+import { resolvedNodeWorldPosition } from "../stage/resolved-page-space.js";
 import {
 	flattenRichText,
 	rebuildRichTextParagraphs,
@@ -73,6 +78,9 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 	// including a remote-collab write to the node being edited (E-10).
 	const { editingStore, stage, ir, commit, viewportStore } = useCanvasStudio();
 	const brandKit = useCanvasBrandKit();
+	// T-M3-07: anchor to the RESOLVED position (flow slot for an Auto Layout
+	// child); the raw ancestor walk stays as the storeless fallback.
+	const resolvedDocument = useResolvedDocument();
 	// Subscribed (not a one-off getState() snapshot) so the open overlay
 	// repositions on zoom/pan while editing, not just on the next unrelated
 	// re-render (E-10). Three separate subscriptions, matching how
@@ -178,7 +186,11 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 	// `editingNode` was just resolved from this same `ir` — off chance the
 	// lookup fails.
 	const worldPosition =
-		resolveNodeWorldPosition(ir, editingNodeId) ?? editingNode.transform;
+		(resolvedDocument
+			? resolvedNodeWorldPosition(resolvedDocument, editingNodeId)
+			: null) ??
+		resolveNodeWorldPosition(ir, editingNodeId) ??
+		editingNode.transform;
 	const left = (rect?.left ?? 0) + worldPosition.x * zoom + panX;
 	const top = (rect?.top ?? 0) + worldPosition.y * zoom + panY;
 	const overlayStyle = resolveOverlayStyle(editingNode, brandKit);

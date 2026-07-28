@@ -9,6 +9,7 @@ import type { CanvasFocusStoreApi } from "../stores/focus-store.js";
 import type { GuidesStoreApi } from "../stores/guides-store.js";
 import type { IsolationStoreApi } from "../stores/isolation-store.js";
 import type { PenStoreApi } from "../stores/pen-store.js";
+import type { ResolvedDocumentStoreApi } from "../stores/resolved-document-store.js";
 import type { SelectionStoreApi } from "../stores/selection-store.js";
 import type { ToolId, ToolStoreApi } from "../stores/tool-store.js";
 import type { ViewportStoreApi } from "../stores/viewport-store.js";
@@ -57,6 +58,13 @@ export interface ToolContext {
 	 * (a no-op when no `onAiIntent` prop is wired), but tool tests may omit it.
 	 */
 	requestAiIntent?: (intent: AiToolIntent) => void;
+	/**
+	 * T-M3-07: the resolved layout document (one per render context). Always
+	 * supplied by `<CanvasStudio>`; optional so lightweight tool tests may omit
+	 * it — geometry consumers then fall back to raw stored-geometry helpers,
+	 * which agree for documents without layout intent.
+	 */
+	resolvedDocumentStore?: ResolvedDocumentStoreApi;
 	/**
 	 * Container isolation stack (C-09, FR-055). Always supplied by
 	 * `<CanvasStudio>`; optional so lightweight tool tests may omit it — the

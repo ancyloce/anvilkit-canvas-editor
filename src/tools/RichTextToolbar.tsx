@@ -24,8 +24,10 @@ import { useSyncExternalStore } from "react";
 import {
 	useCanvasStudio,
 	useCanvasT,
+	useResolvedDocument,
 } from "../context/canvas-studio-context.js";
 import { resolveNodeWorldPosition } from "../stage/node-world-position.js";
+import { resolvedNodeWorldPosition } from "../stage/resolved-page-space.js";
 import {
 	flattenRichText,
 	rebuildRichTextParagraphs,
@@ -72,6 +74,9 @@ function everySpan(
 export function RichTextToolbar(): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
+	// T-M3-07: anchor to the RESOLVED position, so the toolbar follows an Auto
+	// Layout child's flow slot; the raw walk stays as the storeless fallback.
+	const resolvedDocument = useResolvedDocument();
 	const editingNodeId = useSyncExternalStore(
 		ctx.editingStore.subscribe,
 		() => ctx.editingStore.getState().editingNodeId,
@@ -127,7 +132,11 @@ export function RichTextToolbar(): React.JSX.Element | null {
 	// positioning contract; a rich-text node nested in a moved/rotated/scaled
 	// group or frame needs more than its own local transform.x/y.
 	const worldPosition =
-		resolveNodeWorldPosition(ctx.ir, richText.id) ?? richText.transform;
+		(resolvedDocument
+			? resolvedNodeWorldPosition(resolvedDocument, richText.id)
+			: null) ??
+		resolveNodeWorldPosition(ctx.ir, richText.id) ??
+		richText.transform;
 	const left = (rect?.left ?? 0) + worldPosition.x * zoom + panX;
 	const top = (rect?.top ?? 0) + worldPosition.y * zoom + panY;
 

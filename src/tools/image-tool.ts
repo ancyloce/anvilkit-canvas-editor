@@ -6,6 +6,7 @@ import {
 import type { CanvasPickedAsset } from "../assets/adapter-types.js";
 import { buildAssetInsertCommands } from "../assets/upload-actions.js";
 import { buildFillFrameCommands } from "../selection/frame-image-actions.js";
+import { resolvedPageSpace } from "../stage/resolved-page-space.js";
 import { findFrameAtPoint } from "./frame-target.js";
 import type { Tool, ToolContext } from "./tool-types.js";
 
@@ -75,7 +76,12 @@ export const imageTool: Tool = {
 				const ir = ctx.getIR();
 				const page = ir.pages.find((p) => p.id === ctx.activePageId);
 				if (!page) return;
-				const frame = findFrameAtPoint(page.root.children, e.point);
+				const frame = findFrameAtPoint(
+					page.root.children,
+					e.point,
+					undefined,
+					resolvedPageSpace(ctx.resolvedDocumentStore),
+				);
 
 				if (frame) {
 					const assetId = ids[0]!;
