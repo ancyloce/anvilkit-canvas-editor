@@ -31,6 +31,7 @@ import {
 	firstDropShadow,
 	resolveNodeEffects,
 	resolveSpanStyle,
+	toResolvedNodeId,
 } from "@anvilkit/canvas-core";
 import Konva from "konva";
 import * as React from "react";
@@ -72,6 +73,7 @@ import {
 } from "../text/rich-text-style.js";
 import { useCanvasAsset } from "./CanvasAssetsContext.js";
 import { useCanvasBrandKit } from "./CanvasBrandKitContext.js";
+import { CanvasResolvedDocumentContext } from "./CanvasResolvedDocumentContext.js";
 import {
 	ISOLATION_DIM_OPACITY,
 	IsolationRenderContext,
@@ -1423,10 +1425,13 @@ function CanvasCustomNodeRenderer({ node }: { node: CanvasNode }) {
 	// Custom (extension) node kind: render via the registered renderer from
 	// context, else nothing. Built-in kinds never reach here.
 	const studio = use(CanvasStudioContext);
+	// T-M3-08: hand the extension the resolved geometry when a resolution
+	// exists — optional on the contract, so pre-widening extensions ignore it.
+	const resolved = useRenderRecord(node.id)?.geometry;
 	const renderer = studio?.kindRenderers?.[(node as { type: string }).type];
 	if (!renderer) return null;
 	const Render = renderer.render;
-	return <Render node={node} />;
+	return <Render node={node} {...(resolved ? { resolved } : {})} />;
 }
 
 const NOOP_SUBSCRIBE = () => () => undefined;
@@ -1450,19 +1455,35 @@ function useFieldPreviewMerge(node: CanvasNode): CanvasNode {
 }
 
 /**
+ * The resolved record for a node in THIS render pass: a static export
+ * resolution (`CanvasResolvedDocumentContext`, provider-less raster/PDF/
+ * thumbnail passes) wins over the live studio store, so exports never see
+ * previews; with neither present the caller falls back to stored geometry.
+ */
+function useRenderRecord(nodeId: string) {
+	const staticDocument = use(CanvasResolvedDocumentContext);
+	const fromStore = useResolvedNodeRecord(nodeId);
+	if (staticDocument) {
+		return staticDocument.records.get(toResolvedNodeId(nodeId));
+	}
+	return fromStore;
+}
+
+/**
  * T-M3-06: swap the node's stored geometry for its resolved record's
  * `localTransform`/`bounds`. Style and content stay on the (preview-merged)
  * source node; geometry previews are already folded into the resolved tree by
  * the resolved-document store, so the record wins over the raw patch — the
  * same values for plain documents, layout-corrected values for Auto Layout
- * ones. Outside a full studio context (headless rasterization, partial test
- * mounts) there is no store and the node keeps its stored geometry — which is
- * identical for documents without layout intent. Memoised on `[node, record]`
- * — untouched records are reference-identical across resolutions (TD §5.4),
- * so an edit elsewhere in the document allocates nothing here.
+ * ones. Outside a full studio context (headless rasterization without a
+ * static resolution, partial test mounts) the node keeps its stored geometry
+ * — which is identical for documents without layout intent. Memoised on
+ * `[node, record]` — untouched records are reference-identical across
+ * resolutions (TD §5.4), so an edit elsewhere in the document allocates
+ * nothing here.
  */
 function useResolvedGeometry(node: CanvasNode): CanvasNode {
-	const record = useResolvedNodeRecord(node.id);
+	const record = useRenderRecord(node.id);
 	return useMemo(() => {
 		if (!record) return node;
 		return {
