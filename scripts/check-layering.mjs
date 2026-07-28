@@ -43,6 +43,7 @@ const LAYERS = [
 		domain: "leaf",
 		rank: 0,
 		match: (p) =>
+			p.startsWith("auto-layout/") ||
 			p.startsWith("text/") ||
 			p.startsWith("templates/") ||
 			p === "CanvasErrorBoundary.tsx",
