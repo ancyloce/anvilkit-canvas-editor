@@ -33,6 +33,7 @@ import {
 	resolveSpanStyle,
 } from "@anvilkit/canvas-core";
 import Konva from "konva";
+import * as React from "react";
 import { use, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
 	Arrow,
@@ -55,13 +56,14 @@ import {
 import {
 	CanvasStudioContext,
 	useCanvasT,
+	useResolvedNodeRecord,
 } from "../context/canvas-studio-context.js";
 import {
 	type CanvasToaster,
 	useCanvasToaster,
 } from "../context/toast-context.js";
 import { measureGlyphWidth } from "../text/canvas-glyph-measurer.js";
-import { useFontStatus } from "../text/font-status.js";
+import { fontManifestHash, useFontStatus } from "../text/font-status.js";
 import { getCachedLayout } from "../text/layout-cache.js";
 import { layoutRichText } from "../text/rich-text-layout.js";
 import {
@@ -625,16 +627,21 @@ function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 	// against the box) is correct once the box hugs the content.
 	const measured = autoWidth
 		? measureAutoWidthRichText(node)
-		: getCachedLayout(node.paragraphs, node.width, wrap, () =>
-				layoutRichText(
-					{
-						paragraphs: node.paragraphs,
-						width: node.width,
-						wrap,
-						defaults: DEFAULT_RICH_TEXT_STYLE,
-					},
-					measureGlyphWidth,
-				),
+		: getCachedLayout(
+				node.paragraphs,
+				node.width,
+				wrap,
+				() =>
+					layoutRichText(
+						{
+							paragraphs: node.paragraphs,
+							width: node.width,
+							wrap,
+							defaults: DEFAULT_RICH_TEXT_STYLE,
+						},
+						measureGlyphWidth,
+					),
+				{ defaults: DEFAULT_RICH_TEXT_STYLE, manifestHash: fontManifestHash() },
 			);
 
 	// FR-081 auto-width reconciliation: keep `width`/`bounds.width` synced to the
@@ -1442,10 +1449,34 @@ function useFieldPreviewMerge(node: CanvasNode): CanvasNode {
 	return patch ? ({ ...node, ...patch } as CanvasNode) : node;
 }
 
+/**
+ * T-M3-06: swap the node's stored geometry for its resolved record's
+ * `localTransform`/`bounds`. Style and content stay on the (preview-merged)
+ * source node; geometry previews are already folded into the resolved tree by
+ * the resolved-document store, so the record wins over the raw patch — the
+ * same values for plain documents, layout-corrected values for Auto Layout
+ * ones. Outside a full studio context (headless rasterization, partial test
+ * mounts) there is no store and the node keeps its stored geometry — which is
+ * identical for documents without layout intent. Memoised on `[node, record]`
+ * — untouched records are reference-identical across resolutions (TD §5.4),
+ * so an edit elsewhere in the document allocates nothing here.
+ */
+function useResolvedGeometry(node: CanvasNode): CanvasNode {
+	const record = useResolvedNodeRecord(node.id);
+	return useMemo(() => {
+		if (!record) return node;
+		return {
+			...node,
+			transform: record.geometry.localTransform,
+			bounds: record.geometry.bounds,
+		} as CanvasNode;
+	}, [node, record]);
+}
+
 export function CanvasNodeRenderer({
 	node: irNode,
 }: CanvasNodeRendererProps): React.JSX.Element | null {
-	const node = useFieldPreviewMerge(irNode);
+	const node = useResolvedGeometry(useFieldPreviewMerge(irNode));
 	// C-09 (FR-055): exterior content dims and stops hit-testing while a
 	// container is isolated. Opacity/listening cascade through the wrapper
 	// Group, so a dimmed container dims its whole subtree.
