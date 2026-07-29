@@ -11,6 +11,7 @@ import type {
 } from "@anvilkit/canvas-core";
 import { findNode, parentOf } from "@anvilkit/canvas-core";
 import type { CanvasLayoutEditorEvent } from "../auto-layout/events.js";
+import { reorderCommandsTo } from "../auto-layout/reorder.js";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
 
 /**
@@ -95,29 +96,6 @@ function inferDirection(
 	const spreadX = Math.max(...cx) - Math.min(...cx);
 	const spreadY = Math.max(...cy) - Math.min(...cy);
 	return spreadX >= spreadY ? "horizontal" : "vertical";
-}
-
-/**
- * `node.reorder` commands that transform `current` into `target`, emitted in
- * target-index order and mirrored against a working copy so each command's
- * remove-then-insert semantics are accounted for.
- */
-function reorderCommandsTo(
-	current: readonly string[],
-	target: readonly string[],
-): CanvasCommand[] {
-	const work = [...current];
-	const cmds: CanvasCommand[] = [];
-	for (let i = 0; i < target.length; i += 1) {
-		const id = target[i];
-		if (id === undefined || work[i] === id) continue;
-		const from = work.indexOf(id);
-		if (from < 0) continue;
-		work.splice(from, 1);
-		work.splice(i, 0, id);
-		cmds.push({ type: "node.reorder", nodeId: id, toIndex: i });
-	}
-	return cmds;
 }
 
 function isPlainFrame(node: CanvasNode): node is CanvasFrameNode {
