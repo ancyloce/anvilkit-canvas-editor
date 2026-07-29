@@ -66,7 +66,7 @@ vi.mock("../render/rasterize-page.js", () => ({
 	})),
 }));
 
-import { CanvasStudio, useCanvasStores } from "../index.js";
+import { CanvasStudio, useCanvasStores, useCanvasStudio } from "../index.js";
 
 function fixtureIR(requiredCapabilities?: readonly string[]): CanvasIR {
 	const page = createPage({ id: "p1" });
@@ -112,6 +112,30 @@ function StableProbe({ out }: { out: { stableFlag?: unknown } }): null {
 	return null;
 }
 
+/**
+ * P2-3: seeds an undo entry through the direct-store bypass the review
+ * records (the guarded commit path can never build history on a read-only
+ * document), then proves `ctx.undo()` is blocked by the guard rather than by
+ * empty-history coincidence.
+ */
+function UndoGuardProbe({ out }: { out: { undoWasNoOp?: boolean } }): null {
+	const ctx = useCanvasStudio();
+	const done = useRef(false);
+	useEffect(() => {
+		if (done.current) return;
+		done.current = true;
+		const current = ctx.getIR();
+		ctx.historyStore.getState().commit(current, {
+			type: "node.move",
+			nodeId: "r1",
+			from: { x: 0, y: 0 },
+			to: { x: 5, y: 0 },
+		});
+		out.undoWasNoOp = ctx.undo() === current;
+	}, [ctx, out]);
+	return null;
+}
+
 afterEach(() => {
 	vi.restoreAllMocks();
 });
@@ -146,6 +170,27 @@ describe("read-only affordance (review 0022 P2-2)", () => {
 		await act(() => Promise.resolve());
 
 		expect(queryByTestId("canvas-readonly-banner")).toBeNull();
+		unmount();
+	});
+
+	it("blocks undo on a read-only document even with seeded history (P2-3)", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const out: { undoWasNoOp?: boolean } = {};
+		const { unmount } = render(
+			<CanvasStudio
+				initialIR={fixtureIR(["test.future.v9"])}
+				initialActivePageId="p1"
+				autoSave={false}
+			>
+				<UndoGuardProbe out={out} />
+			</CanvasStudio>,
+		);
+		await act(() => Promise.resolve());
+
+		expect(out.undoWasNoOp).toBe(true);
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining("read-only preview"),
+		);
 		unmount();
 	});
 

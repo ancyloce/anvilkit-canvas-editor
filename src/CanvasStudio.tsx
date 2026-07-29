@@ -581,9 +581,16 @@ function useCommitPipeline(
 	// Undo/redo (E-20): the same onChange/onChanges seam as `commit`. `next ===
 	// current` covers BOTH "nothing to undo/redo" and "the top entry was a
 	// stale inverse the store just dropped" (history-store.ts) — neither is a
-	// real change, so neither notifies.
+	// real change, so neither notifies. Read-only documents block undo/redo
+	// like any mutation (review 0022 P2-3): a read-only session cannot build
+	// history through the guarded commits, but the symmetry protects against
+	// any entry point that seeds `historyStore` directly.
 	const undo = useCallback((): CanvasIR => {
 		const current = sceneStore.getState().ir;
+		if (isDocumentCapabilityReadOnly(current)) {
+			warnReadOnlyCommitBlocked(current);
+			return current;
+		}
 		const next = historyStore.getState().undo(current);
 		if (next === current) return current;
 		sceneStore.getState().setIR(next);
@@ -594,6 +601,10 @@ function useCommitPipeline(
 
 	const redo = useCallback((): CanvasIR => {
 		const current = sceneStore.getState().ir;
+		if (isDocumentCapabilityReadOnly(current)) {
+			warnReadOnlyCommitBlocked(current);
+			return current;
+		}
 		const next = historyStore.getState().redo(current);
 		if (next === current) return current;
 		sceneStore.getState().setIR(next);
