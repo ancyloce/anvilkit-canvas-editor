@@ -1,6 +1,7 @@
 import type { CanvasIR } from "@anvilkit/canvas-core";
 import type { HistoryStoreApi } from "../stores/history-store.js";
 import type { SaveStatusStoreApi } from "../stores/save-status-store.js";
+import { withRequiredLayoutCapability } from "./layout-compatibility.js";
 
 /**
  * @file FR-164 local recovery (C-10). The editor owns WHEN snapshots are
@@ -127,7 +128,10 @@ export function createRecoveryController(
 	const writeSnapshot = (): void => {
 		timer = null;
 		if (disposed) return;
-		const ir = options.getIR();
+		// T-M5-03: the mirror is capability-complete like a real save, but NOT
+		// materialized — the stamp would go stale within one debounce window,
+		// and restore re-resolves anyway.
+		const ir = withRequiredLayoutCapability(options.getIR());
 		const revision = options.historyStore.getState().getStateId();
 		lastWrittenRevision = revision;
 		void options.adapter

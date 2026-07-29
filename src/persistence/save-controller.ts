@@ -4,6 +4,7 @@ import type {
 	CanvasSaveState,
 	SaveStatusStoreApi,
 } from "../stores/save-status-store.js";
+import { prepareDocumentForSave } from "./save-pipeline.js";
 import {
 	type CanvasAutoSaveOptions,
 	type CanvasPersistenceAdapter,
@@ -121,7 +122,9 @@ export function createSaveController(
 		}
 		const seq = ++saveSeq;
 		const revision = history.getState().getStateId();
-		const ir = options.getIR();
+		// T-M5-03: what leaves the session is the capability-complete,
+		// geometry-materialized document — the live store is never touched.
+		const ir = prepareDocumentForSave(options.getIR(), revision);
 		inFlight += 1;
 		const abortController = new AbortController();
 		if (!options2?.protected) inFlightAbortControllers.add(abortController);
