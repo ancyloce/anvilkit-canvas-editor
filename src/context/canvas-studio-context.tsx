@@ -377,14 +377,17 @@ export const CanvasStudioContext =
 /**
  * The stable half of {@link CanvasStudioContextValue} (W16): the store handles
  * and host callbacks, with NO per-commit live state (`ir`/`activePageId`/
- * `stage`). `<CanvasStudio>` memoizes this so its identity never changes after
+ * `stage`/`documentReadOnly` — the last derives from the live `ir`, so it is
+ * excluded here to make reading it through {@link useCanvasStores} a compile
+ * error instead of a silently-undefined trap; use {@link useCanvasStudio}).
+ * `<CanvasStudio>` memoizes this so its identity never changes after
  * mount, letting components that only need stores subscribe via
  * {@link useCanvasStores} and skip the re-render that fires on every edit for
  * consumers of the full {@link CanvasStudioContext}.
  */
 export type CanvasStudioStableValue = Omit<
 	CanvasStudioContextValue,
-	"ir" | "activePageId" | "stage"
+	"ir" | "activePageId" | "stage" | "documentReadOnly"
 >;
 
 /** Stable-only context (W16). Provided alongside {@link CanvasStudioContext}. */
