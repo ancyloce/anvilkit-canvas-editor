@@ -150,6 +150,7 @@
 	"canvas.menu.exitIsolation": "Exit isolation",
 	"canvas.isolation.editing": "Editing",
 	"canvas.isolation.exit": "Exit isolation",
+	"canvas.readOnly.banner": "This document requires a capability this editor does not support. Editing is disabled; viewing and export remain available.",
 	"canvas.recovery.title": "Recover unsaved changes?",
 	"canvas.recovery.body": "A newer local draft of this design was found. Restore it, or discard it and keep the loaded version?",
 	"canvas.recovery.restore": "Restore draft",

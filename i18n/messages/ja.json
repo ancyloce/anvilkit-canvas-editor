@@ -150,6 +150,7 @@
 	"canvas.menu.exitIsolation": "分離モードを終了",
 	"canvas.isolation.editing": "編集中",
 	"canvas.isolation.exit": "分離モードを終了",
+	"canvas.readOnly.banner": "このドキュメントには、このエディタが対応していない機能が必要です。編集は無効になっていますが、表示とエクスポートは引き続き利用できます。",
 	"canvas.recovery.title": "未保存の変更を復元しますか？",
 	"canvas.recovery.body": "このデザインのより新しいローカル下書きが見つかりました。復元しますか？それとも破棄して読み込んだバージョンを保持しますか？",
 	"canvas.recovery.restore": "下書きを復元",

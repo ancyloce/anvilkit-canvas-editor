@@ -150,6 +150,7 @@
 	"canvas.menu.exitIsolation": "退出隔离编辑",
 	"canvas.isolation.editing": "正在编辑",
 	"canvas.isolation.exit": "退出隔离编辑",
+	"canvas.readOnly.banner": "此文档需要当前编辑器不支持的功能。编辑已禁用；仍可查看和导出。",
 	"canvas.recovery.title": "恢复未保存的更改？",
 	"canvas.recovery.body": "发现此设计的较新本地草稿。是恢复草稿，还是丢弃草稿并保留已加载的版本？",
 	"canvas.recovery.restore": "恢复草稿",
