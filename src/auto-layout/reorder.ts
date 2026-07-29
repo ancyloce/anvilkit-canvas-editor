@@ -1,4 +1,8 @@
-import type { Aabb, CanvasLayoutDirection } from "@anvilkit/canvas-core";
+import type {
+	Aabb,
+	CanvasCommand,
+	CanvasLayoutDirection,
+} from "@anvilkit/canvas-core";
 
 /**
  * A flow child's footprint in its parent frame's local space, as reported by
@@ -107,4 +111,27 @@ export function computeInsertionIndex(
 		}
 	}
 	return index;
+}
+
+/**
+ * `node.reorder` commands that transform `current` into `target`, emitted in
+ * target-index order and mirrored against a working copy so each command's
+ * remove-then-insert semantics are accounted for.
+ */
+export function reorderCommandsTo(
+	current: readonly string[],
+	target: readonly string[],
+): CanvasCommand[] {
+	const work = [...current];
+	const cmds: CanvasCommand[] = [];
+	for (let i = 0; i < target.length; i += 1) {
+		const id = target[i];
+		if (id === undefined || work[i] === id) continue;
+		const from = work.indexOf(id);
+		if (from < 0) continue;
+		work.splice(from, 1);
+		work.splice(i, 0, id);
+		cmds.push({ type: "node.reorder", nodeId: id, toIndex: i });
+	}
+	return cmds;
 }

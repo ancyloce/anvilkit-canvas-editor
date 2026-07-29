@@ -1,7 +1,7 @@
+import type { CanvasCommand } from "@anvilkit/canvas-core";
 import { describe, expect, it } from "vitest";
-
 import type { FlowChildRect } from "../reorder.js";
-import { computeInsertionIndex } from "../reorder.js";
+import { computeInsertionIndex, reorderCommandsTo } from "../reorder.js";
 
 function rect(id: string, min: number, max: number, cross = 0): FlowChildRect {
 	return {
@@ -74,5 +74,62 @@ describe("computeInsertionIndex", () => {
 
 	it("returns 0 for an empty child list", () => {
 		expect(computeInsertionIndex([], "horizontal", { x: 10, y: 10 })).toBe(0);
+	});
+});
+
+describe("reorderCommandsTo", () => {
+	// Sequential remove-then-insert, exactly how `node.reorder` applies.
+	function applySequentially(
+		order: readonly string[],
+		cmds: readonly CanvasCommand[],
+	): string[] {
+		const work = [...order];
+		for (const cmd of cmds) {
+			if (cmd.type !== "node.reorder") {
+				throw new Error(`unexpected command: ${cmd.type}`);
+			}
+			const from = work.indexOf(cmd.nodeId);
+			if (from < 0) throw new Error(`unknown node: ${cmd.nodeId}`);
+			work.splice(from, 1);
+			work.splice(cmd.toIndex, 0, cmd.nodeId);
+		}
+		return work;
+	}
+
+	it("returns no commands when the order already matches", () => {
+		expect(reorderCommandsTo(["a", "b", "c"], ["a", "b", "c"])).toEqual([]);
+	});
+
+	it("reaches a trailing multi-block target under sequential application", () => {
+		// Review 0022 P1-1 counterexample: dragging [r1, r3] to the end of
+		// [r1, r2, r3, r4]. Naive per-node `drop.index + k` emission interleaves
+		// to [r2, r1, r4, r3]; the mirrored emission must reach [r2, r4, r1, r3].
+		const current = ["r1", "r2", "r3", "r4"];
+		const target = ["r2", "r4", "r1", "r3"];
+		const cmds = reorderCommandsTo(current, target);
+		expect(cmds).toEqual([
+			{ type: "node.reorder", nodeId: "r2", toIndex: 0 },
+			{ type: "node.reorder", nodeId: "r4", toIndex: 1 },
+		]);
+		expect(applySequentially(current, cmds)).toEqual(target);
+	});
+
+	it("reaches a leading multi-block target under sequential application", () => {
+		const current = ["a", "d1", "b", "d2"];
+		const target = ["d1", "d2", "a", "b"];
+		const cmds = reorderCommandsTo(current, target);
+		expect(applySequentially(current, cmds)).toEqual(target);
+	});
+
+	it("reaches a full reversal under sequential application", () => {
+		const current = ["a", "b", "c", "d"];
+		const target = ["d", "c", "b", "a"];
+		const cmds = reorderCommandsTo(current, target);
+		expect(applySequentially(current, cmds)).toEqual(target);
+	});
+
+	it("ignores target ids missing from the current order", () => {
+		const cmds = reorderCommandsTo(["a", "b"], ["ghost", "b", "a"]);
+		expect(applySequentially(["a", "b"], cmds)).toEqual(["b", "a"]);
 	});
 });
