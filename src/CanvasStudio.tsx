@@ -1426,11 +1426,39 @@ export function CanvasStudio({
 	) : (
 		stageNode
 	);
+	// AC-010 affordance (review 0022 P2-2): blocked commits are otherwise
+	// invisible — every edit silently no-ops. One status strip keyed off the
+	// same check as the commit guards, riding with the stage so the bare
+	// layout and any `renderShell` composition both show it. Inline-styled
+	// like the bare layout: partial hosts may not load the compiled CSS.
+	const stageWithChrome = isDocumentCapabilityReadOnly(ir) ? (
+		<>
+			<div
+				role="status"
+				data-testid="canvas-readonly-banner"
+				style={{
+					background: "rgba(245, 158, 11, 0.15)",
+					borderBottom: "1px solid rgba(245, 158, 11, 0.4)",
+					fontSize: 12,
+					lineHeight: 1.4,
+					padding: "6px 12px",
+				}}
+			>
+				{t(
+					"canvas.readOnly.banner",
+					"This document requires a capability this editor does not support. Editing is disabled; viewing and export remain available.",
+				)}
+			</div>
+			{stageWithRecovery}
+		</>
+	) : (
+		stageWithRecovery
+	);
 	return (
 		<CanvasStudioContext value={ctxValue}>
 			<CanvasStudioStableContext value={stableCtxValue}>
 				{renderShell ? (
-					renderShell(stageWithRecovery)
+					renderShell(stageWithChrome)
 				) : (
 					<div
 						data-testid="canvas-studio-root"
@@ -1440,7 +1468,7 @@ export function CanvasStudio({
 						<ZoomAnnouncer />
 						<LayoutAnnouncer />
 						{!hidePageNavigator && <PageNavigator />}
-						{stageWithRecovery}
+						{stageWithChrome}
 					</div>
 				)}
 				<CanvasKeyboardLayer />
