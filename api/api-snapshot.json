@@ -27424,7 +27424,43 @@
 							},
 							{
 								"kind": "text",
-								"text": "). "
+								"text": "/"
+							},
+							{
+								"kind": "code",
+								"text": "`documentReadOnly`"
+							},
+							{
+								"kind": "text",
+								"text": " — the last derives from the live "
+							},
+							{
+								"kind": "code",
+								"text": "`ir`"
+							},
+							{
+								"kind": "text",
+								"text": ", so it is\nexcluded here to make reading it through "
+							},
+							{
+								"kind": "inline-tag",
+								"tag": "@link",
+								"text": "useCanvasStores",
+								"target": 429
+							},
+							{
+								"kind": "text",
+								"text": " a compile\nerror instead of a silently-undefined trap; use "
+							},
+							{
+								"kind": "inline-tag",
+								"tag": "@link",
+								"text": "useCanvasStudio",
+								"target": 431
+							},
+							{
+								"kind": "text",
+								"text": ").\n"
 							},
 							{
 								"kind": "code",
@@ -27484,6 +27520,10 @@
 									{
 										"type": "literal",
 										"value": "stage"
+									},
+									{
+										"type": "literal",
+										"value": "documentReadOnly"
 									}
 								]
 							}
