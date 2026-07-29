@@ -16,6 +16,7 @@ import {
 	computeInsertionIndex,
 	computeInsertionIndicator,
 	type FlowChildRect,
+	reorderCommandsTo,
 } from "../auto-layout/reorder.js";
 import { isolationScopeChildren } from "../selection/isolation.js";
 import { getOtherNodeRects } from "../snap/get-node-rect.js";
@@ -230,12 +231,14 @@ function computeLayoutDrop(
 }
 
 /**
- * Commit a previewed layout drop (T-M4-06 steps 5–6): a pure flow reorder
- * when every dragged node already lives in the target frame, else a
- * `node.reparent` + transform correction per node — plus the Absolute intent
- * write when the Alt modifier was held. ONE history entry. Returns `true`
- * when the drop was handled (even as a no-op), so the caller skips the plain
- * `node.move` path.
+ * Commit a previewed layout drop (T-M4-06 steps 5–6). Flow drops compute the
+ * target frame's final child order ONCE and emit `node.reparent` (foreign
+ * members, with a frame-local transform correction) plus `node.reorder`
+ * commands mirrored against a working copy, so sequential remove-then-insert
+ * application reaches exactly that order (review 0022 P1-1). Absolute drops
+ * (Alt held) write the Absolute intent per node instead — no flow reorder.
+ * ONE history entry. Returns `true` when the drop was handled (even as a
+ * no-op), so the caller skips the plain `node.move` path.
  */
 function commitLayoutDrop(
 	ctx: ToolContext,
@@ -248,59 +251,91 @@ function commitLayoutDrop(
 	const draggedIds = nodeStarts.map((s) => s.id);
 	const parents = draggedIds.map((id) => parentOf(ir, id)?.parent ?? null);
 	if (parents.some((p) => p === null)) return false;
-	const sameParent = parents.every((p) => p?.id === drop.frameId);
+	const frame = findNode(ir, drop.frameId)?.node;
+	if (!frame || frame.type !== "frame") return false;
 	const space = resolvedPageSpace(ctx.resolvedDocumentStore);
 	const cmds: CanvasCommand[] = [];
+	const localDropPoint = (id: string) => {
+		const pageOrigin = space?.originOf(id);
+		const frameMatrix = space?.matrixOf(drop.frameId);
+		return pageOrigin && frameMatrix
+			? applyMatrix(
+					invertMatrix(frameMatrix),
+					pageOrigin.x + dx,
+					pageOrigin.y + dy,
+				)
+			: null;
+	};
 
-	if (sameParent && !drop.absolute) {
-		const frameChildren = parents[0]?.children ?? [];
-		const before = frameChildren.map((c) => c.id);
+	if (!drop.absolute) {
+		// The final order: current children minus the dragged block, dragged
+		// ids spliced at the drop slot. Foreign members reparent into their
+		// mirrored slot; members already in the frame are handled by the
+		// reorder pass alone, like any same-parent drop. An unchanged order
+		// yields zero commands — the no-op case.
+		const before = frame.children.map((c) => c.id);
 		const remaining = before.filter((id) => !draggedIds.includes(id));
 		const target = [...remaining];
 		target.splice(drop.index, 0, ...draggedIds);
-		if (target.join(" ") === before.join(" ")) return true;
-		draggedIds.forEach((id, k) => {
-			cmds.push({ type: "node.reorder", nodeId: id, toIndex: drop.index + k });
-		});
+		const work = [...before];
+		for (const [k, start] of nodeStarts.entries()) {
+			const found = findNode(ir, start.id);
+			const parent = parents[k];
+			if (!found || !parent || parent.id === drop.frameId) continue;
+			const at = Math.min(target.indexOf(start.id), work.length);
+			work.splice(at, 0, start.id);
+			cmds.push({
+				type: "node.reparent",
+				nodeId: start.id,
+				toParentId: drop.frameId,
+				toIndex: at,
+			});
+			const local = localDropPoint(start.id);
+			if (local) {
+				cmds.push({
+					type: "node.update",
+					nodeId: start.id,
+					kind: found.node.type,
+					patch: {
+						transform: { ...found.node.transform, x: local[0], y: local[1] },
+					},
+				} as CanvasAnyNodeUpdateCommand);
+			}
+		}
+		cmds.push(...reorderCommandsTo(work, target));
 	} else {
+		// Absolute members are out of flow, so there is no reorder pass; the
+		// `inserted` counter (NOT the raw member index) keeps the reparent
+		// slot arithmetic correct when some members already live in the
+		// target frame (review 0022 P1-1, mixed-parent edge).
+		let inserted = 0;
 		for (const [k, start] of nodeStarts.entries()) {
 			const found = findNode(ir, start.id);
 			const parent = parents[k];
 			if (!found || !parent) continue;
 			const node = found.node;
-			const pageOrigin = space?.originOf(start.id);
-			const frameMatrix = space?.matrixOf(drop.frameId);
-			const local =
-				pageOrigin && frameMatrix
-					? applyMatrix(
-							invertMatrix(frameMatrix),
-							pageOrigin.x + dx,
-							pageOrigin.y + dy,
-						)
-					: null;
+			const local = localDropPoint(start.id);
 			if (parent.id !== drop.frameId) {
 				cmds.push({
 					type: "node.reparent",
 					nodeId: start.id,
 					toParentId: drop.frameId,
-					toIndex: drop.index + k,
+					toIndex: drop.index + inserted,
 				});
+				inserted += 1;
 			}
-			const patch: Record<string, unknown> = {};
+			const patch: Record<string, unknown> = {
+				layoutItem: { ...node.layoutItem, positioning: "absolute" },
+			};
 			if (local) {
 				patch.transform = { ...node.transform, x: local[0], y: local[1] };
 			}
-			if (drop.absolute) {
-				patch.layoutItem = { ...node.layoutItem, positioning: "absolute" };
-			}
-			if (Object.keys(patch).length > 0) {
-				cmds.push({
-					type: "node.update",
-					nodeId: start.id,
-					kind: node.type,
-					patch,
-				} as CanvasAnyNodeUpdateCommand);
-			}
+			cmds.push({
+				type: "node.update",
+				nodeId: start.id,
+				kind: node.type,
+				patch,
+			} as CanvasAnyNodeUpdateCommand);
 		}
 	}
 
