@@ -279,6 +279,12 @@ export interface CanvasStudioContextValue {
 	/** T-M4-11: host observer for the six PRD §12 layout events. */
 	onLayoutEvent?: CanvasLayoutEventHandler;
 	/**
+	 * AC-010 (T-M5-03): true when the document declares a capability this
+	 * build does not implement. The commit pipeline blocks mutating commands;
+	 * render and export stay available (read-only materialized preview).
+	 */
+	documentReadOnly?: boolean;
+	/**
 	 * Save lifecycle (B-08, FR-160/161). Always provided by `<CanvasStudio>`;
 	 * optional in the type only for partial test contexts. Without a
 	 * `persistenceAdapter`, `save()` resolves false and `canLeave()` is true.

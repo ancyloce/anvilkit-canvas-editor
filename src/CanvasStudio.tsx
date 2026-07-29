@@ -56,6 +56,10 @@ import type {
 import { PageNavigator } from "./pages/PageNavigator.js";
 import { draggedIdsKey } from "./perf/active-nodes.js";
 import { useStaticGroupCache } from "./perf/static-cache.js";
+import {
+	isDocumentCapabilityReadOnly,
+	warnReadOnlyCommitBlocked,
+} from "./persistence/layout-compatibility.js";
 import { loadCanvasDocument } from "./persistence/load-pipeline.js";
 import { RecoverDraftPrompt } from "./persistence/RecoverDraftPrompt.js";
 import {
@@ -66,6 +70,7 @@ import {
 	createSaveController,
 	type SaveController,
 } from "./persistence/save-controller.js";
+import { prepareDocumentForSave } from "./persistence/save-pipeline.js";
 import type {
 	CanvasAutoSaveOptions,
 	CanvasPersistenceAdapter,
@@ -476,6 +481,13 @@ function useCommitPipeline(
 	const commit = useCallback(
 		(cmd: AnyCanvasCommand): CanvasIR => {
 			const current = sceneStore.getState().ir;
+			// AC-010 (T-M5-03): unsupported-capability documents are read-only —
+			// mutating commands are blocked at this single choke point while
+			// render and export stay fully available.
+			if (isDocumentCapabilityReadOnly(current)) {
+				warnReadOnlyCommitBlocked(current);
+				return current;
+			}
 			let next: CanvasIR;
 			try {
 				next = historyStore.getState().commit(current, cmd);
@@ -504,6 +516,10 @@ function useCommitPipeline(
 	const commitCoalesced = useCallback(
 		(cmd: AnyCanvasCommand, mergeKey: string): CanvasIR => {
 			const current = sceneStore.getState().ir;
+			if (isDocumentCapabilityReadOnly(current)) {
+				warnReadOnlyCommitBlocked(current);
+				return current;
+			}
 			let next: CanvasIR;
 			try {
 				next = historyStore.getState().commitCoalesced(current, cmd, mergeKey);
@@ -528,6 +544,10 @@ function useCommitPipeline(
 		(commands: readonly AnyCanvasCommand[], label?: string): CanvasIR => {
 			if (commands.length === 0) return sceneStore.getState().ir;
 			const current = sceneStore.getState().ir;
+			if (isDocumentCapabilityReadOnly(current)) {
+				warnReadOnlyCommitBlocked(current);
+				return current;
+			}
 			let next: CanvasIR;
 			try {
 				next = historyStore.getState().commitBatch(current, commands, label);
@@ -1001,11 +1021,14 @@ export function CanvasStudio({
 				// async `flush()` would be a false guarantee. Best-effort
 				// persistence is only attempted through the adapter's optional
 				// synchronous unload transport (sendBeacon/keepalive/localStorage).
-				const ir = getIR();
+				// T-M5-03: the unload snapshot ships the same capability-complete,
+				// materialized document a normal save produces.
+				const revision = historyStore.getState().getStateId();
+				const ir = prepareDocumentForSave(getIR(), revision);
 				persistenceAdapter.saveOnUnload?.({
 					ir,
 					documentId: ir.id,
-					revision: historyStore.getState().getStateId(),
+					revision,
 				});
 			}
 		};
@@ -1310,7 +1333,14 @@ export function CanvasStudio({
 	// Full value = stable half + live state. Changes on every commit (ir) and on
 	// page/stage changes — this is what `useCanvasStudio()` consumers subscribe to.
 	const ctxValue = useMemo<CanvasStudioContextValue>(
-		() => ({ ...stableCtxValue, stage, activePageId, ir }),
+		() => ({
+			...stableCtxValue,
+			stage,
+			activePageId,
+			ir,
+			// AC-010: WeakMap-cached per document object — free on re-render.
+			documentReadOnly: isDocumentCapabilityReadOnly(ir),
+		}),
 		[stableCtxValue, stage, activePageId, ir],
 	);
 

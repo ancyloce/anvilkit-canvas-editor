@@ -143,11 +143,15 @@ export const svgExporter: CanvasExporter = async ({
 	// T-M3-10: one resolution of the COMMITTED document per export operation —
 	// the serializer never resolves itself (TD §12.4), and resolving here
 	// (rather than reusing the live store) keeps previews out of exports.
-	const resolved = resolveCanvasLayout(ir, {
-		measurement: createCanvasLayoutMeasurementProvider(),
-	});
+	const measurement = createCanvasLayoutMeasurementProvider();
+	const resolved = resolveCanvasLayout(ir, { measurement });
 	const { svg, warnings } = await serializePageToSvg(ir, activePageId, {
 		resolvedDocument: resolved,
+		// T-M5-01: the SAME measurer the resolver used also wraps rich text in
+		// the serializer — without it wrapped text exports one line per
+		// paragraph (RICH_TEXT_WRAP_APPROXIMATE) and SVG↔renderer parity
+		// breaks on any wrapping fixture.
+		textMeasurer: measurement.measureText,
 		...(brandKit
 			? {
 					resolveBrandToken: (

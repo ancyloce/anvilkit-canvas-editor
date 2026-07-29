@@ -13,6 +13,7 @@ import {
 	parseClipboardPayload,
 	regenerateNodeIds,
 } from "@anvilkit/canvas-core";
+import { subtreeHasLayoutIntent } from "../auto-layout/intent.js";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
 import {
 	type CanvasToaster,
@@ -139,13 +140,6 @@ function combinedBounds(roots: readonly CanvasNode[]) {
 	}
 	if (roots.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
 	return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-}
-
-/** True when any node in the subtree carries Auto Layout intent. */
-function subtreeHasLayoutIntent(node: CanvasNode): boolean {
-	if (node.type === "frame" && node.autoLayout != null) return true;
-	if (node.layoutItem != null) return true;
-	return isContainerNode(node) && node.children.some(subtreeHasLayoutIntent);
 }
 
 function buildClipboardPayload(
