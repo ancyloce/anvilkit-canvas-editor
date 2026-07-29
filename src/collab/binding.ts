@@ -180,6 +180,10 @@ export function createCanvasYjsBinding(
 	// coordinator when the host supplied the full store bundle; fall back to
 	// the pre-P0-9 `setIR`-only behavior when it didn't (back-compat for a
 	// binding constructed before `stores` existed).
+	// Deliberate AC-010 bypass (review 0022 P2-3): remote snapshots apply even
+	// to capability-read-only documents. The read-only guard blocks LOCAL
+	// mutating commands only; collaborative conflict semantics are excluded
+	// from v1 (PRD §7). Revisit before any collab+layout release.
 	function applySnapshot(ir: CanvasIR, source: DocumentSnapshotSource): void {
 		applyingRemote = true;
 		try {
