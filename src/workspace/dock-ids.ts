@@ -15,6 +15,7 @@ export const DOCK_IDS = [
 	"brand",
 	"uploads",
 	"layers",
+	"components",
 ] as const;
 
 export type DockId = (typeof DOCK_IDS)[number];
@@ -30,4 +31,12 @@ export type DockId = (typeof DOCK_IDS)[number];
 export const HIDDEN_DOCK_IDS: ReadonlySet<DockId> = new Set<DockId>([
 	"ai",
 	"text",
+	// Local Components (plan 0023 M5-01). Hidden while the `localComponents`
+	// rollout flag is off (M6-07 owns turning it on), for a DIFFERENT reason than
+	// the two above: the panel is fully built, not a stub. The id ships in
+	// DOCK_IDS from day one anyway so the closed union and the persisted-state
+	// migration are stable across the flag flip in both directions — a user who
+	// selected the tab in a flag-on build and reloads a flag-off build must land
+	// on a valid tab, not an invisible one.
+	"components",
 ]);

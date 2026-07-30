@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { DOCK_IDS, HIDDEN_DOCK_IDS } from "../../dock-ids.js";
+import { ALL_DOCK_ITEMS, DOCK_ITEMS } from "../../workspace-config.js";
 import {
 	createWorkspaceUiStore,
 	PANEL_WIDTH_DEFAULT,
 	PANEL_WIDTH_MAX,
+	WORKSPACE_UI_STORE_PERSIST_VERSION,
 } from "../workspace-ui-store.js";
 
 beforeEach(() => localStorage.clear());
@@ -117,5 +120,68 @@ describe("initialWorkspaceState (PRD §11.1 host seed)", () => {
 		store.getState().restoreLayout();
 		expect(store.getState().activeDockId).toBe("templates");
 		expect(store.getState().panelWidth).toBe(PANEL_WIDTH_DEFAULT);
+	});
+});
+
+/**
+ * T-PANEL-1 (plan 0023 M5-01) — the `components` dock id joins a CLOSED,
+ * PERSISTED union. The risk is a stored `activeDockId` that is no longer a
+ * legal/visible choice: it must fall back, never activate an invisible panel.
+ */
+describe("components dock id (M5-01)", () => {
+	const write = (storeId: string, state: unknown, version: number): void => {
+		localStorage.setItem(
+			`anvilkit-canvas-workspace-${storeId}`,
+			JSON.stringify({ state, version }),
+		);
+	};
+
+	it("is a member of the union but hidden while the rollout flag is off", () => {
+		expect(DOCK_IDS).toContain("components");
+		expect(HIDDEN_DOCK_IDS.has("components")).toBe(true);
+		expect(DOCK_ITEMS.map((i) => i.id)).not.toContain("components");
+	});
+
+	it("ships a dock item with an icon and an i18n key (not just an id)", () => {
+		// Filtered out of the rendered rail, so it has to be looked up in the
+		// unfiltered config — a host that un-hides it must find a complete entry.
+		const item = ALL_DOCK_ITEMS.find((i) => i.id === "components");
+		expect(item?.labelKey).toBe("canvas.dock.components");
+		expect(item?.icon).toBeTruthy();
+	});
+
+	it("falls back to the default when a stored selection is the hidden components tab", () => {
+		// The flag-off reload case: someone selected the tab in a flag-on build.
+		write("comp-hidden", { activeDockId: "components" }, 4);
+		const store = createWorkspaceUiStore({ storeId: "comp-hidden" });
+		expect(store.getState().activeDockId).toBe("templates");
+	});
+
+	it("migrates a v3 payload without discarding its other fields", () => {
+		write(
+			"comp-v3",
+			{
+				activeDockId: "layers",
+				inspectorCollapsed: true,
+				panelWidth: 300,
+				recentTemplateIds: ["tpl-1"],
+			},
+			3,
+		);
+		const store = createWorkspaceUiStore({ storeId: "comp-v3" });
+		expect(store.getState().activeDockId).toBe("layers");
+		expect(store.getState().inspectorCollapsed).toBe(true);
+		expect(store.getState().panelWidth).toBe(300);
+		expect(store.getState().recentTemplateIds).toEqual(["tpl-1"]);
+	});
+
+	it("still coerces an outright unknown dock id", () => {
+		write("comp-bogus", { activeDockId: "not-a-dock" }, 4);
+		const store = createWorkspaceUiStore({ storeId: "comp-bogus" });
+		expect(store.getState().activeDockId).toBe("templates");
+	});
+
+	it("declares the version the migration was written for", () => {
+		expect(WORKSPACE_UI_STORE_PERSIST_VERSION).toBe(4);
 	});
 });

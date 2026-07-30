@@ -99,12 +99,20 @@ interface WorkspaceUiPersistedSlice {
 /**
  * v2 (B-14): adds `panelWidth`; v1 payloads migrate with the default.
  * v3 (C-06): adds `recentTemplateIds`; older payloads migrate with `[]`.
+ * v4 (plan 0023 M5-01): the `components` dock id joins the closed union. The
+ *   persisted SHAPE is unchanged, so the bump carries no new field — it exists
+ *   because `activeDockId` is a validated closed union and its legal value set
+ *   moved. Bumping re-runs `migrate` over every stored payload rather than
+ *   letting `merge` alone sanitize it, which keeps the "stale selection lands on
+ *   a valid tab" guarantee explicit at the version boundary instead of implicit.
  */
-export const WORKSPACE_UI_STORE_PERSIST_VERSION = 3;
+export const WORKSPACE_UI_STORE_PERSIST_VERSION = 4;
 
-// Hidden stub docks (M0-08) are excluded so a persisted selection of a
-// now-hidden tab falls back to the default instead of activating an
-// invisible panel.
+// Hidden docks are excluded so a persisted selection of a hidden tab falls back
+// to the default instead of activating an invisible panel. Covers BOTH reasons a
+// dock is hidden: an M0-08 "coming soon" stub, and a built-but-flagged-off panel
+// like `components` (M5-01) — which is what makes flipping the `localComponents`
+// flag OFF again safe for someone who had the tab selected.
 const VALID_DOCK_IDS: ReadonlySet<DockId> = new Set(
 	DOCK_IDS.filter((id) => !HIDDEN_DOCK_IDS.has(id)),
 );

@@ -8,6 +8,7 @@
  */
 
 import {
+	Component,
 	Layers,
 	LayoutTemplate,
 	Palette,
@@ -30,7 +31,16 @@ export interface DockItem {
 	readonly color?: string;
 }
 
-const ALL_DOCK_ITEMS: readonly DockItem[] = [
+/**
+ * Every dock entry, INCLUDING the ones {@link DOCK_ITEMS} filters out.
+ *
+ * Exported because "hidden" is not always permanent: a flagged-off-but-built
+ * panel like `components` (plan 0023 M5-01) needs its complete entry — icon,
+ * label, accent — to be reachable so the rail can include it once the
+ * `localComponents` rollout flag turns on (M6-07), and so a host assembling its
+ * own `DockItem[]` does not have to re-declare it.
+ */
+export const ALL_DOCK_ITEMS: readonly DockItem[] = [
 	{
 		id: "ai",
 		labelKey: "canvas.dock.ai",
@@ -72,6 +82,13 @@ const ALL_DOCK_ITEMS: readonly DockItem[] = [
 		labelKey: "canvas.dock.layers",
 		label: "Layers",
 		icon: Layers,
+	},
+	{
+		id: "components",
+		labelKey: "canvas.dock.components",
+		label: "Components",
+		icon: Component,
+		color: "#db2777",
 	},
 ] as const;
 

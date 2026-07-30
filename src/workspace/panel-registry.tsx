@@ -14,8 +14,10 @@
  */
 
 import type { ReactNode } from "react";
+import * as React from "react";
 import { useCanvasT } from "../context/canvas-studio-context.js";
 import { BrandPanel } from "../panels/BrandPanel.js";
+import { ComponentsPanel } from "../panels/ComponentsPanel.js";
 import { ElementsPanel } from "../panels/ElementsPanel.js";
 import { LayerPanel } from "../panels/LayerPanel.js";
 import { TemplatesPanel } from "../panels/TemplatesPanel.js";
@@ -179,6 +181,18 @@ export const defaultCanvasPanelRegistry: CanvasPanelRegistry = {
 		titleKey: "canvas.panel.uploads",
 		title: "Uploads",
 		render: () => <UploadsPanel />,
+	},
+	// Local Components (plan 0023 M5-02). Registered from the start even though
+	// the tab is in `HIDDEN_DOCK_IDS` until the `localComponents` rollout flag
+	// turns on (M6-07): the registry must cover the whole `DockId` union, so an
+	// id with no descriptor is a gap a host override could not fill either.
+	components: {
+		kind: "builtin",
+		id: "components",
+		titleKey: "canvas.panel.components",
+		title: "Components",
+		searchable: true,
+		render: ({ search }) => <ComponentsPanel search={search} />,
 	},
 };
 

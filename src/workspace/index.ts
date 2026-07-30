@@ -37,4 +37,8 @@ export {
 	ToolStrip,
 	type ToolStripProps,
 } from "./toolstrip/ToolStrip.js";
-export { DOCK_ITEMS, type DockItem } from "./workspace-config.js";
+export {
+	ALL_DOCK_ITEMS,
+	DOCK_ITEMS,
+	type DockItem,
+} from "./workspace-config.js";

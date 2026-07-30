@@ -10,6 +10,7 @@ import { ToolAnnouncer } from "@/a11y/ToolAnnouncer.js";
 import { ZoomAnnouncer } from "@/a11y/ZoomAnnouncer.js";
 import type { CanvasErrorDetailsInfo } from "@/CanvasErrorBoundary.js";
 import { useCanvasT } from "@/context/canvas-studio-context.js";
+import { ComponentSourceHeader } from "@/panels/ComponentSourceHeader.js";
 import { PropertyInspector } from "@/panels/PropertyInspector.js";
 // CanvasStudio's relative path (not @/): CanvasStudioProps surfaces in the
 // emitted .d.ts and rslib rewrites alias paths only in .js, not declarations.
@@ -269,6 +270,12 @@ function WorkspaceBody({
 
 	const canvasSection = (
 		<section className="relative flex min-h-0 min-w-0 flex-col bg-neutral-200 dark:bg-neutral-800">
+			{/* Plan 0023 M5-03: the Source-editing breadcrumb. Renders NOTHING while
+			    editing a page, so it costs a page-mode user no layout at all; in
+			    Source mode it is deliberately in the document flow above the canvas
+			    (not a floating overlay) — "you are inside a component" is state the
+			    user must not be able to lose behind the artwork. */}
+			<ComponentSourceHeader />
 			<CanvasAreaContextMenu>
 				<CanvasDropZone>
 					{/* Fixed overlays — float over the canvas, never shift it. */}
