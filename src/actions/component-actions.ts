@@ -386,9 +386,11 @@ function restoreReturnSelection(
 		ctx.pagesStore.getState().setActivePageId(ret.pageId);
 	}
 	// Ids that no longer exist are dropped rather than restored blindly: the
-	// edit that happened inside the Source may have removed them.
+	// edit that happened inside the Source may have removed them. NOTE
+	// `findNode` returns `null`, not `undefined` — a `!== undefined` test here
+	// would pass every id through.
 	const ir = ctx.getIR();
-	const alive = ret.selectedIds.filter((id) => findNode(ir, id) !== undefined);
+	const alive = ret.selectedIds.filter((id) => findNode(ir, id) !== null);
 	ctx.selectionStore.getState().setSelection(alive);
 }
 

@@ -6,6 +6,7 @@ import {
 	type CanvasAiPlaceholderNode,
 	type CanvasAiPlaceholderStatus,
 	type CanvasAudioNode,
+	type CanvasComponentInstanceNode,
 	type CanvasEffect,
 	type CanvasEllipseNode,
 	type CanvasFill,
@@ -1421,6 +1422,84 @@ function CanvasAiPlaceholderNodeRenderer({
 	);
 }
 
+/**
+ * Plan 0023 M4-02: a component instance renders its RESOLVED subtree — never
+ * the persistent node, which has no `children` at all (the expanded tree is
+ * virtual resolver output and exists nowhere in `ir`).
+ *
+ * `resolveCanvasDocument` splices the expansion in under the instance's OWN
+ * persistent id, so this node's record carries an ORDINARY container view (the
+ * definition root composed into the instance's placement) whose descendants
+ * hold codec-encoded virtual ids and have records of their own. Dispatching
+ * that view back through {@link renderNodeByKind} therefore paints the whole
+ * subtree through the SAME renderers the rest of the document uses — one
+ * renderer, one resolution, no component-specific drawing code — and each
+ * descendant picks up its own resolved geometry through `useRenderRecord`.
+ *
+ * Geometry comes from the record rather than from the composed view's stored
+ * transform: an instance that is a Flow child of an Auto Layout frame is placed
+ * by the solver, so the stored values are stale by design.
+ *
+ * Degradation (missing Source, cycle met at read time, depth/budget exhausted)
+ * leaves the record's node as the `component-instance` itself — core's
+ * deliberate "selectable placeholder, overrides retained" contract (INV-3).
+ * That case renders the placeholder below and is NEVER re-dispatched, which is
+ * also what makes the recursion terminate.
+ */
+function CanvasComponentInstanceNodeRenderer({
+	node,
+}: {
+	node: CanvasComponentInstanceNode;
+}) {
+	const record = useRenderRecord(node.id);
+	const expanded = record?.node;
+	const composed = useMemo(() => {
+		if (!expanded || expanded.type === "component-instance") return null;
+		if (!record) return null;
+		return {
+			...expanded,
+			transform: record.geometry.localTransform,
+			bounds: record.geometry.bounds,
+		} as CanvasNode;
+	}, [expanded, record]);
+	if (!composed) return <CanvasComponentPlaceholderRenderer node={node} />;
+	return renderNodeByKind(composed);
+}
+
+/**
+ * On-stage placeholder for an instance that could not be expanded (LC-RESOLVE-004,
+ * AC-011). Follows the FR-095 missing-asset precedent exactly: a destructive-tinted
+ * dashed box plus an invisible hit `Rect` so the node stays SELECTABLE (its
+ * overrides and `componentId` are intact and recoverable), with the chrome itself
+ * `listening={false}`.
+ *
+ * Unlike the asset placeholder this renders in export passes too, because a
+ * missing Source is a document-integrity problem the exporter must not silently
+ * drop; core emits the matching `component-source-missing` diagnostic.
+ */
+function CanvasComponentPlaceholderRenderer({
+	node,
+}: {
+	node: CanvasComponentInstanceNode;
+}) {
+	const t = useCanvasT();
+	const { width, height } = node.bounds;
+	const style = ASSET_PLACEHOLDER_STYLE.missing;
+	return (
+		<Group {...commonProps(node)}>
+			<Rect x={0} y={0} width={width} height={height} fill="transparent" />
+			<MediaPlaceholderChrome
+				width={width}
+				height={height}
+				label={t("canvas.component.missing", "Missing component")}
+				fill={style.fill}
+				stroke={style.stroke}
+				labelColor={style.labelColor}
+			/>
+		</Group>
+	);
+}
+
 function CanvasCustomNodeRenderer({ node }: { node: CanvasNode }) {
 	// Custom (extension) node kind: render via the registered renderer from
 	// context, else nothing. Built-in kinds never reach here.
@@ -1548,6 +1627,8 @@ function renderNodeByKind(node: CanvasNode): React.JSX.Element | null {
 			return <CanvasVideoNodeRenderer node={node} />;
 		case "audio":
 			return <CanvasAudioNodeRenderer node={node} />;
+		case "component-instance":
+			return <CanvasComponentInstanceNodeRenderer node={node} />;
 		default:
 			return <CanvasCustomNodeRenderer node={node} />;
 	}

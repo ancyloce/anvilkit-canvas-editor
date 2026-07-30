@@ -3,7 +3,7 @@
 import type {
 	CanvasExportWarning,
 	CanvasIR,
-	CanvasResolvedDocument,
+	CanvasResolvedComponentDocument,
 	CanvasResolvedNodeRecord,
 	CanvasRuntime,
 } from "@anvilkit/canvas-core";
@@ -23,6 +23,7 @@ import type {
 	CanvasKindRenderer,
 } from "../extensions/editor-extension.js";
 import type { AiJobStoreApi } from "../stores/ai-job-store.js";
+import type { ComponentScopeStoreApi } from "../stores/component-scope-store.js";
 import type { CropStoreApi } from "../stores/crop-store.js";
 import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
@@ -328,6 +329,15 @@ export interface CanvasStudioContextValue {
 	 */
 	isolationStore?: IsolationStoreApi;
 	/**
+	 * Component Source editing scope STACK (plan 0023 M4-05, LC-CREATE-002).
+	 * UI state only — a scope never enters the IR, and entering or leaving one is
+	 * never a document command. Distinct from {@link isolationStore}, which
+	 * validates its path against the PAGE tree and would discard a component
+	 * scope. Always provided by `<CanvasStudio>`; optional for partial test
+	 * contexts, where Source editing simply stays off.
+	 */
+	componentScopeStore?: ComponentScopeStoreApi;
+	/**
 	 * Export invocation channel (FR-031/FR-032): entry points such as the node
 	 * context menu's "Export selection" and the page menu's "Export page" post
 	 * a scoped request here; the export UI mounted by
@@ -432,8 +442,16 @@ const NOOP_SUBSCRIBE = () => () => undefined;
  * The whole current resolution (T-M3-05), reactively — re-renders on every
  * resolution (commits AND previews). `undefined` outside a full studio
  * context; callers fall back to raw stored-geometry helpers.
+ *
+ * Typed as the COMPONENT document (plan 0023 M4-03): the store resolves through
+ * `resolveCanvasDocument`, so `componentIssues` is always present and
+ * component-aware surfaces can read expansion diagnostics from the same object
+ * that produced the records. Additive — every existing consumer reads the
+ * `CanvasResolvedDocument` half unchanged.
  */
-export function useResolvedDocument(): CanvasResolvedDocument | undefined {
+export function useResolvedDocument():
+	| CanvasResolvedComponentDocument
+	| undefined {
 	const store = use(CanvasStudioContext)?.resolvedDocumentStore;
 	return useSyncExternalStore(
 		store ? store.subscribe : NOOP_SUBSCRIBE,

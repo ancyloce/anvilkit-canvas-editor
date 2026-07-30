@@ -45,6 +45,14 @@ export { regenerateIds } from "./pages/clone-page.js";
 export { CanvasTransformer } from "./selection/CanvasTransformer.js";
 export { CropEditorOverlay } from "./selection/CropEditorOverlay.js";
 export {
+	collectHitNames,
+	type HitNodeLike,
+	instanceScopeTargetAt,
+	instanceScopeTargetForResolvedId,
+	persistentInstanceIdFor,
+	selectionTargetForResolvedId,
+} from "./selection/component-selection-policy.js";
+export {
 	beginCrop,
 	type CropDragMode,
 	cancelCrop,
@@ -104,6 +112,15 @@ export type {
 	AiJobStoreApi,
 } from "./stores/ai-job-store.js";
 export { createAiJobStore } from "./stores/ai-job-store.js";
+export type {
+	CanvasComponentEditingFrame,
+	CanvasComponentReturnSelection,
+	CanvasComponentScopeRejection,
+	ComponentScopeState,
+	ComponentScopeStoreApi,
+	CreateComponentScopeStoreOptions,
+} from "./stores/component-scope-store.js";
+export { createComponentScopeStore } from "./stores/component-scope-store.js";
 export type {
 	CropRect,
 	CropState,
@@ -166,10 +183,15 @@ export type {
 } from "./stores/ruler-guide-store.js";
 export { createRulerGuideStore } from "./stores/ruler-guide-store.js";
 export type {
+	CanvasSelectionTarget,
 	SelectionState,
 	SelectionStoreApi,
 } from "./stores/selection-store.js";
-export { createSelectionStore } from "./stores/selection-store.js";
+export {
+	createSelectionStore,
+	projectSelectionTargets,
+	selectionTargetNodeId,
+} from "./stores/selection-store.js";
 export type {
 	CreateToolStoreOptions,
 	ToolState,

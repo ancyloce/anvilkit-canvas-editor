@@ -5,8 +5,10 @@ import {
 	type CanvasCommand,
 	CanvasCommandError,
 	type CanvasIR,
+	type CanvasNode,
 	type CanvasRuntime,
 	commandToChange,
+	isContainerNode,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import * as React from "react";
@@ -26,6 +28,7 @@ import { ToolAnnouncer } from "./a11y/ToolAnnouncer.js";
 import { CanvasKeyboardLayer } from "./a11y/useCanvasKeyboard.js";
 import { ZoomAnnouncer } from "./a11y/ZoomAnnouncer.js";
 import type { CanvasClipboardAdapter } from "./actions/clipboard-adapter.js";
+import { withComponentLocation } from "./actions/scoped-commit.js";
 import type {
 	CanvasAssetPicker,
 	CanvasAssetUploader,
@@ -93,6 +96,7 @@ import { RemoteCursors } from "./stage/RemoteCursors.js";
 import { RemoteSelections } from "./stage/RemoteSelections.js";
 import { RenderLayer } from "./stage/RenderLayer.js";
 import { createAiJobStore } from "./stores/ai-job-store.js";
+import { createComponentScopeStore } from "./stores/component-scope-store.js";
 import { createCropStore } from "./stores/crop-store.js";
 import { createDraftStore } from "./stores/draft-store.js";
 import { createEditingStore } from "./stores/editing-store.js";
@@ -422,6 +426,9 @@ function useEditorStores({
 	const [fieldPreviewStore] = useState(() => createFieldPreviewStore());
 	const [rulerGuideStore] = useState(() => createRulerGuideStore());
 	const [isolationStore] = useState(() => createIsolationStore());
+	// Plan 0023 M4-05: Source-editing scope STACK. UI state only — a scope never
+	// enters the IR, and entering one is never a document command.
+	const [componentScopeStore] = useState(() => createComponentScopeStore());
 	const [exportRequestStore] = useState(() => createExportRequestStore());
 	const [layerRenameStore] = useState(() => createLayerRenameStore());
 	// T-M3-05: derives one resolved layout document from scene + previews.
@@ -449,6 +456,7 @@ function useEditorStores({
 		fieldPreviewStore,
 		rulerGuideStore,
 		isolationStore,
+		componentScopeStore,
 		exportRequestStore,
 		layerRenameStore,
 		resolvedDocumentStore,
@@ -474,12 +482,32 @@ function useCommitPipeline(
 	historyStore: ReturnType<typeof createHistoryStore>,
 	onChange: CanvasStudioProps["onChange"],
 	onChanges: CanvasStudioProps["onChanges"],
+	componentScopeStore: ReturnType<typeof createComponentScopeStore>,
 ) {
 	const onChangeRef = useHostCallbackRef(onChange);
 	const onChangesRef = useHostCallbackRef(onChanges);
 
+	/**
+	 * Plan 0023 M5-03: while a Component Source is open, redirect every
+	 * location-aware command into that DEFINITION tree.
+	 *
+	 * Done here, at the one choke point all three commit entry points share,
+	 * rather than in every tool and inspector field: a Source node id has no
+	 * meaning in `ir.pages`, so an unstamped edit would fail to find its node and
+	 * throw out of the pipeline. `withComponentLocation` leaves page-, asset- and
+	 * Registry-level commands untouched and never overrides an explicit location.
+	 */
+	const scoped = useCallback(
+		(cmd: AnyCanvasCommand): AnyCanvasCommand => {
+			const active = componentScopeStore.getState().activeFrame();
+			return active ? withComponentLocation(cmd, active.componentId) : cmd;
+		},
+		[componentScopeStore],
+	);
+
 	const commit = useCallback(
-		(cmd: AnyCanvasCommand): CanvasIR => {
+		(command: AnyCanvasCommand): CanvasIR => {
+			const cmd = scoped(command);
 			const current = sceneStore.getState().ir;
 			// AC-010 (T-M5-03): unsupported-capability documents are read-only —
 			// mutating commands are blocked at this single choke point while
@@ -507,14 +535,15 @@ function useCommitPipeline(
 			}
 			return next;
 		},
-		[historyStore, sceneStore, onChangeRef, onChangesRef],
+		[historyStore, sceneStore, onChangeRef, onChangesRef, scoped],
 	);
 
 	// §10 field-input contract commit half (B-12): same pipeline as `commit`,
 	// but successive calls sharing `mergeKey` inside the history store's merge
 	// window fold into one undo entry.
 	const commitCoalesced = useCallback(
-		(cmd: AnyCanvasCommand, mergeKey: string): CanvasIR => {
+		(command: AnyCanvasCommand, mergeKey: string): CanvasIR => {
+			const cmd = scoped(command);
 			const current = sceneStore.getState().ir;
 			if (isDocumentCapabilityReadOnly(current)) {
 				warnReadOnlyCommitBlocked(current);
@@ -535,14 +564,15 @@ function useCommitPipeline(
 			}
 			return next;
 		},
-		[historyStore, sceneStore, onChangeRef, onChangesRef],
+		[historyStore, sceneStore, onChangeRef, onChangesRef, scoped],
 	);
 
 	// Apply many commands as ONE undo entry (multi-select move, transform commit,
 	// ungroup). Fires onChange (with the composite batch command) and onChanges once.
 	const commitBatch = useCallback(
-		(commands: readonly AnyCanvasCommand[], label?: string): CanvasIR => {
-			if (commands.length === 0) return sceneStore.getState().ir;
+		(input: readonly AnyCanvasCommand[], label?: string): CanvasIR => {
+			if (input.length === 0) return sceneStore.getState().ir;
+			const commands = input.map(scoped);
 			const current = sceneStore.getState().ir;
 			if (isDocumentCapabilityReadOnly(current)) {
 				warnReadOnlyCommitBlocked(current);
@@ -647,6 +677,7 @@ function EditorStage({
 	t,
 	activePage,
 	activePageId,
+	sourceRoot,
 	assets,
 	brandKit,
 	width,
@@ -666,6 +697,13 @@ function EditorStage({
 	t: CanvasT;
 	activePage: CanvasIR["pages"][number];
 	activePageId: string;
+	/**
+	 * Plan 0023 M5-03: the open Component Source's root, when one is being
+	 * edited. Its children take the page's place on the stage — SAME renderers,
+	 * same overlays, same tools — and the Source tree is never inserted into
+	 * `ir.pages` to make that happen.
+	 */
+	sourceRoot: CanvasNode | undefined;
 	assets: CanvasIR["assets"];
 	brandKit: BrandKit | undefined;
 	width: number | undefined;
@@ -689,8 +727,17 @@ function EditorStage({
 	// Konva pointer mapping stays correct (scaleX=zoom over a zoom-sized box).
 	// At zoom = 1 this is the page's natural pixel size (unchanged). This is
 	// what lets the multi-page workspace scale every page uniformly via zoom.
-	const stageWidth = (width ?? activePage.size.width) * zoom;
-	const stageHeight = (height ?? activePage.size.height) * zoom;
+	// Editing a Source sizes the surface to the Source root instead.
+	const surfaceSize = sourceRoot ? sourceRoot.bounds : activePage.size;
+	const stageWidth = (width ?? surfaceSize.width) * zoom;
+	const stageHeight = (height ?? surfaceSize.height) * zoom;
+	// What the object layers paint. A Source root that is not a container has no
+	// children to draw — it renders as its own single node instead.
+	const surfaceChildren: readonly CanvasNode[] = sourceRoot
+		? isContainerNode(sourceRoot)
+			? sourceRoot.children
+			: [sourceRoot]
+		: activePage.root.children;
 	return (
 		<CanvasErrorBoundary
 			label={t("canvas.error.canvas", "The canvas failed to render.")}
@@ -735,7 +782,7 @@ function EditorStage({
 									<Grid />
 								</Group>
 								<Group name="objects">
-									{activePage.root.children.flatMap((node) =>
+									{surfaceChildren.flatMap((node) =>
 										draggedIds.has(node.id)
 											? []
 											: [<CanvasNodeRenderer key={node.id} node={node} />],
@@ -747,7 +794,7 @@ function EditorStage({
 					    Kept as its own physical layer — the one redraw isolation this
 					    consolidation must not give up. */}
 							<RenderLayer name="drag">
-								{activePage.root.children.flatMap((node) =>
+								{surfaceChildren.flatMap((node) =>
 									draggedIds.has(node.id)
 										? [<CanvasNodeRenderer key={node.id} node={node} />]
 										: [],
@@ -846,6 +893,7 @@ export function CanvasStudio({
 		fieldPreviewStore,
 		rulerGuideStore,
 		isolationStore,
+		componentScopeStore,
 		exportRequestStore,
 		layerRenameStore,
 		resolvedDocumentStore,
@@ -907,7 +955,13 @@ export function CanvasStudio({
 		() => viewportStore.getState().panY,
 	);
 	const { commit, commitCoalesced, commitBatch, undo, redo, getIR } =
-		useCommitPipeline(sceneStore, historyStore, onChange, onChanges);
+		useCommitPipeline(
+			sceneStore,
+			historyStore,
+			onChange,
+			onChanges,
+			componentScopeStore,
+		);
 	// FR-091: created before `documentStores` so document replacement can abort
 	// in-flight uploads; unmount cleanup lives in the effect below.
 	const uploadStore = useMemo(() => createUploadStore(), []);
@@ -1233,6 +1287,7 @@ export function CanvasStudio({
 			resolvedDocumentStore,
 			rulerGuideStore,
 			isolationStore,
+			componentScopeStore,
 			exportRequestStore,
 			layerRenameStore,
 			replaceDocument,
@@ -1292,6 +1347,7 @@ export function CanvasStudio({
 			resolvedDocumentStore,
 			rulerGuideStore,
 			isolationStore,
+			componentScopeStore,
 			exportRequestStore,
 			layerRenameStore,
 			replaceDocument,
@@ -1390,6 +1446,20 @@ export function CanvasStudio({
 		URL.revokeObjectURL(url);
 	}, [getIR]);
 
+	// Plan 0023 M5-03: the Source being edited, if any. Read from the live scope
+	// stack so entering/leaving a Source re-renders the stage; `undefined` (the
+	// normal case) leaves every path below on the page tree exactly as before. A
+	// frame whose definition has since disappeared also falls back to the page
+	// rather than rendering nothing — the breadcrumb still offers the way out.
+	const activeComponentId = useSyncExternalStore(
+		componentScopeStore.subscribe,
+		() => componentScopeStore.getState().activeFrame()?.componentId,
+		() => undefined,
+	);
+	const sourceRoot = activeComponentId
+		? ir.components?.[activeComponentId]?.root
+		: undefined;
+
 	const activePage = ir.pages.find((p) => p.id === activePageId);
 	if (!activePage) {
 		return (
@@ -1407,6 +1477,7 @@ export function CanvasStudio({
 			t={t}
 			activePage={activePage}
 			activePageId={activePageId}
+			sourceRoot={sourceRoot}
 			assets={ir.assets}
 			brandKit={brandKit}
 			width={width}
