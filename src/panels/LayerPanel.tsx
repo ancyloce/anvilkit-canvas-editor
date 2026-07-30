@@ -25,6 +25,7 @@ import {
 	LockOpen,
 	Ungroup,
 } from "lucide-react";
+import * as React from "react";
 import {
 	useCallback,
 	useEffect,
@@ -124,6 +125,10 @@ const KIND_LABEL_KEYS: Record<CanvasNodeKind, string> = {
 	"ai-placeholder": "canvas.layer.kind.aiPlaceholder",
 	video: "canvas.layer.kind.video",
 	audio: "canvas.layer.kind.audio",
+	// Plan 0023 M4-02: a component instance is ONE persistent row here. Its
+	// expanded subtree is virtual (resolver output, not `children`), so it is
+	// deliberately not walked into — the Layers tree lists persistent nodes.
+	"component-instance": "canvas.layer.kind.componentInstance",
 };
 
 const KIND_LABEL_FALLBACKS: Record<CanvasNodeKind, string> = {
@@ -142,6 +147,7 @@ const KIND_LABEL_FALLBACKS: Record<CanvasNodeKind, string> = {
 	"ai-placeholder": "AI placeholder",
 	video: "Video",
 	audio: "Audio",
+	"component-instance": "Component",
 };
 
 function nodeLabel(

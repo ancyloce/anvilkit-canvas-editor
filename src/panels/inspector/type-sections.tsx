@@ -124,6 +124,13 @@ export function renderTypeSpecificFields(
 			);
 		case "ai-placeholder":
 			return null;
+		// Plan 0023 M4-02: a built-in kind, so it must branch HERE rather than
+		// fall through to `default`, which would hand it to the EXTENSION
+		// `kindInspectors` lookup and silently misclassify a built-in as a
+		// custom kind. Component identity, property authoring, and the override
+		// editor land in `component-sections.tsx` (M5-04/M5-05).
+		case "component-instance":
+			return null;
 		default: {
 			// Custom (extension) kind: render its registered inspector fields, if
 			// any — a single-node extension API, so only for single-selection.

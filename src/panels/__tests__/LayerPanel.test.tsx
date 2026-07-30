@@ -365,3 +365,52 @@ describe("LayerPanel — delete routes through the action layer (FR-024/AC-005)"
 		expect(h.commits.some((c) => c.type === "node.delete")).toBe(false);
 	});
 });
+
+/** Plan 0023 M4-02: the widened node union reaches the Layers tree. */
+describe("LayerPanel — component instances", () => {
+	function instanceIR(): CanvasIR {
+		const ir = createCanvasIR({
+			id: "ir-1",
+			pages: [createPage({ id: "p1" })],
+			now: () => FIXED_TS,
+		});
+		const firstPage = ir.pages[0];
+		if (!firstPage) throw new Error("expected at least one page");
+		firstPage.root.children = [
+			{
+				type: "component-instance",
+				id: "inst-1",
+				componentId: "cmp-card",
+				transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+				bounds: { width: 120, height: 60 },
+			} as CanvasIR["pages"][number]["root"]["children"][number],
+		];
+		return ir;
+	}
+
+	it("labels an unnamed instance with the localized kind label", () => {
+		const h = makeHarness({ ir: instanceIR() });
+		const { container } = mount(h.studioCtx);
+		const row = container.querySelector('[data-testid="layer-row-inst-1"]');
+		expect(row).not.toBeNull();
+		// No catalog is injected, so `useCanvasT` yields the inline English
+		// fallback for `canvas.layer.kind.componentInstance`. Before M4-02 this
+		// fell through to the extension-kind path and rendered the raw
+		// "component-instance" type string.
+		expect(row?.textContent).toContain("Component");
+		expect(row?.textContent).not.toContain("component-instance");
+	});
+
+	it("lists the instance as ONE row and never walks into its virtual subtree", () => {
+		const h = makeHarness({ ir: instanceIR() });
+		const { container } = mount(h.studioCtx);
+		const rows = Array.from(
+			container.querySelectorAll("[data-testid^='layer-row-']"),
+		)
+			.map((el) => el.getAttribute("data-testid") ?? "")
+			.filter((id) => /^layer-row-[^-]+-\d+$|^layer-row-inst-1$/.test(id));
+		// The expanded Source tree is virtual — resolver output, not `children` —
+		// so it is deliberately absent from a tree of PERSISTENT nodes.
+		expect(rows).toEqual(["layer-row-inst-1"]);
+	});
+});
