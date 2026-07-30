@@ -1,5 +1,10 @@
+import { encodeResolvedNodeId } from "@anvilkit/canvas-core";
 import { describe, expect, it } from "vitest";
-import { createSelectionStore } from "../selection-store.js";
+import {
+	type CanvasSelectionTarget,
+	createSelectionStore,
+	projectSelectionTargets,
+} from "../selection-store.js";
 
 describe("createSelectionStore — defaults", () => {
 	it("starts with an empty selection", () => {
@@ -78,5 +83,105 @@ describe("createSelectionStore — independent instances", () => {
 		a.getState().addToSelection("x");
 		expect(a.getState().selectedIds).toEqual(["x"]);
 		expect(b.getState().selectedIds).toEqual([]);
+	});
+});
+
+/**
+ * T-SEL-1 (plan 0023 M4-04): the target union is ADDITIVE. `selectedIds` keeps
+ * its exact pre-component shape and meaning, and is always the projection of
+ * `targets` — the drift between two sources of truth is the entire risk this
+ * design carries, so it is pinned here rather than assumed.
+ */
+const virtualTarget = (
+	instanceId: string,
+	sourceNodeId: string,
+): CanvasSelectionTarget => ({
+	kind: "instance-node",
+	instanceId,
+	resolvedNodeId: encodeResolvedNodeId({
+		segments: [instanceId, sourceNodeId],
+	}),
+	sourceNodeId,
+});
+
+/** The invariant, checked after every mutation in these tests. */
+function expectProjectionHolds(store: ReturnType<typeof createSelectionStore>) {
+	const { selectedIds, targets } = store.getState();
+	expect(selectedIds).toEqual(projectSelectionTargets(targets));
+}
+
+describe("createSelectionStore — selection targets (M4-04)", () => {
+	it("mirrors plain selections into targets", () => {
+		const store = createSelectionStore();
+		store.getState().setSelection(["a", "b"]);
+		expect(store.getState().targets).toEqual([
+			{ kind: "node", nodeId: "a" },
+			{ kind: "node", nodeId: "b" },
+		]);
+		expectProjectionHolds(store);
+	});
+
+	it("projects a virtual target onto its OWNING instance id", () => {
+		const store = createSelectionStore();
+		store.getState().setTargets([virtualTarget("inst-1", "src-title")]);
+		// Existing consumers — transformer, align, export-by-selection — see a
+		// perfectly ordinary single-node selection of the instance.
+		expect(store.getState().selectedIds).toEqual(["inst-1"]);
+		expectProjectionHolds(store);
+	});
+
+	it("dedupes two virtual targets inside one instance to a single id", () => {
+		const store = createSelectionStore();
+		store
+			.getState()
+			.setTargets([
+				virtualTarget("inst-1", "src-title"),
+				virtualTarget("inst-1", "src-body"),
+			]);
+		expect(store.getState().selectedIds).toEqual(["inst-1"]);
+		expect(store.getState().targets).toHaveLength(2);
+		expectProjectionHolds(store);
+	});
+
+	it("keeps the projection intact across add / toggle / remove", () => {
+		const store = createSelectionStore();
+		store
+			.getState()
+			.setTargets([
+				{ kind: "node", nodeId: "plain" },
+				virtualTarget("inst-1", "src-title"),
+			]);
+		expect(store.getState().selectedIds).toEqual(["plain", "inst-1"]);
+
+		store.getState().addToSelection("other");
+		expectProjectionHolds(store);
+		store.getState().toggleSelection("plain");
+		expectProjectionHolds(store);
+
+		// Removing the instance drops the virtual target under it too: a target
+		// pointing into a no-longer-selected instance would be orphaned.
+		store.getState().removeFromSelection("inst-1");
+		expect(store.getState().selectedIds).toEqual(["other"]);
+		expect(store.getState().targets).toEqual([
+			{ kind: "node", nodeId: "other" },
+		]);
+		expectProjectionHolds(store);
+	});
+
+	it("clearSelection empties both halves", () => {
+		const store = createSelectionStore();
+		store.getState().setTargets([virtualTarget("inst-1", "src-title")]);
+		store.getState().clearSelection();
+		expect(store.getState().selectedIds).toEqual([]);
+		expect(store.getState().targets).toEqual([]);
+	});
+
+	it("isSelected answers on the persistent projection", () => {
+		const store = createSelectionStore();
+		store.getState().setTargets([virtualTarget("inst-1", "src-title")]);
+		expect(store.getState().isSelected("inst-1")).toBe(true);
+		// The virtual id is NOT a persistent node id, so it is not "selected" in
+		// the sense every existing consumer means.
+		expect(store.getState().isSelected("src-title")).toBe(false);
 	});
 });
