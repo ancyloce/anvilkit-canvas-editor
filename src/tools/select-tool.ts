@@ -18,6 +18,7 @@ import {
 	type FlowChildRect,
 	reorderCommandsTo,
 } from "../auto-layout/reorder.js";
+import { instanceScopeTargetAt } from "../selection/component-selection-policy.js";
 import { isolationScopeChildren } from "../selection/isolation.js";
 import { getOtherNodeRects } from "../snap/get-node-rect.js";
 import { computeSnap } from "../snap/snap-engine.js";
@@ -371,15 +372,39 @@ export const selectTool: Tool = {
 				typeof e.evt?.timeStamp === "number" && e.evt.timeStamp > 0
 					? e.evt.timeStamp
 					: Date.now();
-			if (
-				ctx.isolationStore &&
-				lastClick &&
+			// Detected independently of `isolationStore` (plan 0023 M4-06): a
+			// component instance opens INSTANCE SCOPE on double-click, which is not
+			// isolation and must work in a context without that store.
+			const repeatClick =
+				lastClick !== null &&
 				lastClick.id === hitId &&
-				now - lastClick.time <= DOUBLE_CLICK_MS
-			) {
+				now - lastClick.time <= DOUBLE_CLICK_MS;
+			if (repeatClick) {
 				lastClick = null;
 				const node = selectionScope(ctx).find((c) => c.id === hitId);
-				if (node && (node.type === "group" || node.type === "frame")) {
+				// M4-06 / AC-007: double-click INTO an instance targets the deepest
+				// virtual node under the pointer. Never isolation — an instance is not
+				// a container in the page tree (it has no `children` at all), so
+				// `validateIsolationPath` would discard the entry on its next pass.
+				if (node?.type === "component-instance") {
+					const view = ctx.resolvedDocumentStore?.getState().view;
+					const scoped = view
+						? instanceScopeTargetAt(view, e.target, hitId)
+						: null;
+					if (scoped) {
+						sel.setTargets([scoped]);
+						ctx.draftStore.getState().clearDraft();
+						return;
+					}
+					// No addressable virtual node (degraded placeholder, or no
+					// resolution in this context): fall through and treat it as an
+					// ordinary click on the instance root.
+				}
+				if (
+					ctx.isolationStore &&
+					node &&
+					(node.type === "group" || node.type === "frame")
+				) {
 					ctx.isolationStore.getState().enter(hitId);
 					sel.clearSelection();
 					ctx.draftStore.getState().clearDraft();
