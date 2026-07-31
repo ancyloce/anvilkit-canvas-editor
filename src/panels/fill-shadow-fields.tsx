@@ -10,6 +10,7 @@ import {
 	resolveNodeEffects,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
+import * as React from "react";
 import { useSyncExternalStore } from "react";
 import { resolveFillForDisplay } from "../brand/resolve-brand-token.js";
 import { useBrandKit } from "../brand/use-brand-kit.js";
@@ -20,6 +21,7 @@ import {
 	type CommitPatchAll,
 	FieldRow,
 	NumberField,
+	SelectField,
 } from "./fields.js";
 import { TokenAwareColorField } from "./token-aware-fields.js";
 
@@ -205,40 +207,38 @@ export function FillAndShadowFields({
 		<>
 			{showFill ? (
 				<>
-					<FieldRow label={t("canvas.inspector.fillType", "Fill type")}>
-						<select
-							aria-label={t("canvas.inspector.fillType", "Fill type")}
-							data-testid="prop-fill-type"
-							className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
-							value={kind}
-							onChange={(e) => {
-								const next = e.currentTarget.value as FillKind;
-								if (next === "none") {
-									// FR-074 no-fill: clear the fill entirely.
-									commitFillAll(undefined);
-								} else if (next === "solid") {
-									commitFillAll(grad?.stops[0]?.color ?? solidColor);
-								} else if (grad) {
-									commitFillAll({ ...grad, kind: next });
-								} else {
-									commitFillAll(defaultGradient(next, solidColor));
-								}
-							}}
-						>
-							<option value="none">
-								{t("canvas.inspector.fillNone", "None")}
-							</option>
-							<option value="solid">
-								{t("canvas.inspector.fillSolid", "Solid")}
-							</option>
-							<option value="linear">
-								{t("canvas.inspector.fillLinear", "Linear")}
-							</option>
-							<option value="radial">
-								{t("canvas.inspector.fillRadial", "Radial")}
-							</option>
-						</select>
-					</FieldRow>
+					<SelectField
+						label={t("canvas.inspector.fillType", "Fill type")}
+						value={kind}
+						options={[
+							{ value: "none", label: t("canvas.inspector.fillNone", "None") },
+							{
+								value: "solid",
+								label: t("canvas.inspector.fillSolid", "Solid"),
+							},
+							{
+								value: "linear",
+								label: t("canvas.inspector.fillLinear", "Linear"),
+							},
+							{
+								value: "radial",
+								label: t("canvas.inspector.fillRadial", "Radial"),
+							},
+						]}
+						dataTestId="prop-fill-type"
+						onCommit={(next: FillKind) => {
+							if (next === "none") {
+								// FR-074 no-fill: clear the fill entirely.
+								commitFillAll(undefined);
+							} else if (next === "solid") {
+								commitFillAll(grad?.stops[0]?.color ?? solidColor);
+							} else if (grad) {
+								commitFillAll({ ...grad, kind: next });
+							} else {
+								commitFillAll(defaultGradient(next, solidColor));
+							}
+						}}
+					/>
 					{grad ? (
 						<>
 							{grad.stops.map((stop, i) => (
@@ -387,13 +387,17 @@ export function FillAndShadowFields({
 										data-testid="prop-recent-colors"
 									>
 										{recentColors.map((c) => (
-											<button
+											<Button
 												key={c}
 												type="button"
+												variant="outline"
+												size="icon-sm"
 												data-testid={`prop-recent-color-${c}`}
 												aria-label={c}
 												title={c}
-												className="size-5 rounded border border-border"
+												// The swatch IS the color: keep the 20px chip size and
+												// let the inline background win over the variant's.
+												className="size-5 rounded border-border"
 												style={{ backgroundColor: c }}
 												onClick={() => commitFillAll(c)}
 											/>

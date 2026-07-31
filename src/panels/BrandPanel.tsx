@@ -1,6 +1,5 @@
 "use client";
 
-import { generateGovernedComplianceReport } from "@anvilkit/canvas-core/brand-governance";
 import {
 	applyBrandColors,
 	type BrandApplyResult,
@@ -13,8 +12,10 @@ import {
 	replaceFonts,
 	replaceLogoPlaceholders,
 } from "@anvilkit/canvas-core";
+import { generateGovernedComplianceReport } from "@anvilkit/canvas-core/brand-governance";
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
+import * as React from "react";
 import { useState } from "react";
 import {
 	useBrandColors,
@@ -22,14 +23,15 @@ import {
 	useBrandKitDefinition,
 	useBrandLogos,
 } from "../brand/use-brand-kit.js";
+import { useEffectivePolicyContext } from "../brand-governance/effective-policy-context.js";
+import { emitCanvasAnalytics } from "../component-libraries/analytics.js";
 import {
 	type CanvasT,
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
-import { useEffectivePolicyContext } from "../brand-governance/effective-policy-context.js";
-import { emitCanvasAnalytics } from "../component-libraries/analytics.js";
 import { CompliancePanel } from "./governance/CompliancePanel.js";
+
 export { complianceIssueMessage } from "./governance/compliance-messages.js";
 
 export interface BrandPanelProps {
@@ -67,7 +69,6 @@ const APPLY_ACTIONS: ReadonlyArray<{
 		fallback: "Normalize typography",
 	},
 ];
-
 
 /**
  * Brand-kit panel: the host's shared palette + fonts (I3-4), plus — when the
@@ -166,7 +167,11 @@ export function BrandPanel({
 		// governance wired this resolves to the permissive context, whose
 		// enforcement is not "blocking", so OD-10 makes every issue a warning —
 		// i.e. byte-identical UX to the two-argument call it replaces.
-		const report = generateGovernedComplianceReport(ir, definition, policyContext);
+		const report = generateGovernedComplianceReport(
+			ir,
+			definition,
+			policyContext,
+		);
 		setComplianceReport(report);
 		// PRD §13 `canvas.brand.compliance_run`. Counts only — the report itself
 		// names instances and properties and never leaves the editor.
@@ -227,9 +232,11 @@ export function BrandPanel({
 					</div>
 					<div className="flex flex-wrap gap-1.5" data-testid="brand-logos">
 						{logos.map((logo) => (
-							<button
+							<Button
 								key={logo.id}
 								type="button"
+								variant="outline"
+								size="icon-lg"
 								data-testid={`brand-logo-${logo.id}`}
 								title={t("canvas.brand.insertLogo", "Insert {name}").replace(
 									"{name}",
@@ -239,7 +246,8 @@ export function BrandPanel({
 									"canvas.brand.insertLogo",
 									"Insert {name}",
 								).replace("{name}", logo.name)}
-								className="flex h-12 w-12 items-center justify-center rounded-md ring-1 ring-border hover:ring-2 hover:ring-primary"
+								// 48px logo tile with the ring treatment the brand grid uses.
+								className="size-12 border-0 p-0 ring-1 ring-border hover:ring-2 hover:ring-primary"
 								onClick={() => insertLogo(logo)}
 							>
 								<img
@@ -247,7 +255,7 @@ export function BrandPanel({
 									alt=""
 									className="max-h-full max-w-full object-contain"
 								/>
-							</button>
+							</Button>
 						))}
 					</div>
 				</div>

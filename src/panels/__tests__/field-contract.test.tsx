@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import { commitColor, openColor } from "./_color-test-helpers.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import {
 	ColorField,
@@ -263,7 +264,7 @@ describe("§10 field-input contract (B-12)", () => {
 		expect(previews(h)).toEqual({});
 	});
 
-	it("ColorField follows the same preview/commit contract", () => {
+	it("ColorField follows the same preview/commit contract", async () => {
 		const node = nodeFixture();
 		const h = setup(() => (
 			<ColorField
@@ -273,10 +274,12 @@ describe("§10 field-input contract (B-12)", () => {
 				contract={{ nodes: [node], buildPatch: (_n, v) => ({ fill: v }) }}
 			/>
 		));
-		const input = screen.getByTestId("f-color");
-		fireEvent.change(input, { target: { value: "#00ff00" } });
+		// The picker previews transiently; DISMISSING it is what commits.
+		const hex = await openColor("f-color");
+		fireEvent.change(hex, { target: { value: "#00ff00" } });
+		fireEvent.blur(hex);
 		expect(previews(h)).toEqual({ n1: { fill: "#00ff00" } });
-		fireEvent.blur(input);
+		commitColor();
 		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledWith(
 			{
 				type: "node.update",

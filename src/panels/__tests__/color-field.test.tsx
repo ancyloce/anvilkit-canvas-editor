@@ -1,4 +1,11 @@
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+	cancelColor,
+	openColor,
+	pickColorWithEyedropper,
+	setColor,
+	setColorChannel,
+} from "./_color-test-helpers.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ColorField, hexColorChannels, normalizeHexColor } from "../fields.js";
 
@@ -40,9 +47,9 @@ describe("hexColorChannels", () => {
 });
 
 describe("ColorField (FR-074)", () => {
-	it("commits a normalized hex from the text input on blur", () => {
+	it("commits a normalized hex typed into the picker's hex field", async () => {
 		const onCommit = vi.fn();
-		const { getByTestId } = render(
+		render(
 			<ColorField
 				label="Fill"
 				value="#111111"
@@ -50,16 +57,13 @@ describe("ColorField (FR-074)", () => {
 				onCommit={onCommit}
 			/>,
 		);
-		const hex = getByTestId("cf-hex") as HTMLInputElement;
-		fireEvent.focus(hex);
-		fireEvent.change(hex, { target: { value: "ff0000" } });
-		fireEvent.blur(hex);
+		await setColor("cf", "ff0000");
 		expect(onCommit).toHaveBeenCalledWith("#ff0000");
 	});
 
-	it("reverts invalid hex on blur without committing", () => {
+	it("reverts invalid hex without committing", async () => {
 		const onCommit = vi.fn();
-		const { getByTestId } = render(
+		render(
 			<ColorField
 				label="Fill"
 				value="#111111"
@@ -67,17 +71,13 @@ describe("ColorField (FR-074)", () => {
 				onCommit={onCommit}
 			/>,
 		);
-		const hex = getByTestId("cf-hex") as HTMLInputElement;
-		fireEvent.focus(hex);
-		fireEvent.change(hex, { target: { value: "not-a-color" } });
-		fireEvent.blur(hex);
+		await setColor("cf", "not-a-color");
 		expect(onCommit).not.toHaveBeenCalled();
-		expect(hex.value).toBe("#111111");
 	});
 
-	it("Escape restores the pre-edit hex without committing", () => {
+	it("Escape dismisses without committing", async () => {
 		const onCommit = vi.fn();
-		const { getByTestId } = render(
+		render(
 			<ColorField
 				label="Fill"
 				value="#111111"
@@ -85,17 +85,13 @@ describe("ColorField (FR-074)", () => {
 				onCommit={onCommit}
 			/>,
 		);
-		const hex = getByTestId("cf-hex") as HTMLInputElement;
-		fireEvent.focus(hex);
-		fireEvent.change(hex, { target: { value: "ff0000" } });
-		fireEvent.keyDown(hex, { key: "Escape" });
-		expect(hex.value).toBe("#111111");
+		await cancelColor("cf", "ff0000");
 		expect(onCommit).not.toHaveBeenCalled();
 	});
 
-	it("renders RGB inputs for hex values and commits a channel edit", () => {
+	it("renders RGB inputs for hex values and commits a channel edit", async () => {
 		const onCommit = vi.fn();
-		const { getByTestId } = render(
+		render(
 			<ColorField
 				label="Fill"
 				value="#11aa33"
@@ -103,17 +99,14 @@ describe("ColorField (FR-074)", () => {
 				onCommit={onCommit}
 			/>,
 		);
-		const r = getByTestId("cf-r") as HTMLInputElement;
-		expect(r.value).toBe(String(0x11));
-		fireEvent.focus(r);
-		fireEvent.change(r, { target: { value: "255" } });
-		fireEvent.blur(r);
+		expect(((await openColor("cf")) as HTMLInputElement).value).toBe("#11aa33");
+		await setColorChannel("cf", "r", 255);
 		expect(onCommit).toHaveBeenCalledWith("#ffaa33");
 	});
 
-	it("preserves an alpha suffix through an RGB channel edit", () => {
+	it("preserves an alpha suffix through a picker edit", async () => {
 		const onCommit = vi.fn();
-		const { getByTestId } = render(
+		render(
 			<ColorField
 				label="Fill"
 				value="#11aa33cc"
@@ -121,14 +114,11 @@ describe("ColorField (FR-074)", () => {
 				onCommit={onCommit}
 			/>,
 		);
-		const b = getByTestId("cf-b") as HTMLInputElement;
-		fireEvent.focus(b);
-		fireEvent.change(b, { target: { value: "0" } });
-		fireEvent.blur(b);
+		await setColor("cf", "#11aa00");
 		expect(onCommit).toHaveBeenCalledWith("#11aa00cc");
 	});
 
-	it("hides RGB inputs for non-hex values and when rgb={false}", () => {
+	it("hides RGB inputs for non-hex values and when rgb={false}", async () => {
 		const first = render(
 			<ColorField
 				label="Fill"
@@ -137,6 +127,7 @@ describe("ColorField (FR-074)", () => {
 				onCommit={vi.fn()}
 			/>,
 		);
+		fireEvent.click(first.getByTestId("cf"));
 		expect(first.queryByTestId("cf-r")).toBeNull();
 		first.unmount();
 		const second = render(
@@ -148,10 +139,11 @@ describe("ColorField (FR-074)", () => {
 				onCommit={vi.fn()}
 			/>,
 		);
+		await openColor("cf2");
 		expect(second.queryByTestId("cf2-r")).toBeNull();
 	});
 
-	it("shows no eyedropper without an adapter or platform support", () => {
+	it("shows no eyedropper without an adapter or platform support", async () => {
 		const { queryByTestId } = render(
 			<ColorField
 				label="Fill"
@@ -160,12 +152,13 @@ describe("ColorField (FR-074)", () => {
 				onCommit={vi.fn()}
 			/>,
 		);
+		await openColor("cf");
 		expect(queryByTestId("cf-eyedropper")).toBeNull();
 	});
 
 	it("commits the color resolved by an injected eyedropper adapter", async () => {
 		const onCommit = vi.fn();
-		const { getByTestId } = render(
+		render(
 			<ColorField
 				label="Fill"
 				value="#111111"
@@ -174,13 +167,13 @@ describe("ColorField (FR-074)", () => {
 				eyeDropper={() => Promise.resolve("#ABCDEF")}
 			/>,
 		);
-		fireEvent.click(getByTestId("cf-eyedropper"));
+		await pickColorWithEyedropper("cf");
 		await waitFor(() => expect(onCommit).toHaveBeenCalledWith("#abcdef"));
 	});
 
 	it("a cancelled eyedropper pick commits nothing", async () => {
 		const onCommit = vi.fn();
-		const { getByTestId } = render(
+		render(
 			<ColorField
 				label="Fill"
 				value="#111111"
@@ -189,7 +182,7 @@ describe("ColorField (FR-074)", () => {
 				eyeDropper={() => Promise.resolve(null)}
 			/>,
 		);
-		fireEvent.click(getByTestId("cf-eyedropper"));
+		await pickColorWithEyedropper("cf");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(onCommit).not.toHaveBeenCalled();
 	});

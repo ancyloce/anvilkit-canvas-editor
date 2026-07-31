@@ -5,6 +5,7 @@ import type {
 	CanvasCommand,
 	CanvasNode,
 } from "@anvilkit/canvas-core";
+import { ColorRow } from "@anvilkit/ui/color-picker";
 import { Input } from "@anvilkit/ui/input";
 import {
 	Select,
@@ -381,6 +382,56 @@ export interface SelectFieldProps<T extends string> {
 	mixed?: boolean;
 	/** Native tooltip, e.g. flagging an unresolved brand-token value (canvas-m1-013). */
 	title?: string;
+	/** Renders the trigger disabled (the Canva-shell toolbar's inapplicable picks). */
+	disabled?: boolean;
+	/** Trigger class overrides — the toolbar wants a shorter, capped-width one. */
+	className?: string;
+}
+
+/**
+ * Bare enum picker on `@anvilkit/ui/select` (Base UI) — no surrounding
+ * {@link FieldRow}, for hosts that lay out their own label (the Canva-shell
+ * `CanvasToolbar`). Inspector sections want {@link SelectField} instead.
+ */
+export function SelectControl<T extends string>({
+	label,
+	value,
+	options,
+	dataTestId,
+	onCommit,
+	contract,
+	mixed = false,
+	disabled,
+	className,
+}: Omit<SelectFieldProps<T>, "title">): React.JSX.Element {
+	const field = useFieldContract<T>(contract, dataTestId);
+	return (
+		<Select
+			items={options.map((o) => ({ value: o.value, label: o.label }))}
+			value={mixed ? undefined : value}
+			disabled={disabled}
+			onValueChange={(next) => {
+				if (next == null || disabled) return;
+				if (field.enabled) field.commit(next as T);
+				else onCommit?.(next as T);
+			}}
+		>
+			<SelectTrigger
+				aria-label={label}
+				data-testid={dataTestId}
+				className={className ?? "h-7.5 flex-1"}
+			>
+				<SelectValue placeholder={mixed ? field.mixedLabel : undefined} />
+			</SelectTrigger>
+			<SelectContent>
+				{options.map((o) => (
+					<SelectItem key={o.value} value={o.value}>
+						{o.label}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
+	);
 }
 
 /**
@@ -393,41 +444,12 @@ export interface SelectFieldProps<T extends string> {
  */
 export function SelectField<T extends string>({
 	label,
-	value,
-	options,
-	dataTestId,
-	onCommit,
-	contract,
-	mixed = false,
 	title,
+	...rest
 }: SelectFieldProps<T>): React.JSX.Element {
-	const field = useFieldContract<T>(contract, dataTestId);
 	return (
 		<FieldRow label={label} title={title}>
-			<Select
-				items={options.map((o) => ({ value: o.value, label: o.label }))}
-				value={mixed ? undefined : value}
-				onValueChange={(next) => {
-					if (next == null) return;
-					if (field.enabled) field.commit(next as T);
-					else onCommit?.(next as T);
-				}}
-			>
-				<SelectTrigger
-					aria-label={label}
-					data-testid={dataTestId}
-					className="h-7.5 flex-1"
-				>
-					<SelectValue placeholder={mixed ? field.mixedLabel : undefined} />
-				</SelectTrigger>
-				<SelectContent>
-					{options.map((o) => (
-						<SelectItem key={o.value} value={o.value}>
-							{o.label}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
+			<SelectControl label={label} {...rest} />
 		</FieldRow>
 	);
 }
@@ -479,37 +501,6 @@ export function hexColorChannels(
 	};
 }
 
-function channelsToHex(
-	r: number,
-	g: number,
-	b: number,
-	alphaSuffix: string,
-): string {
-	const c = (n: number): string =>
-		Math.max(0, Math.min(255, Math.round(n)))
-			.toString(16)
-			.padStart(2, "0");
-	return `#${c(r)}${c(g)}${c(b)}${alphaSuffix}`;
-}
-
-type EyeDropperCtor = new () => { open(): Promise<{ sRGBHex: string }> };
-
-/** Feature-detected platform eyedropper (Chromium-only API; never a hard dep). */
-function platformEyeDropper(): (() => Promise<string | null>) | undefined {
-	if (typeof window === "undefined") return undefined;
-	const ctor = (window as { EyeDropper?: EyeDropperCtor }).EyeDropper;
-	if (!ctor) return undefined;
-	return async () => {
-		try {
-			const result = await new ctor().open();
-			return result.sRGBHex;
-		} catch {
-			// AbortError on user cancel — treated as "no pick".
-			return null;
-		}
-	};
-}
-
 export function ColorField({
 	label,
 	value,
@@ -520,186 +511,35 @@ export function ColorField({
 	rgb = true,
 	eyeDropper,
 }: ColorFieldProps): React.JSX.Element {
-	const t = useCanvasT();
-	// See NumberField: re-key uncontrolled input on external change, frozen
-	// while focused (W3).
-	const fk = useFrozenKey(value ?? "#000000");
 	const field = useFieldContract(contract, dataTestId);
-	const commitValue = (next: string): void => {
-		if (next !== value) {
-			if (field.enabled) field.commit(next);
-			else onCommit?.(next);
-		} else field.cancel();
-	};
-	const channels = hexColorChannels(value ?? "");
-	const dropper = eyeDropper ?? platformEyeDropper();
-	const channelLabels = {
-		r: t("canvas.color.r", "R"),
-		g: t("canvas.color.g", "G"),
-		b: t("canvas.color.b", "B"),
-	} as const;
 	return (
-		<FieldRow label={label} title={title}>
-			<div className="flex flex-col gap-1">
-				<div className="flex items-center gap-2">
-					<span
-						className="size-5 shrink-0 rounded-sm ring-1 ring-border"
-						style={{ backgroundColor: value ?? "#000000" }}
-						aria-hidden
-					/>
-					{/* FR-074: explicit editable hex input. */}
-					<Input
-						key={`hex-${fk.key}`}
-						type="text"
-						inputMode="text"
-						spellCheck={false}
-						maxLength={9}
-						aria-label={`${label} — ${t("canvas.color.hex", "Hex")}`}
-						defaultValue={value ?? "#000000"}
-						className="h-7.5 min-w-0 flex-1 font-mono text-xs"
-						data-testid={`${dataTestId}-hex`}
-						onFocus={fk.onFocus}
-						onChange={(e) => {
-							const next = normalizeHexColor(e.currentTarget.value);
-							if (next) field.preview(next);
-						}}
-						onKeyDown={(e) => {
-							if (e.key === "Enter") {
-								e.currentTarget.blur();
-							} else if (e.key === "Escape") {
-								e.stopPropagation();
-								e.currentTarget.value = value ?? "#000000";
-								field.cancel();
-							}
-						}}
-						onBlur={(e) => {
-							fk.onBlur();
-							const next = normalizeHexColor(e.currentTarget.value);
-							if (next) commitValue(next);
-							else {
-								e.currentTarget.value = value ?? "#000000";
-								field.cancel();
-							}
-						}}
-					/>
-					<Input
-						key={fk.key}
-						type="color"
-						aria-label={label}
-						defaultValue={
-							channels ? (value ?? "#000000").slice(0, 7) : "#000000"
-						}
-						className="h-7.5 w-9 shrink-0 p-0.5"
-						data-testid={dataTestId}
-						onFocus={fk.onFocus}
-						onChange={(e) => field.preview(e.currentTarget.value)}
-						onKeyDown={(e) => {
-							if (e.key === "Enter") {
-								e.currentTarget.blur();
-							} else if (e.key === "Escape") {
-								e.stopPropagation();
-								e.currentTarget.value = value ?? "#000000";
-								field.cancel();
-							}
-						}}
-						onBlur={(e) => {
-							fk.onBlur();
-							commitValue(e.currentTarget.value);
-						}}
-					/>
-					{dropper ? (
-						<button
-							type="button"
-							className="flex size-7 shrink-0 items-center justify-center rounded-sm ring-1 ring-border hover:bg-accent"
-							aria-label={`${label} — ${t("canvas.color.eyedropper", "Pick color from screen")}`}
-							title={t("canvas.color.eyedropper", "Pick color from screen")}
-							data-testid={`${dataTestId}-eyedropper`}
-							onClick={() => {
-								void dropper().then((picked) => {
-									if (picked) {
-										const next = normalizeHexColor(picked);
-										if (next) commitValue(next);
-									}
-								});
-							}}
-						>
-							<svg
-								aria-hidden
-								width="12"
-								height="12"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="2"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							>
-								<path d="m2 22 1-1h3l9-9" />
-								<path d="M3 21v-3l9-9" />
-								<path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z" />
-							</svg>
-						</button>
-					) : null}
-				</div>
-				{/* FR-074: RGB channel inputs (0-255), hidden for non-hex values. */}
-				{rgb && channels ? (
-					<div className="flex items-center gap-1">
-						{(["r", "g", "b"] as const).map((channel) => (
-							<Input
-								key={`${channel}-${fk.key}`}
-								type="number"
-								min={0}
-								max={255}
-								step={1}
-								aria-label={`${label} — ${channelLabels[channel]}`}
-								defaultValue={channels[channel]}
-								className="h-6.5 min-w-0 flex-1 px-1 text-xs"
-								data-testid={`${dataTestId}-${channel}`}
-								onFocus={fk.onFocus}
-								onChange={(e) => {
-									const n = Number(e.currentTarget.value);
-									if (!Number.isFinite(n)) return;
-									field.preview(
-										channelsToHex(
-											channel === "r" ? n : channels.r,
-											channel === "g" ? n : channels.g,
-											channel === "b" ? n : channels.b,
-											channels.alphaSuffix,
-										),
-									);
-								}}
-								onKeyDown={(e) => {
-									if (e.key === "Enter") {
-										e.currentTarget.blur();
-									} else if (e.key === "Escape") {
-										e.stopPropagation();
-										e.currentTarget.value = String(channels[channel]);
-										field.cancel();
-									}
-								}}
-								onBlur={(e) => {
-									fk.onBlur();
-									const n = Number(e.currentTarget.value);
-									if (!Number.isFinite(n)) {
-										e.currentTarget.value = String(channels[channel]);
-										field.cancel();
-										return;
-									}
-									commitValue(
-										channelsToHex(
-											channel === "r" ? n : channels.r,
-											channel === "g" ? n : channels.g,
-											channel === "b" ? n : channels.b,
-											channels.alphaSuffix,
-										),
-									);
-								}}
-							/>
-						))}
-					</div>
-				) : null}
-			</div>
-		</FieldRow>
+		// `title` (unresolved brand-token flag, canvas-m1-013) has no ColorRow
+		// prop, so it stays on a wrapper.
+		<span className="block" title={title}>
+			<ColorRow
+				label={label}
+				value={value ?? "#000000"}
+				data-testid={dataTestId}
+				// FR-074: channel inputs are meaningless for a brand-token value.
+				rgb={rgb && hexColorChannels(value ?? "") !== null}
+				eyeDropper={eyeDropper}
+				// §10 field contract: every move through the picker is a transient
+				// preview, closing commits ONE coalesced entry, Escape reverts.
+				onValueChange={(next) => field.preview(next)}
+				onCommit={(next) => {
+					if (next === value) {
+						field.cancel();
+						return;
+					}
+					if (field.enabled) field.commit(next);
+					else {
+						field.cancel();
+						onCommit?.(next);
+					}
+				}}
+				onCancel={() => field.cancel()}
+			/>
+		</span>
 	);
 }
 

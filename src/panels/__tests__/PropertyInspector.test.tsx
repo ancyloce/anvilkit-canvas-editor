@@ -25,6 +25,7 @@ import {
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import type { BrandKit } from "../../brand/brand-kit.js";
 import { PropertyInspector } from "../PropertyInspector.js";
+import { colorRowText, setColor } from "./_color-test-helpers.js";
 import { selectedLabel, selectOption } from "./_select-test-helpers.js";
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
@@ -209,14 +210,11 @@ describe("PropertyInspector — empty state", () => {
 });
 
 describe("PropertyInspector — fill type", () => {
-	it("switches a node's fill to a gradient via the fill-type selector", () => {
+	it("switches a node's fill to a gradient via the fill-type selector", async () => {
 		const h = makeHarness({ ir: withRectIR() });
 		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
 		const { container } = mount(h.studioCtx);
-		const select = container.querySelector(
-			"[data-testid='prop-fill-type']",
-		) as HTMLSelectElement;
-		fireEvent.change(select, { target: { value: "linear" } });
+		await selectOption("prop-fill-type", "Linear", container);
 		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rect">;
 		expect(last.type).toBe("node.update");
 		expect((last.patch as { fill?: { kind?: string } }).fill?.kind).toBe(
@@ -224,15 +222,11 @@ describe("PropertyInspector — fill type", () => {
 		);
 	});
 
-	it("adds a shadow when a shadow color is set — written as the effects model (C-03)", () => {
+	it("adds a shadow when a shadow color is set — written as the effects model (C-03)", async () => {
 		const h = makeHarness({ ir: withRectIR() });
 		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
 		const { container } = mount(h.studioCtx);
-		const shadow = container.querySelector(
-			"[data-testid='prop-shadow-color']",
-		) as HTMLInputElement;
-		shadow.value = "#123456";
-		fireEvent.blur(shadow);
+		await setColor("prop-shadow-color", "#123456", container);
 		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rect">;
 		const patch = last.patch as {
 			effects?: Array<{ type?: string; color?: string }>;
@@ -253,10 +247,7 @@ describe("PropertyInspector — fill type", () => {
 		const h = makeHarness({ ir });
 		h.studioCtx.selectionStore.getState().setSelection(["rect-a"]);
 		const { container } = mount(h.studioCtx);
-		const color = container.querySelector(
-			"[data-testid='prop-shadow-color']",
-		) as HTMLInputElement;
-		expect(color.value).toBe("#001122");
+		expect(colorRowText("prop-shadow-color", container)).toBe("#001122");
 		const spread = container.querySelector(
 			"[data-testid='prop-shadow-spread']",
 		) as HTMLInputElement;
@@ -357,10 +348,11 @@ describe("PropertyInspector — a11y labels", () => {
 			"[data-testid='prop-name']",
 		) as HTMLInputElement;
 		expect(name.getAttribute("aria-label")).toBe("Name");
+		// The colour control is a ColorRow trigger button, not an input.
 		const fill = container.querySelector(
 			"[data-testid='prop-fill']",
-		) as HTMLInputElement;
-		expect(fill.getAttribute("aria-label")).toBe("Fill");
+		) as HTMLElement;
+		expect(fill.getAttribute("aria-label")).toBe("Fill color");
 		// No user-facing control should be left without an accessible name.
 		// (Base UI Switch/Select render aria-hidden bookkeeping inputs — those
 		// are not accessible controls and carry no label by design.)
@@ -1032,12 +1024,9 @@ describe("PropertyInspector — frame", () => {
 
 	// The frame's fill lives under `background`, not `fill` — this is the whole
 	// reason FillAndShadowFields grew a `fillKey` seam.
-	it("writes the background fill to `background`, never to `fill`", () => {
+	it("writes the background fill to `background`, never to `fill`", async () => {
 		const { h, container } = mountFrame();
-		const select = container.querySelector(
-			"[data-testid='prop-fill-type']",
-		) as HTMLSelectElement;
-		fireEvent.change(select, { target: { value: "linear" } });
+		await selectOption("prop-fill-type", "Linear", container);
 		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"frame">;
 		const patch = last.patch as {
 			background?: { kind?: string };

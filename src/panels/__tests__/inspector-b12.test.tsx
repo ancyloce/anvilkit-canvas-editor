@@ -17,6 +17,7 @@ import {
 	parseDashPattern,
 } from "../inspector/stroke-section.js";
 import { PropertyInspector } from "../PropertyInspector.js";
+import { colorRowText, setColor } from "./_color-test-helpers.js";
 import { selectedLabel, selectOption } from "./_select-test-helpers.js";
 
 afterEach(cleanup);
@@ -295,11 +296,9 @@ describe("Fill controls (FR-074)", () => {
 		return ir;
 	}
 
-	it("switching fill type to None clears the fill", () => {
+	it("switching fill type to None clears the fill", async () => {
 		const h = mount(filledRectIR(), ["rf"]);
-		fireEvent.change(screen.getByTestId("prop-fill-type"), {
-			target: { value: "none" },
-		});
+		await selectOption("prop-fill-type", "None");
 		expect(
 			(h.commits[0] as { patch: Record<string, unknown> }).patch,
 		).toHaveProperty("fill", undefined);
@@ -312,9 +311,7 @@ describe("Fill controls (FR-074)", () => {
 
 	it("no-fill node shows the None fill type", () => {
 		mount(twoRectIR(), ["r1"]);
-		expect(
-			(screen.getByTestId("prop-fill-type") as HTMLSelectElement).value,
-		).toBe("none");
+		expect(selectedLabel("prop-fill-type")).toBe("None");
 	});
 });
 
@@ -400,9 +397,8 @@ describe("Multi-kind sections (FR-070 gap closure — PRD 0012 §7.8)", () => {
 		expect(
 			(screen.getByTestId("prop-radius") as HTMLInputElement).placeholder,
 		).toBe("Mixed");
-		expect(
-			(screen.getByTestId("prop-fill") as HTMLInputElement).value,
-		).toBeTruthy();
+		// The ColorRow trigger shows the shared hex as text, not an input value.
+		expect(colorRowText("prop-fill")).toBeTruthy();
 	});
 
 	it("editing the shared radius field patches BOTH nodes in ONE batch", () => {
@@ -561,11 +557,9 @@ describe("Plain text native fields (FR-081 gap closure — PRD 0012 §7.8)", () 
 		);
 	});
 
-	it("commits a shadow color via the field contract, writing the effects model", () => {
+	it("commits a shadow color via the field contract, writing the effects model", async () => {
 		const h = mount(plainTextIR(), ["text-a"]);
-		const shadow = screen.getByTestId("prop-shadow-color") as HTMLInputElement;
-		fireEvent.change(shadow, { target: { value: "#00ff00" } });
-		fireEvent.blur(shadow);
+		await setColor("prop-shadow-color", "#00ff00");
 		expect(h.commits).toHaveLength(1);
 		const patch = (
 			h.commits[0] as {
