@@ -36,6 +36,7 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
+import { useCanvasDialogs } from "../context/dialog-context.js";
 import { useCanvasToaster } from "../context/toast-context.js";
 
 /**
@@ -339,6 +340,9 @@ export function ComponentsPanel({
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
 	const toaster = useCanvasToaster();
+	// Null-tolerant seam: a headless embed with no dialog host auto-confirms, so
+	// a destructive flow never deadlocks waiting for UI that is not mounted.
+	const dialogs = useCanvasDialogs();
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 
 	const componentIssues = useSyncExternalStore(
@@ -392,24 +396,53 @@ export function ComponentsPanel({
 			duplicateComponentImpl(ctx, componentId);
 		},
 		onDelete: (entry) => {
+			// Zero references: the plain guarded delete, no prompt needed.
 			if (deleteComponentImpl(ctx, entry.definition.id)) return;
-			// Referenced Sources cannot be deleted outright (LC-DELETE). The
-			// "detach all and delete" confirmation lands in M5-06; until then say
-			// exactly what is blocking rather than failing silently.
+			// Referenced: core refuses outright, and silently detaching would break
+			// links the user may not have meant to break (LC-DELETE). So the
+			// destructive escalation is EXPLICIT — one atomic "detach all and
+			// delete" batch, confirmed first.
 			const used = entry.pageInstanceCount + entry.nestedDependencyCount;
-			toaster.add({
-				type: "warning",
-				title: t(
-					"canvas.components.deleteBlocked",
-					"“{name}” is still used {n}×",
-				)
-					.replace("{name}", entry.definition.name)
-					.replace("{n}", String(used)),
-				description: t(
-					"canvas.components.deleteBlockedHint",
-					"Detach or remove those instances first.",
-				),
-			});
+			void dialogs
+				.confirm({
+					destructive: true,
+					title: t(
+						"canvas.components.deleteConfirmTitle",
+						"Delete “{name}” and detach {n} instance(s)?",
+					)
+						.replace("{name}", entry.definition.name)
+						.replace("{n}", String(used)),
+					description: t(
+						"canvas.components.deleteConfirmBody",
+						"Every instance becomes ordinary layers that keep their current appearance. This is one undo step.",
+					),
+					confirmLabel: t(
+						"canvas.components.deleteConfirmAction",
+						"Detach all and delete",
+					),
+				})
+				.then((confirmed) => {
+					if (!confirmed) return;
+					if (
+						!deleteComponentImpl(ctx, entry.definition.id, { detachAll: true })
+					) {
+						// The plan could not be built safely (a cycle, or a Source that
+						// no longer resolves): report it instead of failing silently.
+						toaster.add({
+							type: "warning",
+							title: t(
+								"canvas.components.deleteBlocked",
+								"“{name}” is still used {n}×",
+							)
+								.replace("{name}", entry.definition.name)
+								.replace("{n}", String(used)),
+							description: t(
+								"canvas.components.deleteBlockedHint",
+								"Detach or remove those instances first.",
+							),
+						});
+					}
+				});
 		},
 	};
 
