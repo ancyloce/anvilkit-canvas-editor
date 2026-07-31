@@ -140,13 +140,48 @@ export function nextFocusId(
 	if (key === "Escape") return null;
 	const root = page.root;
 	const flat = isContainerNode(root) ? flattenNodes(root.children) : [];
-	if (flat.length === 0) return null;
-	if (key === "Enter") return current;
+	return stepFocus(
+		flat.map((n) => n.id),
+		current,
+		key,
+	);
+}
 
-	const idx = current ? flat.findIndex((n) => n.id === current) : -1;
+/**
+ * The same navigation over RESOLVED reading order (plan 0023 M5-07, D-4).
+ *
+ * Component instances expand into VIRTUAL nodes that exist only in the resolved
+ * tree, so an id-walk over `page.root` cannot reach them — keeping focus
+ * persistent-only would make every virtual node keyboard-unreachable and fail
+ * NFR-004 outright. This walks the ids the accessibility tree actually rendered,
+ * which is resolved flow order (`childIds`) rather than document order, so
+ * focus, the visible tree, and reading order can never disagree.
+ *
+ * Takes the flattened id list rather than the view so the caller keeps ONE
+ * source of order — the list it just rendered — instead of re-deriving it here
+ * and risking a second, subtly different traversal.
+ */
+export function nextResolvedFocusId(
+	orderedIds: readonly string[],
+	current: string | null,
+	key: FocusNavKey,
+): string | null {
+	if (key === "Escape") return null;
+	return stepFocus(orderedIds, current, key);
+}
+
+/** Shared wrap-around stepping for both focus walks. */
+function stepFocus(
+	ids: readonly string[],
+	current: string | null,
+	key: FocusNavKey,
+): string | null {
+	if (ids.length === 0) return null;
+	if (key === "Enter") return current;
+	const idx = current ? ids.findIndex((id) => id === current) : -1;
 	if (key === "ArrowDown" || key === "ArrowRight") {
-		return (flat[idx + 1] ?? flat[0])?.id ?? null;
+		return ids[idx + 1] ?? ids[0] ?? null;
 	}
 	// ArrowUp / ArrowLeft
-	return (idx <= 0 ? flat[flat.length - 1] : flat[idx - 1])?.id ?? null;
+	return (idx <= 0 ? ids[ids.length - 1] : ids[idx - 1]) ?? null;
 }
