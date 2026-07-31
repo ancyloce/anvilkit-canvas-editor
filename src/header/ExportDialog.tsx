@@ -22,6 +22,10 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
+import { prepareExport } from "@anvilkit/canvas-core/export-preparation";
+import { useEffectivePolicyContext } from "../brand-governance/effective-policy-context.js";
+import { exportPreparationMessage } from "./export-preparation-message.js";
+import { emitCanvasAnalytics } from "../component-libraries/analytics.js";
 import { useCanvasToaster } from "../context/toast-context.js";
 import { createExportStore } from "../stores/export-store.js";
 import {
@@ -86,6 +90,7 @@ export default function ExportDialog({
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
 	const toaster = useCanvasToaster();
+	const policyContext = useEffectivePolicyContext();
 	const exportStore = useMemo(() => createExportStore(), []);
 	const exportState = useSyncExternalStore(
 		exportStore.subscribe,
@@ -189,6 +194,44 @@ export default function ExportDialog({
 	async function runExport(): Promise<void> {
 		const exporter = merged[format];
 		if (!exporter) return;
+
+		// Governance preflight (plan 0021 T-046, closing AC-010's export path).
+		// Runs BEFORE any rendering: refusing after producing artifacts would
+		// mean the blocked bytes had already existed. Raster and flattened-SVG
+		// formats destroy the component link, so they ask for `flatten` — which
+		// is what makes `allowFlatten: false` mean something for a PNG and not
+		// only for the Detach button.
+		const preparation = prepareExport(
+			{ document: ir },
+			{
+				context: policyContext,
+				...(ctx.brandKit?.sourceDefinition
+					? { brandKit: ctx.brandKit.sourceDefinition }
+					: {}),
+				...(ctx.quarantinedSnapshotKeys
+					? { quarantinedKeys: ctx.quarantinedSnapshotKeys }
+					: {}),
+				flatten: RASTER_FORMATS.has(format),
+			},
+		);
+		if (!preparation.ok) {
+			// PRD §13 `canvas.brand.operation_blocked` — the stable code, the
+			// operation, and the host's mode. Never the developer message.
+			emitCanvasAnalytics(ctx.onAnalyticsEvent, "brandOperationBlocked", {
+				operation: "export",
+				code: preparation.code,
+				hostPolicyMode: policyContext.enforcement,
+			});
+			failExport(exportPreparationMessage(t, preparation.code));
+			return;
+		}
+		if (preparation.report) {
+			emitCanvasAnalytics(ctx.onAnalyticsEvent, "brandComplianceRun", {
+				warningCount: preparation.report.summary?.warning ?? 0,
+				blockingCount: preparation.report.summary?.blocking ?? 0,
+				trigger: "export",
+			});
+		}
 		// FR-150: a host-supplied `exporters[format]` override, if present, must
 		// win over the offscreen rasterizer for raster formats too (see
 		// `renderPageArtifact`'s `isHostOverride` doc).

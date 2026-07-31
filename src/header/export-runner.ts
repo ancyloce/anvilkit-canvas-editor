@@ -5,7 +5,7 @@ import type {
 	CanvasPage,
 	CanvasResolvedDocument,
 } from "@anvilkit/canvas-core";
-import { resolveCanvasLayout } from "@anvilkit/canvas-core";
+import { resolveCanvasDocument } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { BrandKit } from "../brand/brand-kit.js";
 import { rasterizePage } from "../render/rasterize-page.js";
@@ -167,7 +167,12 @@ const exportResolutions = new WeakMap<CanvasIR, CanvasResolvedDocument>();
 function exportResolutionFor(ir: CanvasIR): CanvasResolvedDocument {
 	let resolved = exportResolutions.get(ir);
 	if (!resolved) {
-		resolved = resolveCanvasLayout(ir, {
+		// Plan 0023 M6-02: the COMPOSED resolver, not `resolveCanvasLayout`. With a
+		// layout-only resolution a `component-instance` record still holds the
+		// instance node, so the renderer's instance branch takes its degraded path
+		// and a raster export would show the missing-component PLACEHOLDER instead
+		// of the component. Expansion is what makes PNG/JPEG/WebP match the stage.
+		resolved = resolveCanvasDocument(ir, {
 			measurement: createCanvasLayoutMeasurementProvider(),
 		});
 		exportResolutions.set(ir, resolved);

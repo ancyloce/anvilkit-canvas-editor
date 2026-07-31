@@ -69,6 +69,26 @@ async function openDialog(): Promise<void> {
 	await screen.findByTestId("export-dialog", undefined, { timeout: 15_000 });
 }
 
+
+/**
+ * A promise the test resolves by hand.
+ *
+ * The cancellation specs used `setTimeout(..., 30)` to hold the exporter open
+ * long enough to click Cancel. That is a race, not a delay: `export-cancel`
+ * exists only while an export is in flight, so under full-suite load the timer
+ * could fire between `waitFor` finding the button and the click re-querying it,
+ * and the spec failed with "Unable to find an element" for a reason that had
+ * nothing to do with cancellation. Gating on an explicit deferred removes the
+ * timing dimension entirely — the exporter cannot finish until the test says so.
+ */
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+	let resolve!: () => void;
+	const promise = new Promise<void>((r) => {
+		resolve = r;
+	});
+	return { promise, resolve };
+}
+
 describe("ExportDialog (B-09, FR-150..154)", () => {
 	it("opens code-split, shows all six built-in formats, pages and scale controls", async () => {
 		setup();
@@ -505,10 +525,11 @@ describe('scope "pages" — FR-152 selected pages (Bug 3)', () => {
 describe("cancellation stops before download (Bug 4, FR-154)", () => {
 	it("cancelling mid-PDF-render stops before the download fires and ends in the cancelled phase", async () => {
 		let calls = 0;
+		const held = deferred();
 		const pdf: CanvasExporter = async (_ctx, request) => {
 			calls += 1;
 			if (request.isCancelled?.()) throw new CanvasExportCancelledError();
-			await new Promise((resolve) => setTimeout(resolve, 30));
+			await held.promise;
 			if (request.isCancelled?.()) throw new CanvasExportCancelledError();
 			return { filename: "x.pdf", data: "%PDF", mimeType: "application/pdf" };
 		};
@@ -527,6 +548,9 @@ describe("cancellation stops before download (Bug 4, FR-154)", () => {
 			expect(screen.getByTestId("export-cancel")).toBeTruthy();
 		});
 		fireEvent.click(screen.getByTestId("export-cancel"));
+		// Only now may the exporter proceed — it observes the cancellation flag
+		// on its second check, which is the behaviour under test.
+		held.resolve();
 		await waitFor(() => {
 			expect(
 				screen.getByTestId("export-progress").getAttribute("data-phase"),
@@ -767,9 +791,10 @@ describe("export completed/failed toast (FR-170)", () => {
 	});
 
 	it("does not toast on cancellation (only completed/failed)", async () => {
+		const held = deferred();
 		const pdf: CanvasExporter = async (_ctx, request) => {
 			if (request.isCancelled?.()) throw new CanvasExportCancelledError();
-			await new Promise((resolve) => setTimeout(resolve, 30));
+			await held.promise;
 			if (request.isCancelled?.()) throw new CanvasExportCancelledError();
 			return { filename: "x.pdf", data: "%PDF", mimeType: "application/pdf" };
 		};
@@ -782,6 +807,7 @@ describe("export completed/failed toast (FR-170)", () => {
 			expect(screen.getByTestId("export-cancel")).toBeTruthy();
 		});
 		fireEvent.click(screen.getByTestId("export-cancel"));
+		held.resolve();
 		await waitFor(() => {
 			expect(
 				screen.getByTestId("export-progress").getAttribute("data-phase"),
