@@ -5,7 +5,9 @@ import type {
 	CanvasIR,
 	CanvasPage,
 } from "@anvilkit/canvas-core";
+import { prepareExport } from "@anvilkit/canvas-core/export-preparation";
 import { Button } from "@anvilkit/ui/button";
+import { Checkbox } from "@anvilkit/ui/components/animate-ui/components/base/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -15,19 +17,19 @@ import {
 	DialogTitle,
 } from "@anvilkit/ui/dialog";
 import { Input } from "@anvilkit/ui/input";
+import { Slider } from "@anvilkit/ui/slider";
 import * as React from "react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffectivePolicyContext } from "../brand-governance/effective-policy-context.js";
+import { emitCanvasAnalytics } from "../component-libraries/analytics.js";
 import {
 	type CanvasExportResultArtifact,
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
-import { prepareExport } from "@anvilkit/canvas-core/export-preparation";
-import { useEffectivePolicyContext } from "../brand-governance/effective-policy-context.js";
-import { exportPreparationMessage } from "./export-preparation-message.js";
-import { emitCanvasAnalytics } from "../component-libraries/analytics.js";
 import { useCanvasToaster } from "../context/toast-context.js";
 import { createExportStore } from "../stores/export-store.js";
+import { exportPreparationMessage } from "./export-preparation-message.js";
 import {
 	isSelectionResult,
 	RASTER_FORMATS,
@@ -613,11 +615,10 @@ export default function ExportDialog({
 									onChange={(e) => setCustomH(e.currentTarget.value)}
 								/>
 								<label className="flex items-center gap-1 text-xs text-muted-foreground">
-									<input
-										type="checkbox"
+									<Checkbox
 										data-testid="export-lock-aspect"
 										checked={lockAspect}
-										onChange={(e) => setLockAspect(e.currentTarget.checked)}
+										onCheckedChange={(checked) => setLockAspect(checked)}
 									/>
 									{t("canvas.export.lockAspect", "Lock ratio")}
 								</label>
@@ -626,29 +627,30 @@ export default function ExportDialog({
 							{format !== "png" ? (
 								<label className="flex items-center gap-2 text-xs text-muted-foreground">
 									<span>{t("canvas.export.quality", "Quality")}</span>
-									<input
-										type="range"
+									{/* Single-thumb: `value` MUST be an array — the Slider wrapper
+									    falls back to [min, max] (two thumbs) for a bare number. */}
+									<Slider
 										min={1}
 										max={100}
 										data-testid="export-quality"
-										value={quality}
-										onChange={(e) =>
-											setQuality(Number.parseInt(e.currentTarget.value, 10))
-										}
+										aria-label={t("canvas.export.quality", "Quality")}
+										className="w-32"
+										value={[quality]}
+										onValueChange={(value) => {
+											const next = Array.isArray(value) ? value[0] : value;
+											if (typeof next === "number") setQuality(next);
+										}}
 									/>
 									<span className="tabular-nums">{quality}</span>
 								</label>
 							) : null}
 
 							<label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-								<input
-									type="checkbox"
+								<Checkbox
 									data-testid="export-include-background"
 									checked={includeBackground && !transparentDisabled}
 									disabled={transparentDisabled}
-									onChange={(e) =>
-										setIncludeBackground(e.currentTarget.checked)
-									}
+									onCheckedChange={(checked) => setIncludeBackground(checked)}
 								/>
 								{t("canvas.export.includeBackground", "Include background")}
 								{transparentDisabled ? (

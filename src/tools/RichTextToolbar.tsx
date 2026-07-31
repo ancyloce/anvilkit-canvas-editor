@@ -9,6 +9,15 @@ import type {
 } from "@anvilkit/canvas-core";
 import { findNode, resolveSpanStyle } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
+import { ColorRow } from "@anvilkit/ui/color-picker";
+import { Input } from "@anvilkit/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@anvilkit/ui/select";
 import {
 	AlignCenter,
 	AlignLeft,
@@ -171,6 +180,21 @@ export function RichTextToolbar(): React.JSX.Element | null {
 		else ctx.commit(cmd);
 	};
 
+	// FR-082 color: same coalescing contract as the size field above — the
+	// picker emits on every pointer move, and each move must NOT become its own
+	// undo entry or collab broadcast.
+	const commitFillCoalesced = (paragraphs: RichTextParagraph[]): void => {
+		const cmd: CanvasNodeUpdateCommand<"rich-text"> = {
+			type: "node.update",
+			nodeId: node.id,
+			kind: "rich-text",
+			patch: { paragraphs },
+		};
+		if (ctx.commitCoalesced)
+			ctx.commitCoalesced(cmd, `rich-text-fill:${node.id}`);
+		else ctx.commit(cmd);
+	};
+
 	const boldActive = everySpan(
 		richText,
 		(s) =>
@@ -278,52 +302,67 @@ export function RichTextToolbar(): React.JSX.Element | null {
 					{icon}
 				</Button>
 			))}
-			<select
-				data-testid="rich-text-font"
-				aria-label={t("canvas.richText.font", "Font")}
-				title={t("canvas.richText.font", "Font")}
-				className="h-6 max-w-24 rounded border border-input bg-transparent px-1 text-xs"
+			{/* Uses `@anvilkit/ui/select` directly rather than the inspector's
+			    packaged `SelectControl`: `tools/` is interaction-core (rank 1) and
+			    may not import `panels/` (rank 3) — see scripts/check-layering.mjs.
+			    No field contract is needed here; this commits straight through. */}
+			<Select
+				items={FONT_FAMILIES.map((family) => ({
+					value: family,
+					label: family,
+				}))}
 				value={
 					typeof firstStyle.fontFamily === "string" &&
 					FONT_FAMILIES.includes(firstStyle.fontFamily)
 						? firstStyle.fontFamily
 						: "Inter"
 				}
-				onChange={(e) => {
-					const fontFamily = e.currentTarget.value;
+				onValueChange={(next) => {
+					if (next == null) return;
+					const fontFamily = next as string;
 					commitParagraphs(
 						mapSpans(currentRichText(), (s) => ({ ...s, fontFamily })),
 					);
 				}}
 			>
-				{FONT_FAMILIES.map((family) => (
-					<option key={family} value={family}>
-						{family}
-					</option>
-				))}
-			</select>
-			<input
-				type="color"
+				<SelectTrigger
+					data-testid="rich-text-font"
+					aria-label={t("canvas.richText.font", "Font")}
+					title={t("canvas.richText.font", "Font")}
+					className="h-6 max-w-24 text-xs"
+				>
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					{FONT_FAMILIES.map((family) => (
+						<SelectItem key={family} value={family}>
+							{family}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+			{/* Compact: the toolbar supplies its own chrome, so only the swatch
+			    renders. Dragging the picker fires continuously, so this coalesces
+			    into ONE undo entry the same way the size field does (E-19). */}
+			<ColorRow
+				compact
+				label={t("canvas.richText.color", "Text color")}
 				data-testid="rich-text-color"
-				aria-label={t("canvas.richText.color", "Text color")}
-				title={t("canvas.richText.color", "Text color")}
-				className="size-6 cursor-pointer rounded border border-input bg-transparent"
 				value={
 					typeof firstStyle.fill === "string" ? firstStyle.fill : "#000000"
 				}
-				onChange={(e) => {
-					const fill = e.currentTarget.value;
-					commitParagraphs(
+				onValueChange={(fill) => {
+					commitFillCoalesced(
 						mapSpans(currentRichText(), (s) => ({ ...s, fill })),
 					);
 				}}
 			/>
-			<input
+			<Input
 				type="number"
 				data-testid="rich-text-size"
 				aria-label={t("canvas.richText.size", "Font size")}
 				title={t("canvas.richText.size", "Font size")}
-				className="h-6 w-14 rounded border border-input bg-transparent px-1 text-xs"
+				className="h-6 w-14 px-1 text-xs"
 				min={1}
 				value={firstStyle.fontSize}
 				onChange={(e) => {

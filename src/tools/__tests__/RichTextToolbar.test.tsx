@@ -9,6 +9,7 @@ import {
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import { selectOption } from "@/panels/__tests__/_select-test-helpers.js";
 import { RichTextToolbar } from "../RichTextToolbar.js";
 import { makeFakeStage, makeHarness } from "./_tool-test-helpers.js";
 
@@ -154,11 +155,9 @@ describe("RichTextToolbar (C-11, FR-082)", () => {
 		expect(calls[0]?.[1]).toBe(calls[1]?.[1]);
 	});
 
-	it("font-family control rewrites every span's family (FR-082)", () => {
-		const { h, view } = mount();
-		fireEvent.change(view.getByTestId("rich-text-font"), {
-			target: { value: "Georgia" },
-		});
+	it("font-family control rewrites every span's family (FR-082)", async () => {
+		const { h } = mount();
+		await selectOption("rich-text-font", "Georgia");
 		expect(
 			lastPatch(h).paragraphs[0]?.spans.every(
 				(s) => s.fontFamily === "Georgia",
