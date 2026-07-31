@@ -742,5 +742,7 @@
 	"canvas.export.blockedUnresolved": "一部のコンポーネントを解決できません。書き出す前に復元または削除してください。",
 	"canvas.export.blockedFlatten": "この形式はコンポーネントを統合しますが、このドキュメントのブランドポリシーでは許可されていません。コンポーネントを保持する形式をお試しください。",
 	"canvas.export.blockedUnresolvedRef": "このドキュメントを書き出し用に準備できませんでした。",
-	"canvas.export.blockedInvalid": "このドキュメントを書き出し用に準備できませんでした。"
+	"canvas.export.blockedInvalid": "このドキュメントを書き出し用に準備できませんでした。",
+	"canvas.governance.sourceUpdateDenied": "このコンポーネントのバージョンは固定されており、変更できません。",
+	"canvas.governance.sourceSwapDenied": "このコンポーネントを別のコンポーネントに置き換えることはできません。"
 }

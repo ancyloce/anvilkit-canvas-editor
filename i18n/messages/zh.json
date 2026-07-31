@@ -742,5 +742,7 @@
 	"canvas.export.blockedUnresolved": "部分组件无法解析。导出前请恢复或移除它们。",
 	"canvas.export.blockedFlatten": "此格式会展平组件，而该文档的品牌策略不允许。请选择保留组件的格式。",
 	"canvas.export.blockedUnresolvedRef": "无法准备此文档以供导出。",
-	"canvas.export.blockedInvalid": "无法准备此文档以供导出。"
+	"canvas.export.blockedInvalid": "无法准备此文档以供导出。",
+	"canvas.governance.sourceUpdateDenied": "此组件的版本已固定，无法更改。",
+	"canvas.governance.sourceSwapDenied": "此组件不能被替换为其他组件。"
 }

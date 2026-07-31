@@ -742,5 +742,7 @@
 	"canvas.export.blockedUnresolved": "Some components can't be resolved. Restore or remove them before exporting.",
 	"canvas.export.blockedFlatten": "This format flattens components, which this document's brand policy doesn't allow. Try a format that keeps components.",
 	"canvas.export.blockedUnresolvedRef": "This document couldn't be prepared for export.",
-	"canvas.export.blockedInvalid": "This document couldn't be prepared for export."
+	"canvas.export.blockedInvalid": "This document couldn't be prepared for export.",
+	"canvas.governance.sourceUpdateDenied": "This component's version is pinned and can't be changed.",
+	"canvas.governance.sourceSwapDenied": "This component can't be replaced with a different one."
 }
