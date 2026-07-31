@@ -100,7 +100,14 @@ export async function rasterizePage(
 	const brandKit = input.brandKit ?? EMPTY_BRAND_KIT;
 	const includeBackground = input.includeBackground ?? true;
 
-	await preloadImageAssets(page, assets);
+	// Plan 0023 M6-02: preload from the EXPANDED page when the caller supplied a
+	// component resolution. A component's images live in the DEFINITION tree, not
+	// the page, so walking the raw page would miss them entirely and every image
+	// inside a component would race `use-image` and rasterize blank.
+	await preloadImageAssets(
+		input.resolvedDocument?.source.pages.find((p) => p.id === page.id) ?? page,
+		assets,
+	);
 
 	const container = document.createElement("div");
 	container.setAttribute("data-rasterize-page", page.id);

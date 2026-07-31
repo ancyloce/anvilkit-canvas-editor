@@ -60,7 +60,7 @@ function outerDefinition(): CanvasComponentDefinition {
 				{
 					type: "component-instance",
 					id: "outer-nested",
-					componentId: "cmp-inner",
+					source: { kind: "local", componentId: "cmp-inner" },
 					transform: { x: 20, y: 30, rotation: 0, scaleX: 1, scaleY: 1 },
 					bounds: { width: 40, height: 20 },
 				} as CanvasNode,
@@ -77,7 +77,7 @@ function nestedDoc(): CanvasIR {
 		node: {
 			type: "component-instance",
 			id: "inst-1",
-			componentId: "cmp-outer",
+			source: { kind: "local", componentId: "cmp-outer" },
 			transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
 			bounds: { width: 200, height: 80 },
 		} as CanvasNode,

@@ -11,6 +11,7 @@ import {
 	createRichText,
 	createSvg,
 	createVideo,
+	resolveCanvasDocument,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { ReactNode } from "react";
@@ -323,6 +324,61 @@ describe("rasterizePage", () => {
 
 	// Regression: `collectImageAssetIds` used to recurse only into groups, so an
 	// image inside a frame was never preloaded and could rasterize blank.
+	// Plan 0023 M6-02: a component's images live in the DEFINITION tree, not the
+	// page, so preloading from the raw page would miss them and every image
+	// inside a component would race `use-image` and rasterize blank.
+	it("preloads image assets that only exist inside a component's Source", async () => {
+		stubImageLoader();
+		const instance = {
+			type: "component-instance",
+			id: "inst-1",
+			source: { kind: "local", componentId: "cmp-card" },
+			transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+			bounds: { width: 64, height: 64 },
+			zIndex: 0,
+		} as unknown as CanvasRectNode;
+		const page = buildPage([instance]);
+		const ir = {
+			...createCanvasIR({ id: "doc", title: "t", pages: [page] }),
+			components: {
+				"cmp-card": {
+					id: "cmp-card",
+					name: "Card",
+					revision: 1,
+					properties: [],
+					root: createFrame({
+						id: "src-root",
+						bounds: { width: 64, height: 64 },
+						children: [
+							createImage({
+								id: "src-img",
+								bounds: { width: 32, height: 32 },
+								assetId: "in-component",
+							}),
+						],
+					}),
+				},
+			},
+		};
+		const assets = {
+			"in-component": {
+				id: "in-component",
+				uri: "data:image/png;base64,INCOMPONENT=",
+			},
+		};
+		await rasterizePage({
+			page,
+			assets,
+			// The COMPOSED resolution is what carries the expansion; a layout-only
+			// one would leave the instance unexpanded and the asset unseen.
+			resolvedDocument: resolveCanvasDocument(
+				{ ...ir, assets } as Parameters<typeof resolveCanvasDocument>[0],
+				{},
+			),
+		});
+		expect(preloadedSrcs).toContain("data:image/png;base64,INCOMPONENT=");
+	});
+
 	it("preloads image assets nested inside a frame", async () => {
 		stubImageLoader();
 		const frame = createFrame({

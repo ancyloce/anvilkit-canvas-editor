@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { CANVAS_COMPONENT_EVENT_TYPES } from "../context/component-events.js";
 import en from "../../i18n/messages/en.json";
 import ja from "../../i18n/messages/ja.json";
 import ko from "../../i18n/messages/ko.json";
@@ -48,8 +49,20 @@ describe("i18n catalogs (A-11, OD-3: four bundled locales)", () => {
 		// translated — so the completeness scan must not read them as catalog
 		// keys. Message keys stay under `canvas.inspector.*` / `canvas.a11y.*`.
 		const EVENT_NAME_NAMESPACE = /^canvas\.layout\./;
+		// Plan 0023 M6-08: the eight PRD §12 COMPONENT event identifiers are host
+		// event names too, but they share the `canvas.component.*` namespace with
+		// real message keys (`canvas.component.missing`, …), so they cannot be
+		// exempted by namespace the way the layout ones are. The exemption is taken
+		// from the exported list itself, so a ninth event cannot silently drift out
+		// of it — and a message key in that namespace is still required to exist.
+		const eventNames = new Set<string>(CANVAS_COMPONENT_EVENT_TYPES);
 		const missing = [...used]
-			.filter((key) => !(key in en) && !EVENT_NAME_NAMESPACE.test(key))
+			.filter(
+				(key) =>
+					!(key in en) &&
+					!EVENT_NAME_NAMESPACE.test(key) &&
+					!eventNames.has(key),
+			)
 			.sort();
 		expect(missing).toEqual([]);
 	});
