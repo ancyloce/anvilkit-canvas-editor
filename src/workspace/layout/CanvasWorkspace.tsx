@@ -4,12 +4,15 @@ import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import * as React from "react";
-import { lazy, type ReactNode, useEffect, useMemo, useRef } from "react";
+import { lazy, type ReactNode, use, useEffect, useMemo, useRef } from "react";
 import { LayoutAnnouncer } from "@/a11y/LayoutAnnouncer.js";
 import { ToolAnnouncer } from "@/a11y/ToolAnnouncer.js";
 import { ZoomAnnouncer } from "@/a11y/ZoomAnnouncer.js";
 import type { CanvasErrorDetailsInfo } from "@/CanvasErrorBoundary.js";
-import { useCanvasT } from "@/context/canvas-studio-context.js";
+import {
+	CanvasStudioContext,
+	useCanvasT,
+} from "@/context/canvas-studio-context.js";
 import { ComponentSourceHeader } from "@/panels/ComponentSourceHeader.js";
 import { PropertyInspector } from "@/panels/PropertyInspector.js";
 // CanvasStudio's relative path (not @/): CanvasStudioProps surfaces in the
@@ -19,6 +22,7 @@ import { CanvasStudio, type CanvasStudioProps } from "../../CanvasStudio.js";
 import type { CanvasHeaderPlugin } from "../../header/types.js";
 import { CanvasDialogHost } from "../dialogs/CanvasDialogHost.js";
 import { CanvasAreaContextMenu } from "../menus/CanvasAreaContextMenu.js";
+import { HIDDEN_DOCK_IDS } from "../dock-ids.js";
 import {
 	type CanvasPanelRegistry,
 	createCanvasPanelRegistry,
@@ -53,7 +57,7 @@ import {
 	ToolStrip,
 } from "../toolstrip/ToolStrip.js";
 import { CanvasDropZone } from "../uploads/CanvasDropZone.js";
-import type { DockItem } from "../workspace-config.js";
+import { ALL_DOCK_ITEMS, type DockItem } from "../workspace-config.js";
 import { CanvasToolbar } from "./CanvasToolbar.js";
 import type { ElementActions } from "./ElementControls.js";
 import { PagesCanvas } from "./PagesCanvas.js";
@@ -255,6 +259,18 @@ function WorkspaceBody({
 	toolStrip: boolean | CanvasToolStripOptions;
 	elementActions?: ElementActions;
 }): React.JSX.Element {
+	// Plan 0023 M6-07: the Components dock is hidden by default and appears only
+	// when the host opts into the authoring UI. An explicit `dockItems` override
+	// always wins — a host assembling its own rail owns that decision entirely.
+	const localComponentsEnabled =
+		use(CanvasStudioContext)?.localComponentsEnabled === true;
+	const effectiveDockItems =
+		dockItems ??
+		(localComponentsEnabled
+			? ALL_DOCK_ITEMS.filter(
+					(item) => !HIDDEN_DOCK_IDS.has(item.id) || item.id === "components",
+				)
+			: undefined);
 	const [panelWidth] = usePanelWidth();
 	const [panelOpen, setPanelOpen] = usePanelOpen();
 	const overlay = useMediaQuery(OVERLAY_PANEL_QUERY);
@@ -315,7 +331,7 @@ function WorkspaceBody({
 				data-layout="overlay"
 				className="grid min-h-0 grid-cols-[auto_minmax(0,1fr)_auto]"
 			>
-				<PanelDock items={dockItems} />
+				<PanelDock items={effectiveDockItems} />
 				{canvasSection}
 				{inspector ? <WorkspaceInspector /> : null}
 			</div>
@@ -328,7 +344,7 @@ function WorkspaceBody({
 			className="grid min-h-0 grid-cols-[auto_var(--ak-panel-width)_auto_minmax(0,1fr)_auto]"
 			style={{ "--ak-panel-width": `${panelWidth}px` } as React.CSSProperties}
 		>
-			<PanelDock items={dockItems} />
+			<PanelDock items={effectiveDockItems} />
 			<TabPanel registry={registry} />
 			<PanelResizeHandle />
 			{canvasSection}

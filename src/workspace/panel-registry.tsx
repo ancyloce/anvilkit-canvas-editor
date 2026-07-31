@@ -17,7 +17,7 @@ import type { ReactNode } from "react";
 import * as React from "react";
 import { useCanvasT } from "../context/canvas-studio-context.js";
 import { BrandPanel } from "../panels/BrandPanel.js";
-import { ComponentsPanel } from "../panels/ComponentsPanel.js";
+import { ComponentsSourceSwitcher } from "../panels/library/ComponentsSourceSwitcher.js";
 import { ElementsPanel } from "../panels/ElementsPanel.js";
 import { LayerPanel } from "../panels/LayerPanel.js";
 import { TemplatesPanel } from "../panels/TemplatesPanel.js";
@@ -192,7 +192,10 @@ export const defaultCanvasPanelRegistry: CanvasPanelRegistry = {
 		titleKey: "canvas.panel.components",
 		title: "Components",
 		searchable: true,
-		render: ({ search }) => <ComponentsPanel search={search} />,
+		// Plan 0021 T-020: the Local/Libraries source switch. It degrades to the
+		// bare local panel when no Provider is wired or the `externalComponents`
+		// flag is off, so this is a no-op change for every existing host.
+		render: ({ search }) => <ComponentsSourceSwitcher search={search} />,
 	},
 };
 
