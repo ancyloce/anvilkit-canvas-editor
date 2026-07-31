@@ -31,8 +31,9 @@ import {
 	FieldRow,
 	NumberField,
 	Section,
+	SelectField,
+	type SelectFieldOption,
 	sharedFieldValue,
-	useFieldContract,
 } from "../fields.js";
 
 /**
@@ -105,48 +106,37 @@ function SizingField({
 		nodes,
 		(n) => n.layoutItem?.[sizingKey] ?? "fixed",
 	);
-	const field = useFieldContract<CanvasLayoutSizing>(
-		{
-			nodes,
-			buildPatch: (n, v) => ({
-				layoutItem: { ...n.layoutItem, [sizingKey]: v },
-			}),
-		},
-		`prop-layout-${axis}-sizing`,
-	);
 	const label =
 		axis === "width"
 			? t("canvas.inspector.layoutWidthSizing", "Width")
 			: t("canvas.inspector.layoutHeightSizing", "Height");
+	const options: SelectFieldOption<CanvasLayoutSizing>[] = [
+		{ value: "fixed", label: t("canvas.inspector.layoutSizingFixed", "Fixed") },
+		{
+			value: "hug",
+			label: t("canvas.inspector.layoutSizingHug", "Hug contents"),
+		},
+	];
+	if (includeFill) {
+		options.push({
+			value: "fill",
+			label: t("canvas.inspector.layoutSizingFill", "Fill container"),
+		});
+	}
 	return (
-		<FieldRow label={label}>
-			<select
-				aria-label={label}
-				data-testid={`prop-layout-${axis}-sizing`}
-				className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
-				value={shared.mixed ? "" : shared.value}
-				onChange={(e) =>
-					field.commit(e.currentTarget.value as CanvasLayoutSizing)
-				}
-			>
-				{shared.mixed ? (
-					<option value="" disabled>
-						{t("canvas.inspector.mixed", "Mixed")}
-					</option>
-				) : null}
-				<option value="fixed">
-					{t("canvas.inspector.layoutSizingFixed", "Fixed")}
-				</option>
-				<option value="hug">
-					{t("canvas.inspector.layoutSizingHug", "Hug contents")}
-				</option>
-				{includeFill ? (
-					<option value="fill">
-						{t("canvas.inspector.layoutSizingFill", "Fill container")}
-					</option>
-				) : null}
-			</select>
-		</FieldRow>
+		<SelectField
+			label={label}
+			value={shared.value}
+			mixed={shared.mixed}
+			options={options}
+			dataTestId={`prop-layout-${axis}-sizing`}
+			contract={{
+				nodes,
+				buildPatch: (n, v) => ({
+					layoutItem: { ...n.layoutItem, [sizingKey]: v },
+				}),
+			}}
+		/>
 	);
 }
 

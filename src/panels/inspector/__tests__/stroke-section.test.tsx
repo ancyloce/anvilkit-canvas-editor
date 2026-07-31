@@ -7,6 +7,7 @@ import {
 	waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { selectOption } from "@/panels/__tests__/_select-test-helpers.js";
 import {
 	formatDashPattern,
 	parseDashPattern,
@@ -14,24 +15,6 @@ import {
 } from "../stroke-section.js";
 
 afterEach(cleanup);
-
-/**
- * FR-075 stroke cap/join/arrow pickers (`@anvilkit/ui/select`, Base UI): a
- * plain `fireEvent.click` on an option does NOT reach Base UI's internal
- * selection handler in jsdom — it needs a real pointer down+up sequence
- * first. No other test in this repo exercises this Select component yet, so
- * this pattern is established here.
- */
-async function selectOption(
-	triggerTestId: string,
-	optionName: string,
-): Promise<void> {
-	fireEvent.click(screen.getByTestId(triggerTestId));
-	const option = await screen.findByRole("option", { name: optionName });
-	fireEvent.pointerDown(option, { pointerId: 1, button: 0 });
-	fireEvent.pointerUp(option, { pointerId: 1, button: 0 });
-	fireEvent.click(option);
-}
 
 function lastPatch(
 	commitPatchAll: ReturnType<typeof vi.fn>,

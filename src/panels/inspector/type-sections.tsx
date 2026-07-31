@@ -14,12 +14,14 @@ import type {
 	CanvasStarNode,
 	CanvasTextNode,
 } from "@anvilkit/canvas-core";
+import * as React from "react";
 import { EMPTY_BRAND_KIT } from "../../brand/brand-kit.js";
 import type {
 	CanvasStudioContextValue,
 	CanvasT,
 } from "../../context/canvas-studio-context.js";
 import type { CommitPatchAll } from "../fields.js";
+import { ComponentOverrideSection } from "./component-sections.js";
 import { renderFrameFields, renderImageFields } from "./media-sections.js";
 import {
 	renderEllipseFields,
@@ -127,10 +129,13 @@ export function renderTypeSpecificFields(
 		// Plan 0023 M4-02: a built-in kind, so it must branch HERE rather than
 		// fall through to `default`, which would hand it to the EXTENSION
 		// `kindInspectors` lookup and silently misclassify a built-in as a
-		// custom kind. Component identity, property authoring, and the override
-		// editor land in `component-sections.tsx` (M5-04/M5-05).
+		// custom kind. M5-05: a SINGLE instance gets the override editor —
+		// overrides are keyed per definition, so a multi-instance selection could
+		// span definitions whose same-named properties mean different things.
 		case "component-instance":
-			return null;
+			return nodes.length === 1 ? (
+				<ComponentOverrideSection node={node} ctx={ctx} t={t} />
+			) : null;
 		default: {
 			// Custom (extension) kind: render its registered inspector fields, if
 			// any — a single-node extension API, so only for single-selection.

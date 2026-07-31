@@ -6,6 +6,13 @@ import type {
 	CanvasNode,
 } from "@anvilkit/canvas-core";
 import { Input } from "@anvilkit/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@anvilkit/ui/select";
 import * as React from "react";
 import { type ReactNode, use, useCallback, useState } from "react";
 import {
@@ -348,6 +355,79 @@ export function TextField({
 					} else field.cancel();
 				}}
 			/>
+		</FieldRow>
+	);
+}
+
+export interface SelectFieldOption<T extends string> {
+	value: T;
+	label: string;
+}
+
+export interface SelectFieldProps<T extends string> {
+	label: string;
+	value: T;
+	options: readonly SelectFieldOption<T>[];
+	dataTestId: string;
+	/** Legacy commit path; ignored when {@link contract} is present. */
+	onCommit?: (next: T) => void;
+	/**
+	 * §10 field-input contract (B-12). A select is DISCRETE — there is no
+	 * in-progress value to preview or revert — so it only uses the contract's
+	 * commit half, landing one coalesced history entry across the selection.
+	 */
+	contract?: FieldContractTarget<T>;
+	/** Multi-selection mixed value (B-12): renders no selection + a "Mixed" placeholder. */
+	mixed?: boolean;
+	/** Native tooltip, e.g. flagging an unresolved brand-token value (canvas-m1-013). */
+	title?: string;
+}
+
+/**
+ * Enum picker built on `@anvilkit/ui/select` (Base UI), the packaged
+ * counterpart to {@link NumberField}/{@link TextField}. Replaces the native
+ * `<select>` markup the inspector sections used to hand-roll, matching the
+ * `Select` usage `AppearanceSection`, `StrokeFields`, and the media sections
+ * already shipped — but taking `{ value, label }` options so callers pass
+ * localized labels while committing the raw enum value.
+ */
+export function SelectField<T extends string>({
+	label,
+	value,
+	options,
+	dataTestId,
+	onCommit,
+	contract,
+	mixed = false,
+	title,
+}: SelectFieldProps<T>): React.JSX.Element {
+	const field = useFieldContract<T>(contract, dataTestId);
+	return (
+		<FieldRow label={label} title={title}>
+			<Select
+				items={options.map((o) => ({ value: o.value, label: o.label }))}
+				value={mixed ? undefined : value}
+				onValueChange={(next) => {
+					if (next == null) return;
+					if (field.enabled) field.commit(next as T);
+					else onCommit?.(next as T);
+				}}
+			>
+				<SelectTrigger
+					aria-label={label}
+					data-testid={dataTestId}
+					className="h-7.5 flex-1"
+				>
+					<SelectValue placeholder={mixed ? field.mixedLabel : undefined} />
+				</SelectTrigger>
+				<SelectContent>
+					{options.map((o) => (
+						<SelectItem key={o.value} value={o.value}>
+							{o.label}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
 		</FieldRow>
 	);
 }

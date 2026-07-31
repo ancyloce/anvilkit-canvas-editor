@@ -8,6 +8,8 @@ import {
 	buildComponentGraph,
 	buildComponentReferenceIndex,
 } from "@anvilkit/canvas-core";
+import { useBrandKitDefinition } from "../brand/use-brand-kit.js";
+import { useInstanceCompliance } from "../brand-governance/use-instance-compliance.js";
 import { Button } from "@anvilkit/ui/button";
 import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
@@ -176,6 +178,7 @@ interface ComponentRowActions {
 function ComponentRow({
 	entry,
 	issue,
+	compliance,
 	renaming,
 	onRenameStart,
 	onRenameEnd,
@@ -188,6 +191,8 @@ function ComponentRow({
 	onRenameStart: (componentId: string) => void;
 	onRenameEnd: () => void;
 	actions: ComponentRowActions;
+	/** Worst brand-compliance severity across this component's instances (T-044). */
+	compliance: "warning" | "blocking" | undefined;
 	t: CanvasT;
 }): React.JSX.Element {
 	const { definition, problem } = entry;
@@ -210,7 +215,34 @@ function ComponentRow({
 				broken ? "text-destructive" : "text-foreground",
 			)}
 			style={{ height: ROW_HEIGHT }}
+			data-compliance={compliance ?? "clean"}
 		>
+			{/* T-044 step 5: glyph + a localized word, never colour alone. */}
+			{compliance ? (
+				<span
+					data-testid={`component-compliance-${definition.id}`}
+					className={cn(
+						"shrink-0 text-[10px]",
+						compliance === "blocking"
+							? "text-destructive"
+							: "text-amber-600 dark:text-amber-400",
+					)}
+					title={
+						compliance === "blocking"
+							? t("canvas.governance.severityBlocking", "Blocking")
+							: t("canvas.governance.severityWarning", "Warning")
+					}
+				>
+					<span aria-hidden="true">
+						{compliance === "blocking" ? "⛔" : "⚠"}
+					</span>
+					<span className="sr-only">
+						{compliance === "blocking"
+							? t("canvas.governance.severityBlocking", "Blocking")
+							: t("canvas.governance.severityWarning", "Warning")}
+					</span>
+				</span>
+			) : null}
 			{renaming ? (
 				<Input
 					autoFocus
@@ -340,6 +372,12 @@ export function ComponentsPanel({
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
 	const toaster = useCanvasToaster();
+	// Shares the ONE document scan with the Inspector (T-043/T-044) — this panel
+	// deliberately does not run a compliance scan of its own.
+	const complianceByComponent = useInstanceCompliance(
+		ctx.ir,
+		useBrandKitDefinition(),
+	).byComponent;
 	// Null-tolerant seam: a headless embed with no dialog host auto-confirms, so
 	// a destructive flow never deadlocks waiting for UI that is not mounted.
 	const dialogs = useCanvasDialogs();
@@ -462,7 +500,11 @@ export function ComponentsPanel({
 		? entries.filter((e) => e.definition.name.toLowerCase().includes(query))
 		: entries;
 
-	const createButton = (
+	// Plan 0023 M6-07: CREATION is the flagged affordance. With the flag off the
+	// panel still lists, inserts, renames, duplicates, deletes and edits
+	// overrides — rollback must never strip what a document already holds — but
+	// authoring a NEW Source is what staged enablement controls.
+	const createButton = ctx.localComponentsEnabled ? (
 		<Button
 			type="button"
 			variant="outline"
@@ -475,7 +517,7 @@ export function ComponentsPanel({
 			<Plus className="size-3.5" aria-hidden />
 			{t("canvas.components.create", "Create from selection")}
 		</Button>
-	);
+	) : null;
 
 	if (entries.length === 0) {
 		return (
@@ -521,6 +563,7 @@ export function ComponentsPanel({
 		<ComponentRow
 			entry={entry}
 			issue={byComponent.get(entry.definition.id)}
+			compliance={complianceByComponent.get(entry.definition.id)}
 			renaming={renamingId === entry.definition.id}
 			onRenameStart={setRenamingId}
 			onRenameEnd={() => setRenamingId(null)}

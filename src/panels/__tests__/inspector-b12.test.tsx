@@ -17,6 +17,7 @@ import {
 	parseDashPattern,
 } from "../inspector/stroke-section.js";
 import { PropertyInspector } from "../PropertyInspector.js";
+import { selectedLabel, selectOption } from "./_select-test-helpers.js";
 
 afterEach(cleanup);
 
@@ -337,11 +338,9 @@ describe("Rich text vertical align (FR-081)", () => {
 		return ir;
 	}
 
-	it("commits verticalAlign when changed", () => {
+	it("commits verticalAlign when changed", async () => {
 		const h = mount(richTextIR(), ["rt"]);
-		fireEvent.change(screen.getByTestId("prop-rich-text-vertical-align"), {
-			target: { value: "middle" },
-		});
+		await selectOption("prop-rich-text-vertical-align", "Middle");
 		expect(
 			(h.commits[0] as { patch: { verticalAlign?: string } }).patch
 				.verticalAlign,
@@ -529,8 +528,8 @@ describe("Plain text native fields (FR-081 gap closure — PRD 0012 §7.8)", () 
 		mount(plainTextIR({ fontWeight: "700", align: "center" }), ["text-a"]);
 		const weight = screen.getByTestId("prop-font-weight") as HTMLInputElement;
 		expect(weight.defaultValue).toBe("700");
-		const align = screen.getByTestId("prop-text-align") as HTMLSelectElement;
-		expect(align.value).toBe("center");
+		// The align picker is a Base UI select: its trigger shows the LABEL.
+		expect(selectedLabel("prop-text-align")).toBe("Center");
 		// Shadow controls (shared FillAndShadowFields component) render, but its
 		// own duplicate Fill-type picker does NOT — plain text keeps its single
 		// dedicated Color field.
@@ -553,10 +552,9 @@ describe("Plain text native fields (FR-081 gap closure — PRD 0012 §7.8)", () 
 		).toBe("600");
 	});
 
-	it("commits align via the field contract on change", () => {
+	it("commits align via the field contract on change", async () => {
 		const h = mount(plainTextIR(), ["text-a"]);
-		const align = screen.getByTestId("prop-text-align") as HTMLSelectElement;
-		fireEvent.change(align, { target: { value: "right" } });
+		await selectOption("prop-text-align", "Right");
 		expect(h.commits).toHaveLength(1);
 		expect((h.commits[0] as { patch: { align?: string } }).patch.align).toBe(
 			"right",

@@ -11,8 +11,9 @@ import {
 	insertNode,
 } from "@anvilkit/canvas-core";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import { CanvasDialogContext } from "@/context/dialog-context.js";
 import { createFieldPreviewStore } from "@/stores/field-preview-store.js";
 import { createResolvedDocumentStore } from "@/stores/resolved-document-store.js";
 import { createSceneStore } from "@/stores/scene-store.js";
@@ -50,7 +51,7 @@ const instanceNode = (id: string, componentId: string): CanvasNode =>
 	({
 		type: "component-instance",
 		id,
-		componentId,
+		source: { kind: "local", componentId },
 		transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
 		bounds: { width: 80, height: 40 },
 	}) as CanvasNode;
@@ -246,8 +247,10 @@ describe("ComponentsPanel", () => {
 	it("creates a component from the selection, or explains why it cannot", () => {
 		const ir = doc({ instances: [] });
 		const h = makeHarness({ ir });
+		// M6-07: creation is behind the `localComponents` flag.
+		const enabled = { ...h.studioCtx, ir, localComponentsEnabled: true };
 		const view = render(
-			<CanvasStudioContext.Provider value={{ ...h.studioCtx, ir }}>
+			<CanvasStudioContext.Provider value={enabled}>
 				<ComponentsPanel />
 			</CanvasStudioContext.Provider>,
 		);
@@ -259,7 +262,7 @@ describe("ComponentsPanel", () => {
 		h.studioCtx.selectionStore.getState().setSelection(["n1"]);
 		cleanup();
 		const view2 = render(
-			<CanvasStudioContext.Provider value={{ ...h.studioCtx, ir }}>
+			<CanvasStudioContext.Provider value={enabled}>
 				<ComponentsPanel />
 			</CanvasStudioContext.Provider>,
 		);
@@ -270,6 +273,40 @@ describe("ComponentsPanel", () => {
 		};
 		expect(create?.mode).toBe("from-selection");
 		expect(create?.selectedNodeIds).toEqual(["n1"]);
+	});
+
+	/**
+	 * M6-07 / PRD §19 rollback: the flag gates AUTHORING only. With it off a
+	 * document's existing components must stay fully usable — anything else would
+	 * make disabling the flag destructive.
+	 */
+	it("hides only CREATION when localComponents is off, keeping the rest usable", () => {
+		const ir = doc({
+			registry: { "cmp-a": definition("cmp-a", "Alpha") },
+			instances: [instanceNode("i1", "cmp-a")],
+		});
+		const h = makeHarness({ ir });
+		h.studioCtx.selectionStore.getState().setSelection(["i1"]);
+		const view = render(
+			<CanvasStudioContext.Provider value={{ ...h.studioCtx, ir }}>
+				<ComponentsPanel />
+			</CanvasStudioContext.Provider>,
+		);
+		// Creation is gone…
+		expect(view.queryByTestId("components-create")).toBeNull();
+		// …and everything a document already contains still works.
+		expect(view.queryByTestId("component-row-cmp-a")).not.toBeNull();
+		expect(
+			(view.getByTestId("component-insert-cmp-a") as HTMLButtonElement)
+				.disabled,
+		).toBe(false);
+		expect(view.queryByTestId("component-rename-start-cmp-a")).not.toBeNull();
+		expect(view.queryByTestId("component-duplicate-cmp-a")).not.toBeNull();
+		expect(view.queryByTestId("component-delete-cmp-a")).not.toBeNull();
+		fireEvent.click(view.getByTestId("component-insert-cmp-a"));
+		expect(h.commits.some((c) => c.type === "component-instance.insert")).toBe(
+			true,
+		);
 	});
 
 	it("renames inline on Enter and abandons on Escape", () => {
@@ -349,6 +386,61 @@ describe("ComponentsPanel", () => {
 		// LC-DELETE: a referenced Source is never silently detached. No command at
 		// all until the M5-06 dialog offers "detach all and delete".
 		expect(h2.commits).toHaveLength(0);
+	});
+
+	it("escalates a referenced delete to a confirmed detach-all (M5-06)", async () => {
+		const ir = doc({
+			registry: { "cmp-a": definition("cmp-a", "Alpha") },
+			instances: [instanceNode("i1", "cmp-a"), instanceNode("i2", "cmp-a")],
+		});
+		const h = makeHarness({ ir });
+		const asked: string[] = [];
+		const view = render(
+			<CanvasDialogContext.Provider
+				value={{
+					confirm: (options) => {
+						asked.push(options.title);
+						return Promise.resolve(true);
+					},
+				}}
+			>
+				<CanvasStudioContext.Provider value={{ ...h.studioCtx, ir }}>
+					<ComponentsPanel />
+				</CanvasStudioContext.Provider>
+			</CanvasDialogContext.Provider>,
+		);
+		fireEvent.click(view.getByTestId("component-delete-cmp-a"));
+		await vi.waitFor(() => expect(h.commits).toHaveLength(1));
+		// The prompt names how much is being detached, and the result is ONE
+		// atomic batch rather than a silent per-instance sweep.
+		expect(asked[0]).toContain("2");
+		expect(h.commits[0]).toMatchObject({ type: "batch" });
+	});
+
+	it("commits nothing when the referenced delete is declined", async () => {
+		const ir = doc({
+			registry: { "cmp-a": definition("cmp-a", "Alpha") },
+			instances: [instanceNode("i1", "cmp-a")],
+		});
+		const h = makeHarness({ ir });
+		let asked = 0;
+		const view = render(
+			<CanvasDialogContext.Provider
+				value={{
+					confirm: () => {
+						asked += 1;
+						return Promise.resolve(false);
+					},
+				}}
+			>
+				<CanvasStudioContext.Provider value={{ ...h.studioCtx, ir }}>
+					<ComponentsPanel />
+				</CanvasStudioContext.Provider>
+			</CanvasDialogContext.Provider>,
+		);
+		fireEvent.click(view.getByTestId("component-delete-cmp-a"));
+		await vi.waitFor(() => expect(asked).toBe(1));
+		expect(h.commits).toHaveLength(0);
 	});
 
 	it("surfaces a resolution diagnostic for a dangling reference", () => {

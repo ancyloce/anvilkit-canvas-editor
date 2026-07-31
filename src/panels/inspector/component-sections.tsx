@@ -7,12 +7,20 @@ import type {
 	CanvasComponentProperty,
 	CanvasNode,
 } from "@anvilkit/canvas-core";
+import {
+	componentSourceLabel,
+	localComponentIdOf,
+} from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { Switch } from "@anvilkit/ui/components/animate-ui/components/base/switch";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { RotateCcw, Unlink } from "lucide-react";
 import * as React from "react";
 import { detachComponentInstanceImpl } from "../../actions/component-actions.js";
+import {
+	isCapabilityAvailable,
+	useEffectivePolicyContext,
+} from "../../brand-governance/effective-policy-context.js";
 import type {
 	CanvasStudioContextValue,
 	CanvasT,
@@ -117,7 +125,9 @@ export function ComponentOverrideSection({
 	ctx: CanvasStudioContextValue;
 	t: CanvasT;
 }): React.JSX.Element {
-	const definition = ctx.ir.components?.[node.componentId];
+	const localId = localComponentIdOf(node.source);
+	const definition =
+		localId === undefined ? undefined : ctx.ir.components?.[localId];
 	const overrides = node.overrides ?? {};
 
 	if (!definition) {
@@ -152,12 +162,19 @@ export function ComponentOverrideSection({
 						className="h-6 px-1.5 text-[11px]"
 						data-testid="override-reset-all"
 						disabled={!hasAnyOverride}
-						onClick={() =>
+						onClick={() => {
 							ctx.commit({
 								type: "component-instance.reset-all-overrides",
 								nodeId: node.id,
-							})
-						}
+							});
+							ctx.onComponentEvent?.({
+								type: "canvas.component.override_reset",
+								// A reset-all can span kinds, so the type is "mixed" rather
+								// than a lie about which one it was.
+								propertyType: "mixed",
+								resetScope: "all",
+							});
+						}}
 					>
 						<RotateCcw className="size-3" aria-hidden />
 						{t("canvas.override.resetAll", "Reset all")}
@@ -265,7 +282,7 @@ function MissingComponentRecovery({
 					className="truncate rounded bg-muted px-1 py-0.5 text-[11px]"
 					data-testid="component-missing-id"
 				>
-					{node.componentId}
+					{componentSourceLabel(node.source)}
 				</code>
 				{overrideCount > 0 ? (
 					<span className="text-muted-foreground">
@@ -308,6 +325,12 @@ function DetachButton({
 }): React.JSX.Element {
 	const dialogs = useCanvasDialogs();
 	const toaster = useCanvasToaster();
+	// T-040 step 1. Presentation only: the same policy is re-evaluated in the
+	// command layer, so a caller that skips this button is denied identically.
+	// Disabled rather than hidden — a control that vanishes reads as a bug,
+	// while a disabled one with a reason reads as a rule.
+	const policy = useEffectivePolicyContext();
+	const detachAllowed = isCapabilityAvailable(policy, "canDetach");
 	return (
 		<Button
 			type="button"
@@ -315,6 +338,15 @@ function DetachButton({
 			size="sm"
 			className="h-6 px-1.5 text-[11px]"
 			data-testid="component-detach"
+			disabled={!detachAllowed}
+			title={
+				detachAllowed
+					? undefined
+					: t(
+							"canvas.governance.detachDenied",
+							"This component may not be detached.",
+						)
+			}
 			onClick={() => {
 				void dialogs
 					.confirm({
@@ -410,13 +442,18 @@ function OverrideField({
 				size="sm"
 				className="h-5 px-1 text-[10px]"
 				data-testid={`override-reset-${property.id}`}
-				onClick={() =>
+				onClick={() => {
 					ctx.commit({
 						type: "component-instance.reset-override",
 						nodeId: node.id,
 						propertyId: property.id,
-					})
-				}
+					});
+					ctx.onComponentEvent?.({
+						type: "canvas.component.override_reset",
+						propertyType: property.kind,
+						resetScope: "one",
+					});
+				}}
 			>
 				{t("canvas.override.reset", "Reset")}
 			</Button>
@@ -749,7 +786,7 @@ export function countOverrides(
 	const visit = (node: CanvasNode): void => {
 		if (
 			node.type === "component-instance" &&
-			node.componentId === componentId &&
+			localComponentIdOf(node.source) === componentId &&
 			node.overrides?.[propertyId] !== undefined
 		) {
 			count += 1;

@@ -14,6 +14,10 @@ import {
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import {
+	optionLabels,
+	selectOption,
+} from "@/panels/__tests__/_select-test-helpers.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { AutoLayoutSection } from "../auto-layout-section.js";
 
@@ -180,19 +184,16 @@ describe("AutoLayoutSection", () => {
 		);
 	});
 
-	it("item group: sizing select offers fill and patches layoutItem via node.update", () => {
+	it("item group: sizing select offers fill and patches layoutItem via node.update", async () => {
 		const h = setup(layoutIr(), ["r1"]);
 		// Frame-level controls hidden for a child selection.
 		expect(screen.queryByTestId("prop-layout-direction-horizontal")).toBeNull();
-		const select = screen.getByTestId(
-			"prop-layout-width-sizing",
-		) as HTMLSelectElement;
-		expect(Array.from(select.options).map((o) => o.value)).toEqual([
-			"fixed",
-			"hug",
-			"fill",
+		expect(await optionLabels("prop-layout-width-sizing")).toEqual([
+			"Fixed",
+			"Hug contents",
+			"Fill container",
 		]);
-		fireEvent.change(select, { target: { value: "fill" } });
+		await selectOption("prop-layout-width-sizing", "Fill container");
 		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledWith(
 			{
 				type: "node.update",
@@ -223,14 +224,11 @@ describe("AutoLayoutSection", () => {
 		]);
 	});
 
-	it("frame-only selection offers fixed/hug sizing without fill", () => {
+	it("frame-only selection offers fixed/hug sizing without fill", async () => {
 		setup(layoutIr(), ["f1"]);
-		const select = screen.getByTestId(
-			"prop-layout-width-sizing",
-		) as HTMLSelectElement;
-		expect(Array.from(select.options).map((o) => o.value)).toEqual([
-			"fixed",
-			"hug",
+		expect(await optionLabels("prop-layout-width-sizing")).toEqual([
+			"Fixed",
+			"Hug contents",
 		]);
 	});
 });

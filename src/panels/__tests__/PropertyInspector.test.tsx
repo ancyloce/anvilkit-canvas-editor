@@ -25,6 +25,7 @@ import {
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import type { BrandKit } from "../../brand/brand-kit.js";
 import { PropertyInspector } from "../PropertyInspector.js";
+import { selectedLabel, selectOption } from "./_select-test-helpers.js";
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
 
@@ -689,18 +690,10 @@ describe("PropertyInspector — rich-text selected", () => {
 		const h = makeHarness({ ir: withRichTextIR() });
 		h.studioCtx.selectionStore.getState().setSelection(["rt-a"]);
 		const { container } = mount(h.studioCtx);
-		const wrap = container.querySelector(
-			"[data-testid='prop-rich-text-wrap']",
-		) as HTMLSelectElement;
-		expect(wrap.value).toBe("character");
-		const overflow = container.querySelector(
-			"[data-testid='prop-rich-text-overflow']",
-		) as HTMLSelectElement;
-		expect(overflow.value).toBe("clip");
-		const align = container.querySelector(
-			"[data-testid='prop-rich-text-align']",
-		) as HTMLSelectElement;
-		expect(align.value).toBe("center");
+		// wrap/overflow/align are Base UI selects: the trigger shows the LABEL.
+		expect(selectedLabel("prop-rich-text-wrap", container)).toBe("Character");
+		expect(selectedLabel("prop-rich-text-overflow", container)).toBe("Clip");
+		expect(selectedLabel("prop-rich-text-align", container)).toBe("Center");
 		const lineHeight = container.querySelector(
 			"[data-testid='prop-rich-text-line-height']",
 		) as HTMLInputElement;
@@ -715,28 +708,22 @@ describe("PropertyInspector — rich-text selected", () => {
 		expect(fontSize.defaultValue).toBe("20");
 	});
 
-	it("changing wrap commits a node-level patch, not a paragraph rewrite", () => {
+	it("changing wrap commits a node-level patch, not a paragraph rewrite", async () => {
 		const h = makeHarness({ ir: withRichTextIR() });
 		h.studioCtx.selectionStore.getState().setSelection(["rt-a"]);
 		const { container } = mount(h.studioCtx);
-		const wrap = container.querySelector(
-			"[data-testid='prop-rich-text-wrap']",
-		) as HTMLSelectElement;
-		fireEvent.change(wrap, { target: { value: "none" } });
+		await selectOption("prop-rich-text-wrap", "None", container);
 		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rich-text">;
 		expect(last.type).toBe("node.update");
 		expect(last.kind).toBe("rich-text");
 		expect(last.patch).toEqual({ wrap: "none" });
 	});
 
-	it("changing align commits the new align onto every paragraph", () => {
+	it("changing align commits the new align onto every paragraph", async () => {
 		const h = makeHarness({ ir: withRichTextIR() });
 		h.studioCtx.selectionStore.getState().setSelection(["rt-a"]);
 		const { container } = mount(h.studioCtx);
-		const align = container.querySelector(
-			"[data-testid='prop-rich-text-align']",
-		) as HTMLSelectElement;
-		fireEvent.change(align, { target: { value: "right" } });
+		await selectOption("prop-rich-text-align", "Right", container);
 		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rich-text">;
 		const paragraphs = (
 			last.patch as { paragraphs?: Array<{ align?: string }> }

@@ -1,16 +1,18 @@
 "use client";
 
-import {
-	type CanvasNode,
-	generateBrandComplianceReport,
-} from "@anvilkit/canvas-core";
+import type { CanvasNode } from "@anvilkit/canvas-core";
+// Required binding: this package builds CLASSIC JSX, so `dist` throws
+// "React is not defined" without it and typecheck does not catch it.
+import * as React from "react";
 import { useMemo } from "react";
 import { useBrandKitDefinition } from "../../brand/use-brand-kit.js";
+import { useInstanceCompliance } from "../../brand-governance/use-instance-compliance.js";
 import {
 	useCanvasStudio,
 	useCanvasT,
 } from "../../context/canvas-studio-context.js";
-import { complianceIssueMessage } from "../BrandPanel.js";
+import { complianceIssueMessage } from "../governance/compliance-messages.js";
+import { severityPresentation } from "../governance/ComplianceIssueRow.js";
 
 /**
  * FR-142 (C-07): passive, non-blocking brand warnings for the CURRENT
@@ -27,22 +29,29 @@ export function BrandComplianceWarnings({
 	const ctx = useCanvasStudio();
 	const definition = useBrandKitDefinition();
 	const t = useCanvasT();
+	// Plan 0021 T-043. The scan is memoized on `[ir, brandKit]` ONLY, so moving
+	// the selection is a `Map.get` rather than a whole-document re-scan. The
+	// previous version depended on `nodes` (and on `t`), which meant every click
+	// re-scanned a 1,000-node document and discarded almost all of the result.
+	const compliance = useInstanceCompliance(ctx.ir, definition);
 	const messages = useMemo(() => {
-		if (!definition || nodes.length === 0) return [];
-		const ids = new Set(nodes.map((n) => n.id));
-		const issues = generateBrandComplianceReport(
-			ctx.ir,
-			definition,
-		).issues.filter((issue) => ids.has(issue.nodeId));
-		// Dedupe identical property+message pairs across a multi-selection.
-		return Array.from(
-			new Set(
-				issues.map(
-					(issue) => `${issue.property}: ${complianceIssueMessage(t, issue)}`,
-				),
-			),
-		);
-	}, [ctx.ir, definition, nodes, t]);
+		if (nodes.length === 0) return [];
+		const issues = compliance.forNodes(nodes.map((n) => n.id));
+		// Dedupe identical property+message pairs across a multi-selection, and
+		// keep the WORST severity for each — a selection containing one blocking
+		// instance must not read as a warning because a warning came last.
+		const bySeverity = new Map<string, "warning" | "blocking">();
+		for (const issue of issues) {
+			const text = `${issue.property}: ${complianceIssueMessage(t, issue)}`;
+			if (issue.severity === "blocking" || !bySeverity.has(text)) {
+				bySeverity.set(
+					text,
+					issue.severity === "blocking" ? "blocking" : "warning",
+				);
+			}
+		}
+		return [...bySeverity].map(([text, severity]) => ({ text, severity }));
+	}, [compliance, nodes, t]);
 
 	if (messages.length === 0) return null;
 	return (
@@ -54,9 +63,19 @@ export function BrandComplianceWarnings({
 			<div className="font-medium">
 				{t("canvas.brand.warningsTitle", "Off-brand selection")}
 			</div>
-			{messages.map((message) => (
-				<div key={message}>{message}</div>
-			))}
+			{/* T-044 step 5: status by glyph AND word, never colour alone. */}
+			{messages.map(({ text, severity }) => {
+				const { glyph, label } = severityPresentation(severity, t);
+				return (
+					<div key={text} data-severity={severity} className="flex gap-1.5">
+						<span aria-hidden="true">{glyph}</span>
+						<span>
+							<span className="sr-only">{`${label}: `}</span>
+							{text}
+						</span>
+					</div>
+				);
+			})}
 		</div>
 	);
 }

@@ -28,9 +28,10 @@ import {
 	FieldRow,
 	NumberField,
 	Section,
+	SelectField,
+	type SelectFieldOption,
 	sharedFieldValue,
 	TextField,
-	useFieldContract,
 } from "../fields.js";
 import { FillAndShadowFields } from "../fill-shadow-fields.js";
 import {
@@ -48,10 +49,18 @@ import {
  * discrete controls (selects, switches) via `commitPatchAll`.
  */
 
-/** Native `<select>`-backed align field, wired through the §10 field contract
- * (FR-081): reuses the exact select markup rich-text's paragraph-align field
- * already renders below, just committing through `useFieldContract` directly
- * since there is no packaged contract-aware Select component. */
+/** Shared align options — plain `text`'s node-level align and rich text's
+ * paragraph align offer the exact same three choices. */
+function alignOptions(t: CanvasT): SelectFieldOption<CanvasTextAlign>[] {
+	return [
+		{ value: "left", label: t("canvas.inspector.alignLeft", "Left") },
+		{ value: "center", label: t("canvas.inspector.alignCenter", "Center") },
+		{ value: "right", label: t("canvas.inspector.alignRight", "Right") },
+	];
+}
+
+/** Align field wired through the §10 field contract (FR-081), on the packaged
+ * `SelectField` primitive. */
 function TextAlignField({
 	nodes,
 	t,
@@ -63,33 +72,15 @@ function TextAlignField({
 		nodes,
 		(n) => (n as CanvasTextNode).align ?? "left",
 	);
-	const field = useFieldContract<CanvasTextAlign>(
-		{ nodes, buildPatch: (_n, v) => ({ align: v }) },
-		"prop-text-align",
-	);
 	return (
-		<FieldRow label={t("canvas.inspector.align", "Align")}>
-			<select
-				aria-label={t("canvas.inspector.align", "Align")}
-				data-testid="prop-text-align"
-				className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
-				value={shared.mixed ? "" : shared.value}
-				onChange={(e) => field.commit(e.currentTarget.value as CanvasTextAlign)}
-			>
-				{shared.mixed ? (
-					<option value="" disabled>
-						{t("canvas.inspector.mixed", "Mixed")}
-					</option>
-				) : null}
-				<option value="left">{t("canvas.inspector.alignLeft", "Left")}</option>
-				<option value="center">
-					{t("canvas.inspector.alignCenter", "Center")}
-				</option>
-				<option value="right">
-					{t("canvas.inspector.alignRight", "Right")}
-				</option>
-			</select>
-		</FieldRow>
+		<SelectField
+			label={t("canvas.inspector.align", "Align")}
+			value={shared.value}
+			mixed={shared.mixed}
+			options={alignOptions(t)}
+			dataTestId="prop-text-align"
+			contract={{ nodes, buildPatch: (_n, v) => ({ align: v }) }}
+		/>
 	);
 }
 
@@ -98,8 +89,9 @@ function TextAlignField({
  * content, font family/size/weight, fill, align, shadow — nothing rich-text
  * only (no letter-spacing/line-height/vertical-align/strikethrough). Weight
  * reuses rich-text's `TextField`-based Weight control (same contract
- * pattern); Align reuses rich-text's align `<select>` markup, wired through
- * the field contract; Shadow reuses the SAME `FillAndShadowFields` shape/path
+ * pattern); Align shares rich-text's paragraph-align options via
+ * `alignOptions`, wired through the field contract; Shadow reuses the SAME
+ * `FillAndShadowFields` shape/path
  * kinds already use — `showFill={false}` keeps this node's own dedicated
  * Color field as the only fill control (no duplicate "Fill type" picker).
  */
@@ -319,55 +311,48 @@ export function renderRichTextFields(
 	return (
 		<>
 			<Section title={t("canvas.inspector.text", "Text")}>
-				<FieldRow label={t("canvas.inspector.wrap", "Wrap")}>
-					<select
-						aria-label={t("canvas.inspector.wrap", "Wrap")}
-						data-testid="prop-rich-text-wrap"
-						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
-						value={wrap}
-						onChange={(e) =>
-							commitPatchAll(nodes, () => ({
-								wrap: e.currentTarget.value as RichTextWrap,
-							}))
-						}
-					>
-						<option value="word">
-							{t("canvas.inspector.wrapWord", "Word")}
-						</option>
-						<option value="character">
-							{t("canvas.inspector.wrapCharacter", "Character")}
-						</option>
-						<option value="none">
-							{t("canvas.inspector.wrapNone", "None")}
-						</option>
-					</select>
-				</FieldRow>
-				<FieldRow label={t("canvas.inspector.overflow", "Overflow")}>
-					<select
-						aria-label={t("canvas.inspector.overflow", "Overflow")}
-						data-testid="prop-rich-text-overflow"
-						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
-						value={overflow}
-						onChange={(e) =>
-							commitPatchAll(nodes, () => ({
-								overflow: e.currentTarget.value as RichTextOverflow,
-							}))
-						}
-					>
-						<option value="visible">
-							{t("canvas.inspector.overflowVisible", "Visible")}
-						</option>
-						<option value="clip">
-							{t("canvas.inspector.overflowClip", "Clip")}
-						</option>
-						<option value="auto-height">
-							{t("canvas.inspector.overflowAutoHeight", "Auto height")}
-						</option>
-						<option value="ellipsis">
-							{t("canvas.inspector.overflowEllipsis", "Ellipsis")}
-						</option>
-					</select>
-				</FieldRow>
+				<SelectField
+					label={t("canvas.inspector.wrap", "Wrap")}
+					value={wrap}
+					options={[
+						{ value: "word", label: t("canvas.inspector.wrapWord", "Word") },
+						{
+							value: "character",
+							label: t("canvas.inspector.wrapCharacter", "Character"),
+						},
+						{ value: "none", label: t("canvas.inspector.wrapNone", "None") },
+					]}
+					dataTestId="prop-rich-text-wrap"
+					onCommit={(v: RichTextWrap) =>
+						commitPatchAll(nodes, () => ({ wrap: v }))
+					}
+				/>
+				<SelectField
+					label={t("canvas.inspector.overflow", "Overflow")}
+					value={overflow}
+					options={[
+						{
+							value: "visible",
+							label: t("canvas.inspector.overflowVisible", "Visible"),
+						},
+						{
+							value: "clip",
+							label: t("canvas.inspector.overflowClip", "Clip"),
+						},
+						{
+							value: "auto-height",
+							label: t("canvas.inspector.overflowAutoHeight", "Auto height"),
+						},
+						{
+							value: "ellipsis",
+							label: t("canvas.inspector.overflowEllipsis", "Ellipsis"),
+						},
+					]}
+					dataTestId="prop-rich-text-overflow"
+					onCommit={(v: RichTextOverflow) =>
+						commitPatchAll(nodes, () => ({ overflow: v }))
+					}
+				/>
 				{overflowing ? (
 					<div
 						data-testid="rich-text-overflow-warning"
@@ -416,82 +401,62 @@ export function renderRichTextFields(
 						)}
 					</div>
 				) : null}
-				<FieldRow label={t("canvas.inspector.sizing", "Sizing")}>
-					<select
-						aria-label={t("canvas.inspector.sizing", "Sizing")}
-						data-testid="prop-rich-text-sizing"
-						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
-						value={node.sizing ?? "fixed"}
-						onChange={(e) =>
-							commitPatchAll(nodes, () => ({
-								sizing:
-									e.currentTarget.value === "fixed"
-										? undefined
-										: (e.currentTarget.value as "auto-width"),
-							}))
-						}
-					>
-						<option value="fixed">
-							{t("canvas.inspector.sizingFixed", "Fixed")}
-						</option>
-						<option value="auto-width">
-							{t("canvas.inspector.sizingAutoWidth", "Auto width")}
-						</option>
-					</select>
-				</FieldRow>
-				<FieldRow label={t("canvas.inspector.verticalAlign", "Vertical align")}>
-					<select
-						aria-label={t("canvas.inspector.verticalAlign", "Vertical align")}
-						data-testid="prop-rich-text-vertical-align"
-						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
-						value={node.verticalAlign ?? "top"}
-						onChange={(e) =>
-							commitPatchAll(nodes, () => ({
-								verticalAlign:
-									e.currentTarget.value === "top"
-										? undefined
-										: (e.currentTarget.value as "middle" | "bottom"),
-							}))
-						}
-					>
-						<option value="top">
-							{t("canvas.inspector.vAlignTop", "Top")}
-						</option>
-						<option value="middle">
-							{t("canvas.inspector.vAlignMiddle", "Middle")}
-						</option>
-						<option value="bottom">
-							{t("canvas.inspector.vAlignBottom", "Bottom")}
-						</option>
-					</select>
-				</FieldRow>
+				<SelectField
+					label={t("canvas.inspector.sizing", "Sizing")}
+					value={node.sizing ?? "fixed"}
+					options={[
+						{
+							value: "fixed",
+							label: t("canvas.inspector.sizingFixed", "Fixed"),
+						},
+						{
+							value: "auto-width",
+							label: t("canvas.inspector.sizingAutoWidth", "Auto width"),
+						},
+					]}
+					dataTestId="prop-rich-text-sizing"
+					onCommit={(v: "fixed" | "auto-width") =>
+						commitPatchAll(nodes, () => ({
+							// "fixed" is the schema default — written back as absent.
+							sizing: v === "fixed" ? undefined : v,
+						}))
+					}
+				/>
+				<SelectField
+					label={t("canvas.inspector.verticalAlign", "Vertical align")}
+					value={node.verticalAlign ?? "top"}
+					options={[
+						{ value: "top", label: t("canvas.inspector.vAlignTop", "Top") },
+						{
+							value: "middle",
+							label: t("canvas.inspector.vAlignMiddle", "Middle"),
+						},
+						{
+							value: "bottom",
+							label: t("canvas.inspector.vAlignBottom", "Bottom"),
+						},
+					]}
+					dataTestId="prop-rich-text-vertical-align"
+					onCommit={(v: "top" | "middle" | "bottom") =>
+						commitPatchAll(nodes, () => ({
+							// "top" is the schema default — written back as absent.
+							verticalAlign: v === "top" ? undefined : v,
+						}))
+					}
+				/>
 			</Section>
 			<Section title={t("canvas.inspector.paragraph", "Paragraph")}>
-				<FieldRow label={t("canvas.inspector.align", "Align")}>
-					<select
-						aria-label={t("canvas.inspector.align", "Align")}
-						data-testid="prop-rich-text-align"
-						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
-						value={align}
-						onChange={(e) =>
-							commitPatchAll(nodes, (n) =>
-								allParagraphsPatch(n as CanvasRichTextNode, {
-									align: e.currentTarget.value as CanvasTextAlign,
-								}),
-							)
-						}
-					>
-						<option value="left">
-							{t("canvas.inspector.alignLeft", "Left")}
-						</option>
-						<option value="center">
-							{t("canvas.inspector.alignCenter", "Center")}
-						</option>
-						<option value="right">
-							{t("canvas.inspector.alignRight", "Right")}
-						</option>
-					</select>
-				</FieldRow>
+				<SelectField
+					label={t("canvas.inspector.align", "Align")}
+					value={align}
+					options={alignOptions(t)}
+					dataTestId="prop-rich-text-align"
+					onCommit={(v: CanvasTextAlign) =>
+						commitPatchAll(nodes, (n) =>
+							allParagraphsPatch(n as CanvasRichTextNode, { align: v }),
+						)
+					}
+				/>
 				<NumberField
 					label={t("canvas.inspector.lineHeight", "Line height")}
 					value={lineHeightShared.value}
@@ -618,34 +583,34 @@ export function renderRichTextFields(
 						data-testid="prop-rich-text-strikethrough"
 					/>
 				</FieldRow>
-				<FieldRow label={t("canvas.inspector.textTransform", "Transform")}>
-					<select
-						aria-label={t("canvas.inspector.textTransform", "Transform")}
-						data-testid="prop-rich-text-transform"
-						className="h-7.5 rounded-md border border-input bg-transparent px-2 text-xs"
-						value={style.textTransform}
-						onChange={(e) =>
-							commitPatchAll(nodes, (n) =>
-								allSpansPatch(n as CanvasRichTextNode, {
-									textTransform: e.currentTarget.value as RichTextTransform,
-								}),
-							)
-						}
-					>
-						<option value="none">
-							{t("canvas.inspector.transformNone", "None")}
-						</option>
-						<option value="uppercase">
-							{t("canvas.inspector.transformUppercase", "UPPERCASE")}
-						</option>
-						<option value="lowercase">
-							{t("canvas.inspector.transformLowercase", "lowercase")}
-						</option>
-						<option value="capitalize">
-							{t("canvas.inspector.transformCapitalize", "Capitalize")}
-						</option>
-					</select>
-				</FieldRow>
+				<SelectField
+					label={t("canvas.inspector.textTransform", "Transform")}
+					value={style.textTransform}
+					options={[
+						{
+							value: "none",
+							label: t("canvas.inspector.transformNone", "None"),
+						},
+						{
+							value: "uppercase",
+							label: t("canvas.inspector.transformUppercase", "UPPERCASE"),
+						},
+						{
+							value: "lowercase",
+							label: t("canvas.inspector.transformLowercase", "lowercase"),
+						},
+						{
+							value: "capitalize",
+							label: t("canvas.inspector.transformCapitalize", "Capitalize"),
+						},
+					]}
+					dataTestId="prop-rich-text-transform"
+					onCommit={(v: RichTextTransform) =>
+						commitPatchAll(nodes, (n) =>
+							allSpansPatch(n as CanvasRichTextNode, { textTransform: v }),
+						)
+					}
+				/>
 			</Section>
 		</>
 	);

@@ -380,7 +380,7 @@ describe("LayerPanel — component instances", () => {
 			{
 				type: "component-instance",
 				id: "inst-1",
-				componentId: "cmp-card",
+				source: { kind: "local", componentId: "cmp-card" },
 				transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
 				bounds: { width: 120, height: 60 },
 			} as CanvasIR["pages"][number]["root"]["children"][number],

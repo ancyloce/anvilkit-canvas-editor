@@ -1,5 +1,6 @@
 "use client";
 
+import { generateGovernedComplianceReport } from "@anvilkit/canvas-core/brand-governance";
 import {
 	applyBrandColors,
 	type BrandApplyResult,
@@ -8,7 +9,6 @@ import {
 	type BrandComplianceReport,
 	type CanvasCommand,
 	createImage,
-	generateBrandComplianceReport,
 	normalizeTypography,
 	replaceFonts,
 	replaceLogoPlaceholders,
@@ -27,6 +27,10 @@ import {
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
+import { useEffectivePolicyContext } from "../brand-governance/effective-policy-context.js";
+import { emitCanvasAnalytics } from "../component-libraries/analytics.js";
+import { CompliancePanel } from "./governance/CompliancePanel.js";
+export { complianceIssueMessage } from "./governance/compliance-messages.js";
 
 export interface BrandPanelProps {
 	className?: string;
@@ -64,31 +68,6 @@ const APPLY_ACTIONS: ReadonlyArray<{
 	},
 ];
 
-/** Shared with the inspector's passive warnings (C-07) — one wording everywhere. */
-export function complianceIssueMessage(
-	t: CanvasT,
-	issue: BrandComplianceIssue,
-): string {
-	switch (issue.code) {
-		case "unresolved-color-token":
-		case "unresolved-font-token":
-			return t(
-				"canvas.brand.complianceUnresolvedToken",
-				"References a brand token that no longer exists.",
-			);
-		case "forbidden-color":
-		case "forbidden-font":
-			return t(
-				"canvas.brand.complianceForbidden",
-				"Uses a forbidden brand value.",
-			);
-		default:
-			return t(
-				"canvas.brand.complianceOffBrand",
-				"Doesn't match the brand kit.",
-			);
-	}
-}
 
 /**
  * Brand-kit panel: the host's shared palette + fonts (I3-4), plus — when the
@@ -114,6 +93,7 @@ export function BrandPanel({
 	> | null>(null);
 	const [complianceReport, setComplianceReport] =
 		useState<BrandComplianceReport | null>(null);
+	const policyContext = useEffectivePolicyContext();
 	const hasBrand = colors.length > 0 || fonts.length > 0 || logos.length > 0;
 
 	if (!hasBrand) {
@@ -181,7 +161,20 @@ export function BrandPanel({
 			logos: replaceLogoPlaceholders(ir, definition),
 			typography: normalizeTypography(ir, definition),
 		});
-		setComplianceReport(generateBrandComplianceReport(ir, definition));
+		// Governed rather than bare: the third argument is what produces
+		// `severity`, `pageId` and the summary the panel renders. With no host
+		// governance wired this resolves to the permissive context, whose
+		// enforcement is not "blocking", so OD-10 makes every issue a warning —
+		// i.e. byte-identical UX to the two-argument call it replaces.
+		const report = generateGovernedComplianceReport(ir, definition, policyContext);
+		setComplianceReport(report);
+		// PRD §13 `canvas.brand.compliance_run`. Counts only — the report itself
+		// names instances and properties and never leaves the editor.
+		emitCanvasAnalytics(ctx.onAnalyticsEvent, "brandComplianceRun", {
+			warningCount: report.summary?.warning ?? 0,
+			blockingCount: report.summary?.blocking ?? 0,
+			trigger: "manual",
+		});
 	}
 
 	function apply(kind: ApplyActionKind): void {
@@ -305,20 +298,11 @@ export function BrandPanel({
 							className="flex flex-col gap-1 text-[11px] text-muted-foreground"
 							data-testid="brand-compliance-report"
 						>
-							{complianceReport.issues.length === 0 ? (
-								<span>
-									{t(
-										"canvas.brand.complianceNone",
-										"No compliance issues found.",
-									)}
-								</span>
-							) : (
-								complianceReport.issues.map((issue) => (
-									<span key={`${issue.nodeId}-${issue.code}-${issue.property}`}>
-										{issue.property}: {complianceIssueMessage(t, issue)}
-									</span>
-								))
-							)}
+							{/* T-044 step 1: the report body is `CompliancePanel`, not a
+							    third governance surface. It owns navigation, severity
+							    presentation and virtualization; this panel keeps owning
+							    when a scan runs. */}
+							<CompliancePanel issues={complianceReport.issues} t={t} />
 						</div>
 					) : null}
 				</div>

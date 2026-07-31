@@ -17,6 +17,7 @@ import {
 import { AppearanceSection } from "./inspector/appearance-section.js";
 import { AutoLayoutSection } from "./inspector/auto-layout-section.js";
 import { BrandComplianceWarnings } from "./inspector/brand-warnings.js";
+import { ComponentPropertySection } from "./inspector/component-sections.js";
 import { summarizeSelection } from "./inspector/selection-summary.js";
 import { TransformSection } from "./inspector/transform-section.js";
 import { renderTypeSpecificFields } from "./inspector/type-sections.js";
@@ -147,6 +148,10 @@ export function PropertyInspector({
 				{summary.sharedKind !== null
 					? renderTypeSpecificFields(nodes, commitPatchAll, ctx, t)
 					: null}
+				{/* Plan 0023 M5-04: property authoring for a node inside an open
+				    Source. Renders nothing while editing a page, so mounting it
+				    unconditionally costs a page-mode user nothing. */}
+				<ComponentPropertySection nodes={nodes} ctx={ctx} t={t} />
 			</div>
 		</section>
 	);
