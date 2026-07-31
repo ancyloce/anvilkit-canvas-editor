@@ -738,5 +738,9 @@
 	"canvas.governance.severityWarning": "警告",
 	"canvas.governance.severityBlocking": "ブロック",
 	"canvas.governance.issueSelect": "{target} へ移動",
-	"canvas.governance.issueUnreachable": "この問題の対象はページ上にありません。コンポーネントパネルで確認してください。"
+	"canvas.governance.issueUnreachable": "この問題の対象はページ上にありません。コンポーネントパネルで確認してください。",
+	"canvas.export.blockedUnresolved": "一部のコンポーネントを解決できません。書き出す前に復元または削除してください。",
+	"canvas.export.blockedFlatten": "この形式はコンポーネントを統合しますが、このドキュメントのブランドポリシーでは許可されていません。コンポーネントを保持する形式をお試しください。",
+	"canvas.export.blockedUnresolvedRef": "このドキュメントを書き出し用に準備できませんでした。",
+	"canvas.export.blockedInvalid": "このドキュメントを書き出し用に準備できませんでした。"
 }

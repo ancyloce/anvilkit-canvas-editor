@@ -738,5 +738,9 @@
 	"canvas.governance.severityWarning": "Warning",
 	"canvas.governance.severityBlocking": "Blocking",
 	"canvas.governance.issueSelect": "Go to {target}",
-	"canvas.governance.issueUnreachable": "This issue's target isn't on a page — find it in the Components panel."
+	"canvas.governance.issueUnreachable": "This issue's target isn't on a page — find it in the Components panel.",
+	"canvas.export.blockedUnresolved": "Some components can't be resolved. Restore or remove them before exporting.",
+	"canvas.export.blockedFlatten": "This format flattens components, which this document's brand policy doesn't allow. Try a format that keeps components.",
+	"canvas.export.blockedUnresolvedRef": "This document couldn't be prepared for export.",
+	"canvas.export.blockedInvalid": "This document couldn't be prepared for export."
 }

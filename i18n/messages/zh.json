@@ -738,5 +738,9 @@
 	"canvas.governance.severityWarning": "警告",
 	"canvas.governance.severityBlocking": "阻止",
 	"canvas.governance.issueSelect": "转到 {target}",
-	"canvas.governance.issueUnreachable": "该问题的目标不在页面上——请在“组件”面板中查找。"
+	"canvas.governance.issueUnreachable": "该问题的目标不在页面上——请在“组件”面板中查找。",
+	"canvas.export.blockedUnresolved": "部分组件无法解析。导出前请恢复或移除它们。",
+	"canvas.export.blockedFlatten": "此格式会展平组件，而该文档的品牌策略不允许。请选择保留组件的格式。",
+	"canvas.export.blockedUnresolvedRef": "无法准备此文档以供导出。",
+	"canvas.export.blockedInvalid": "无法准备此文档以供导出。"
 }
