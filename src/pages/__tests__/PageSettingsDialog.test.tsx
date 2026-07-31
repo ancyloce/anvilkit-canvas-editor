@@ -1,6 +1,7 @@
 import { CANVAS_SIZE_PRESETS, createPage } from "@anvilkit/canvas-core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { setColor } from "@/panels/__tests__/_color-test-helpers.js";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import PageSettingsDialog from "../PageSettingsDialog.js";
@@ -47,11 +48,9 @@ describe("PageSettingsDialog (B-11, FR-063)", () => {
 		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 
-	it("commits a single page.set-background when only the color changes", () => {
+	it("commits a single page.set-background when only the color changes", async () => {
 		const { h, onClose } = setup();
-		fireEvent.change(screen.getByTestId("page-settings-background"), {
-			target: { value: "#112233" },
-		});
+		await setColor("page-settings-background", "#112233");
 		fireEvent.click(screen.getByTestId("page-settings-apply"));
 		expect(h.studioCtx.commit).toHaveBeenCalledWith({
 			type: "page.set-background",
@@ -62,14 +61,12 @@ describe("PageSettingsDialog (B-11, FR-063)", () => {
 		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 
-	it("batches resize + background into ONE undo entry", () => {
+	it("batches resize + background into ONE undo entry", async () => {
 		const { h } = setup();
 		fireEvent.change(screen.getByTestId("page-settings-height"), {
 			target: { value: "900" },
 		});
-		fireEvent.change(screen.getByTestId("page-settings-background"), {
-			target: { value: "#aabbcc" },
-		});
+		await setColor("page-settings-background", "#aabbcc");
 		fireEvent.click(screen.getByTestId("page-settings-apply"));
 		expect(h.studioCtx.commit).not.toHaveBeenCalled();
 		expect(h.studioCtx.commitBatch).toHaveBeenCalledTimes(1);

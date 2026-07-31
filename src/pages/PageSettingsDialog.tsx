@@ -13,7 +13,9 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@anvilkit/ui/dialog";
+import { ColorRow } from "@anvilkit/ui/color-picker";
 import { Input } from "@anvilkit/ui/input";
+import * as React from "react";
 import { useState } from "react";
 import {
 	useCanvasStudio,
@@ -153,16 +155,12 @@ export default function PageSettingsDialog({
 							</Button>
 						))}
 					</div>
-					<label className="flex items-center gap-2 text-xs text-muted-foreground">
-						{t("canvas.pageSettings.background", "Background")}
-						<input
-							type="color"
-							value={background}
-							data-testid="page-settings-background"
-							className="h-7 w-10 cursor-pointer rounded border border-input bg-transparent"
-							onChange={(e) => setBackground(e.currentTarget.value)}
-						/>
-					</label>
+					<ColorRow
+						label={t("canvas.pageSettings.background", "Background")}
+						value={background}
+						data-testid="page-settings-background"
+						onValueChange={(next) => setBackground(next)}
+					/>
 					<div className="max-h-48 overflow-y-auto rounded border border-border">
 						<SizePresetPicker
 							onSelect={(preset) => {
@@ -175,9 +173,13 @@ export default function PageSettingsDialog({
 					    Settings. The panel commits its own single undo batch (one new
 					    page per selected preset) independently of Apply. */}
 					<div className="rounded border border-border">
-						<button
+						<Button
 							type="button"
-							className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium hover:bg-accent"
+							variant="ghost"
+							size="sm"
+							// Full-width disclosure header: square corners so it sits flush
+							// inside the bordered card, label left / chevron right.
+							className="w-full justify-between rounded-none px-2 text-xs font-medium"
 							aria-expanded={variantsOpen}
 							data-testid="page-settings-variants-toggle"
 							onClick={() => setVariantsOpen((open) => !open)}
@@ -187,7 +189,7 @@ export default function PageSettingsDialog({
 								"Campaign size variants",
 							)}
 							<span aria-hidden>{variantsOpen ? "▾" : "▸"}</span>
-						</button>
+						</Button>
 						{variantsOpen ? (
 							<div className="max-h-56 overflow-y-auto border-t border-border">
 								<CampaignResizePanel />

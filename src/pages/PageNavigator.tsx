@@ -8,8 +8,10 @@ import {
 	ContextMenuSeparator,
 	ContextMenuTrigger,
 } from "@anvilkit/ui/context-menu";
+import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
+import * as React from "react";
 import {
 	lazy,
 	type KeyboardEvent as ReactKeyboardEvent,
@@ -259,12 +261,12 @@ export function PageNavigator({
 							<ContextMenu key={p.id}>
 								{menu}
 								<ContextMenuTrigger className="contents">
-									<input
+									<Input
 										ref={renameInputRef}
 										type="text"
 										data-page-id={p.id}
 										data-testid={`page-rename-input-${p.id}`}
-										className="h-6 min-w-20 rounded-md border border-ring bg-background px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+										className="h-6 min-w-20 border-ring px-2 text-xs"
 										value={renamingValue}
 										onChange={(e) => setRenamingValue(e.target.value)}
 										onKeyDown={onRenameKeyDown}
