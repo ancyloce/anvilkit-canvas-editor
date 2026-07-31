@@ -1,12 +1,18 @@
 "use client";
 
 import type {
+	CanvasBrandPolicyContext,
+	CanvasGovernanceAuditSink,
+} from "@anvilkit/canvas-core/brand-governance";
+import type { CanvasAnalyticsSink } from "../component-libraries/analytics.js";
+import type {
 	CanvasExportWarning,
 	CanvasIR,
 	CanvasResolvedComponentDocument,
 	CanvasResolvedNodeRecord,
 	CanvasRuntime,
 } from "@anvilkit/canvas-core";
+import type { CanvasComponentProvider } from "../component-libraries/component-provider.js";
 import { toResolvedNodeId } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { createContext, use, useSyncExternalStore } from "react";
@@ -53,6 +59,7 @@ import type { CanvasTemplateEntry } from "../templates/template-entry.js";
 import type { CanvasTemplateProvider } from "../templates/template-provider.js";
 import type { AiToolIntent } from "../tools/ai-intent.js";
 import type { ToolRegistry } from "../tools/tool-types.js";
+import type { CanvasComponentEventHandler } from "./component-events.js";
 
 export type CanvasIRGetter = () => CanvasIR;
 
@@ -222,6 +229,37 @@ export interface CanvasStudioContextValue {
 	 */
 	brandKit?: BrandKit;
 	/**
+	 * Host brand-policy context (plan 0021 T-040) — the capability snapshot,
+	 * the enforcement mode and the opaque policy revision.
+	 *
+	 * Absent means "governance not wired", which resolves to the permissive
+	 * context: every affordance stays available, exactly as before M4. Read it
+	 * through `useEffectivePolicyContext()` rather than directly, so that
+	 * default lives in one place.
+	 *
+	 * This is presentation input only. Enforcement happens in the command layer
+	 * via `CommandApplyOptions.brandPolicy`, which re-evaluates the same policy
+	 * on every mutation path including undo/redo, batch and the public command
+	 * API.
+	 */
+	brandGovernance?: CanvasBrandPolicyContext;
+	/**
+	 * Snapshot keys quarantined at load (plan 0021 T-045). Read by the export
+	 * preflight so a failed integrity check blocks export, not only rendering.
+	 */
+	quarantinedSnapshotKeys?: readonly string[];
+	/** Product analytics sink (plan 0021 T-050). Absent means "do not emit". */
+	onAnalyticsEvent?: CanvasAnalyticsSink;
+	/** Governance audit sink (TD §24.2). Absent means "do not emit". */
+	onGovernanceAuditEvent?: CanvasGovernanceAuditSink;
+	/**
+	 * Optional deep link for a blocked operation (T-040 step 3). Receives the
+	 * STABLE deny code — never localized copy, never the decision's log-only
+	 * `detail`. There is deliberately no approval inbox: a host that knows who
+	 * grants exceptions owns that flow.
+	 */
+	onGovernanceDeepLink?: (code: string) => void;
+	/**
 	 * Host-supplied template catalog (canvas-m0-009). Plain data — rendered by
 	 * the Templates dock panel; absent/empty shows the panel's empty state.
 	 */
@@ -277,8 +315,48 @@ export interface CanvasStudioContextValue {
 	 * Gates ONLY creation/conversion affordances — never read/render/export.
 	 */
 	autoLayoutCreationEnabled?: boolean;
+	/**
+	 * Plan 0023 M6-07: true when the host opted into the Local Components
+	 * AUTHORING UI (`<CanvasStudio localComponents>`), default false.
+	 *
+	 * Gates ONLY creation and Source-editing affordances. Never read/render/
+	 * export, never override editing, never detach — rollback must leave every
+	 * existing instance readable, editable and detachable (PRD §19).
+	 */
+	localComponentsEnabled?: boolean;
+	/**
+	 * Plan 0021 T-019: the host-injected component catalog, or undefined when no
+	 * Provider was supplied. Absent simply means the Libraries source is not
+	 * offered — never that an existing external component stops rendering.
+	 */
+	componentProvider?: CanvasComponentProvider;
+	/**
+	 * Plan 0021: true when the host opted into EXTERNAL component libraries
+	 * (`<CanvasStudio externalComponents>`), default false.
+	 *
+	 * Gates only authoring affordances — the Libraries source, insert, and
+	 * recovery. Never read/render/export, for the same reason
+	 * {@link localComponentsEnabled} does not: turning the flag back off must be
+	 * a rollback, not data loss.
+	 */
+	externalComponentsEnabled?: boolean;
+	/**
+	 * Plan 0021 variant-authoring flag (T-053). Gates authoring affordances
+	 * only — variant RESOLUTION is unconditional, so a rollback never changes
+	 * what an existing document renders.
+	 */
+	componentVariantsEnabled?: boolean;
 	/** T-M4-11: host observer for the six PRD §12 layout events. */
 	onLayoutEvent?: CanvasLayoutEventHandler;
+	/**
+	 * Plan 0023 M6-08: host observer for the eight PRD §12 COMPONENT events.
+	 *
+	 * Same convention as {@link onLayoutEvent} and `onChange` — the editor emits,
+	 * the host delivers. No analytics transport ships in this package, and the
+	 * payload types carry counts, enums and HASHED ids only, so no text, image
+	 * URI, document body or raw override value can be emitted.
+	 */
+	onComponentEvent?: CanvasComponentEventHandler;
 	/**
 	 * AC-010 (T-M5-03): true when the document declares a capability this
 	 * build does not implement. The commit pipeline blocks mutating commands;
