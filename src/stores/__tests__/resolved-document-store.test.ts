@@ -184,7 +184,7 @@ function componentDoc(): CanvasIR {
 		node: {
 			type: "component-instance",
 			id: "inst-1",
-			componentId: "cmp-card",
+			source: { kind: "local", componentId: "cmp-card" },
 			transform: { x: 10, y: 20, rotation: 0, scaleX: 1, scaleY: 1 },
 			bounds: { width: 100, height: 40 },
 		} as CanvasNode,

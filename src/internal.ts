@@ -30,6 +30,28 @@ export {
 	TOOL_RAIL_ITEMS,
 	toolDescriptorsFromRegistry,
 } from "./chrome/icons.js";
+// The default Web Crypto implementation of Core's `CanvasIntegrityVerifier` port
+// (plan 0021 T-007). Exposed on the ADVANCED surface rather than the stable
+// `index.ts`: in M0 a host only needs it to wire its own Provider integration by
+// hand, and M2 (T-018/T-019) is what threads a Provider through
+// `CanvasStudioProps` — at which point whether this also belongs on the stable
+// surface is a deliberate decision rather than a default.
+export {
+	createWebCryptoIntegrityVerifier,
+	sha256Base64Url,
+} from "./component-libraries/web-crypto-verifier.js";
+export type {
+	CanvasComponentDeleteOutcome,
+	CanvasComponentEvent,
+	CanvasComponentEventHandler,
+	CanvasComponentInsertionMethod,
+	CanvasComponentOverridePriorState,
+	CanvasComponentPropertyType,
+	CanvasComponentResetScope,
+	CanvasComponentSourceKind,
+	CanvasComponentSourceOperation,
+} from "./context/component-events.js";
+export { hashComponentId } from "./context/component-events.js";
 // ── toasts (A-09 feedback seam) ───────────────────────────────────────────────
 export {
 	CanvasToastContext,

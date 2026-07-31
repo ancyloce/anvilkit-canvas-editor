@@ -51,6 +51,7 @@ import {
 	type CanvasStudioStableValue,
 	type CanvasT,
 } from "./context/canvas-studio-context.js";
+import type { CanvasComponentEventHandler } from "./context/component-events.js";
 import type {
 	CanvasEditorExtension,
 	CanvasKindInspector,
@@ -128,6 +129,12 @@ import { createToolStore, type ToolId } from "./stores/tool-store.js";
 import { createUploadStore } from "./stores/upload-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
 import type { CanvasTemplateEntry } from "./templates/template-entry.js";
+import type {
+	CanvasBrandPolicyContext,
+	CanvasGovernanceAuditSink,
+} from "@anvilkit/canvas-core/brand-governance";
+import type { CanvasAnalyticsSink } from "./component-libraries/analytics.js";
+import type { CanvasComponentProvider } from "./component-libraries/component-provider.js";
 import type { CanvasTemplateProvider } from "./templates/template-provider.js";
 import type { AiToolIntent } from "./tools/ai-intent.js";
 import { DraftRenderer } from "./tools/DraftRenderer.js";
@@ -239,12 +246,33 @@ export interface CanvasStudioProps {
 	 */
 	autoLayout?: boolean | CanvasAutoLayoutFlagOptions;
 	/**
+	 * Plan 0023 M6-07 (PRD §19): opt-in Local Components AUTHORING UI.
+	 *
+	 * **Default OFF**, and gated exactly like `autoLayout`: it controls creation
+	 * and Source-editing affordances only. Everything a document already contains
+	 * keeps working at every stage with the flag off — instances resolve, render,
+	 * hit-test, export, stay override-editable and stay detachable — because
+	 * rollback must never strip Registry or instance data (PRD §19 rollback).
+	 *
+	 * Concretely, OFF hides the Components dock (the id stays in `DOCK_IDS` so the
+	 * persisted-state union and its migration are stable in both directions, M5-01)
+	 * and suppresses "create component from selection". ON adds the dock and the
+	 * create affordance. Staged enablement: 1 parse/render → 2 internal create →
+	 * 3 beta overrides/nesting/templates/detach → 4 default-on.
+	 */
+	localComponents?: boolean;
+	/**
 	 * T-M4-11 (A-3, PRD §12): one optional callback carrying the six layout
 	 * events. `canvas.layout.diagnostic` fires on commit only — never during
 	 * preview — deduped within a commit by `(code, nodeId, axis)`. Payloads
 	 * carry no document content. Prop name provisional under OQ-5.
 	 */
 	onLayoutEvent?: CanvasLayoutEventHandler;
+	/**
+	 * Plan 0023 M6-08: host observer for the eight PRD §12 component events.
+	 * No transport ships in this package — the editor emits, the host delivers.
+	 */
+	onComponentEvent?: CanvasComponentEventHandler;
 	/**
 	 * FR-160 host persistence (B-08). When present, edits mark the document
 	 * dirty, auto-save runs per `autoSave` (default on), a beforeunload guard
@@ -307,6 +335,52 @@ export interface CanvasStudioProps {
 	 */
 	brandKit?: BrandKit;
 	/**
+	 * Host brand-policy context (plan 0021 T-040): capability snapshot,
+	 * enforcement mode, opaque policy revision. Omit to run ungoverned — every
+	 * affordance stays available, which is the pre-M4 behaviour.
+	 *
+	 * Presentation input only; the command layer enforces the same policy
+	 * independently, so hiding a button is never the enforcement.
+	 */
+	brandGovernance?: CanvasBrandPolicyContext;
+	/**
+	 * Snapshot keys quarantined by `loadCanvasDocumentWithDiagnostics`
+	 * (plan 0021 T-045).
+	 *
+	 * The host owns the load call — it is what produces `initialIR` — so it is
+	 * also what holds the diagnostics. Threading the keys back in is what makes
+	 * a failed integrity check block EXPORT rather than only render a
+	 * placeholder: without them, export preparation sees a snapshot that is
+	 * present and exports content that failed verification.
+	 */
+	quarantinedSnapshotKeys?: readonly string[];
+	/**
+	 * Product analytics sink (plan 0021 T-050, PRD §13).
+	 *
+	 * Sits alongside `onChange`/`onExport` as a host callback. Every event name
+	 * is `anvilkit.canvas.*`-prefixed and every payload is redacted per §13 — no
+	 * credentials, raw content, text values, asset URLs, or unredacted identity;
+	 * library and component identifiers arrive hashed.
+	 *
+	 * A throwing sink cannot break an edit: emission is wrapped, because a
+	 * host's analytics callback is third-party code on a user-interaction path
+	 * and losing a metric beats losing the user's work.
+	 */
+	onAnalyticsEvent?: CanvasAnalyticsSink;
+	/**
+	 * Governance audit sink (TD §24.2). Distinct from
+	 * {@link CanvasStudioProps.onAnalyticsEvent}: different retention, different
+	 * consumer, different redaction. Carries no actor — the host adds
+	 * authenticated identity in its own audit system.
+	 */
+	onGovernanceAuditEvent?: CanvasGovernanceAuditSink;
+	/**
+	 * Called when the user asks for more detail about a blocked operation
+	 * (T-040 step 3). Receives the stable deny code, never localized copy and
+	 * never the policy decision's log-only `detail`.
+	 */
+	onGovernanceDeepLink?: (code: string) => void;
+	/**
 	 * Host-supplied template catalog (canvas-m0-009). Plain data consumed by the
 	 * Templates dock panel; structurally compatible with
 	 * `@anvilkit/canvas-templates`' catalog values. Omit to show the panel's
@@ -319,6 +393,39 @@ export interface CanvasStudioProps {
 	 * working without it.
 	 */
 	templateProvider?: CanvasTemplateProvider;
+	/**
+	 * Host-injected catalog for the Libraries source of the Components panel
+	 * (plan 0021 T-018/T-019).
+	 *
+	 * Threaded exactly like {@link CanvasStudioProps.templateProvider}. Omit it
+	 * and the Libraries source is simply absent — a document that already
+	 * contains external components still opens, renders and exports, because
+	 * resolution reads the document's own snapshots and never a Provider.
+	 */
+	componentProvider?: CanvasComponentProvider;
+	/**
+	 * Plan 0021 rollout flag for EXTERNAL component libraries, default false.
+	 *
+	 * Parallel to `localComponents`, and gates only the authoring affordances
+	 * (the Libraries source, insert, recovery). Never gates read/render/export:
+	 * a document using external components must stay readable when the flag is
+	 * off, or turning it off would be data loss rather than a rollback.
+	 */
+	externalComponents?: boolean;
+	/**
+	 * Plan 0021 rollout flag for component VARIANTS, default false.
+	 *
+	 * The third of T-053's flags, and it gates authoring only — exactly like
+	 * `externalComponents` and for the same reason. A document that already
+	 * carries `variantSelection` must keep resolving to the same variant with
+	 * the flag off, because variant resolution is a READ concern: turning the
+	 * flag off to roll back authoring must not silently re-render every instance
+	 * with its default variant, which would be a visual regression indexed
+	 * across every page at once.
+	 *
+	 * `rollback-rehearsal.test.ts` is what holds that line.
+	 */
+	componentVariants?: boolean;
 	/**
 	 * FR-132 "Open as a new document": `<CanvasStudio>` owns one live document,
 	 * so creating a brand-new document is a HOST action. When wired, the
@@ -854,8 +961,16 @@ export function CanvasStudio({
 	toolRegistry,
 	hidePageNavigator,
 	brandKit,
+	brandGovernance,
+	quarantinedSnapshotKeys,
+	onAnalyticsEvent,
+	onGovernanceAuditEvent,
+	onGovernanceDeepLink,
 	templates,
 	templateProvider,
+	componentProvider,
+	externalComponents = false,
+	componentVariants = false,
 	onCreateDocument,
 	messages,
 	extensions,
@@ -863,7 +978,9 @@ export function CanvasStudio({
 	renderShell,
 	continuousCreation = false,
 	autoLayout = false,
+	localComponents = false,
 	onLayoutEvent,
+	onComponentEvent,
 	persistenceAdapter,
 	onLoadError,
 	recoveryAdapter,
@@ -1295,8 +1412,16 @@ export function CanvasStudio({
 			hasImagePicker,
 			requestAiIntent,
 			brandKit,
+			...(brandGovernance ? { brandGovernance } : {}),
+			...(quarantinedSnapshotKeys ? { quarantinedSnapshotKeys } : {}),
+			...(onAnalyticsEvent ? { onAnalyticsEvent } : {}),
+			...(onGovernanceAuditEvent ? { onGovernanceAuditEvent } : {}),
+			...(onGovernanceDeepLink ? { onGovernanceDeepLink } : {}),
 			templates,
 			templateProvider,
+			componentProvider,
+			externalComponentsEnabled: externalComponents === true,
+			componentVariantsEnabled: componentVariants === true,
 			...(onCreateDocument ? { onCreateDocument } : {}),
 			...(onExport ? { onExport } : {}),
 			t,
@@ -1310,7 +1435,11 @@ export function CanvasStudio({
 			autoLayoutCreationEnabled:
 				autoLayout === true ||
 				(typeof autoLayout === "object" && autoLayout.creationUI === true),
+			// Plan 0023 M6-07: opt-in flag — only AUTHORING affordances key off
+			// this. Resolve/render/export/override/detach are never gated.
+			localComponentsEnabled: localComponents === true,
 			...(onLayoutEvent ? { onLayoutEvent } : {}),
+			...(onComponentEvent ? { onComponentEvent } : {}),
 			// Present only with a persistence adapter — the header's save
 			// indicator keys its visibility off this field (B-07).
 			...(persistenceAdapter ? { saveStatusStore } : {}),
@@ -1355,8 +1484,16 @@ export function CanvasStudio({
 			hasImagePicker,
 			requestAiIntent,
 			brandKit,
+			brandGovernance,
+			quarantinedSnapshotKeys,
+			onAnalyticsEvent,
+			onGovernanceAuditEvent,
+			onGovernanceDeepLink,
 			templates,
 			templateProvider,
+			componentProvider,
+			externalComponents,
+			componentVariants,
 			onCreateDocument,
 			onExport,
 			t,
@@ -1366,7 +1503,9 @@ export function CanvasStudio({
 			runtime,
 			continuousCreation,
 			autoLayout,
+			localComponents,
 			onLayoutEvent,
+			onComponentEvent,
 			persistenceAdapter,
 			saveStatusStore,
 			save,
