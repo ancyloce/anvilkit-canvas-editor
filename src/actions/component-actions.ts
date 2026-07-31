@@ -5,6 +5,7 @@ import type {
 	CanvasComponentDefinition,
 	CanvasComponentIdFactories,
 	CanvasDocumentLocation,
+	CanvasIR,
 	CanvasNode,
 } from "@anvilkit/canvas-core";
 import {
@@ -14,8 +15,14 @@ import {
 	CanvasCommandError,
 	createComponentIdFactories,
 	findNode,
+	localComponentIdOf,
 } from "@anvilkit/canvas-core";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
+import {
+	type CanvasComponentEvent,
+	type CanvasComponentInsertionMethod,
+	hashComponentId,
+} from "../context/component-events.js";
 import type {
 	CanvasComponentReturnSelection,
 	CanvasComponentScopeRejection,
@@ -50,6 +57,50 @@ export interface ComponentActionOptions {
 
 function idsOf(options: ComponentActionOptions): CanvasComponentIdFactories {
 	return options.ids ?? createComponentIdFactories();
+}
+
+/**
+ * Emit a PRD §12 component event, when the host wired an observer
+ * (plan 0023 M6-08).
+ *
+ * Deliberately fire-and-forget and never in a `try`: a host analytics callback
+ * that throws is the host's bug, and swallowing it here would hide it. It is
+ * called AFTER the commit so an event never describes an edit that did not land.
+ */
+function emit(
+	ctx: CanvasStudioContextValue,
+	event: CanvasComponentEvent,
+): void {
+	ctx.onComponentEvent?.(event);
+}
+
+/** Nodes in a subtree — the `nodeCount` several §12 events carry. */
+function countNodes(node: CanvasNode): number {
+	const children = (node as { children?: readonly CanvasNode[] }).children;
+	return 1 + (children?.reduce((sum, c) => sum + countNodes(c), 0) ?? 0);
+}
+
+/**
+ * How deep the component nesting under `node` goes — 1 for an instance whose
+ * Source holds no further instances. Bounded by the resolver's own cap, which
+ * a document cannot legally exceed, so no extra guard is needed here.
+ */
+function nestedComponentDepth(ir: CanvasIR, node: CanvasNode): number {
+	if (node.type !== "component-instance") return 0;
+	const localId = localComponentIdOf(node.source);
+	const definition = localId === undefined ? undefined : ir.components?.[localId];
+	if (!definition) return 1;
+	let deepest = 0;
+	const visit = (current: CanvasNode): void => {
+		if (current.type === "component-instance") {
+			deepest = Math.max(deepest, nestedComponentDepth(ir, current));
+			return;
+		}
+		const children = (current as { children?: readonly CanvasNode[] }).children;
+		if (children) for (const child of children) visit(child);
+	};
+	visit(definition.root);
+	return 1 + deepest;
 }
 
 /** Commit one command, or several as a single undo entry. */
@@ -108,6 +159,17 @@ export function createComponentFromSelectionImpl(
 	if (command.mode === "from-selection") {
 		ctx.selectionStore.getState().setSelection([command.firstInstanceId]);
 	}
+	const created = ctx.getIR().components?.[componentId];
+	emit(ctx, {
+		type: "canvas.component.created",
+		sourceKind:
+			options.rootStrategy ??
+			(selectedNodeIds.length === 1 ? "reuse-container" : "wrap-in-frame"),
+		nodeCount: created ? countNodes(created.root) : selectedNodeIds.length,
+		hasAutoLayout:
+			created !== undefined &&
+			(created.root as { autoLayout?: unknown }).autoLayout !== undefined,
+	});
 	return componentId;
 }
 
@@ -125,6 +187,8 @@ export function insertComponentInstanceImpl(
 	options: ComponentActionOptions & {
 		readonly parentId?: string;
 		readonly index?: number;
+		/** How the user got here, for the §12 event. Defaults to a panel click. */
+		readonly insertionMethod?: CanvasComponentInsertionMethod;
 	} = {},
 ): string | null {
 	const ir = ctx.getIR();
@@ -148,6 +212,14 @@ export function insertComponentInstanceImpl(
 		...(options.index !== undefined ? { index: options.index } : {}),
 	});
 	ctx.selectionStore.getState().setSelection([instanceId]);
+	emit(ctx, {
+		type: "canvas.component.instance_inserted",
+		// HASHED, never raw: a component id is often the product name and a page
+		// id identifies the customer's artwork.
+		componentIdHash: hashComponentId(componentId),
+		pageIdHash: hashComponentId(page.id),
+		insertionMethod: options.insertionMethod ?? "panel-click",
+	});
 	return instanceId;
 }
 
@@ -166,6 +238,11 @@ export function renameComponentImpl(
 		componentId,
 		from: definition.name,
 		to: next,
+	});
+	emit(ctx, {
+		type: "canvas.component.source_edited",
+		operation: "renamed",
+		affectedInstanceCount: componentReferenceCountsImpl(ctx, componentId).total,
 	});
 	return true;
 }
@@ -239,13 +316,28 @@ export function deleteComponentImpl(
 	if (!ir.components?.[componentId]) return false;
 	const counts = componentReferenceCountsImpl(ctx, componentId);
 	if (counts.total === 0) {
-		return commitAll(
+		const deleted = commitAll(
 			ctx,
 			[{ type: "component.delete", componentId }],
 			"Delete component",
 		);
+		emit(ctx, {
+			type: "canvas.component.delete_attempted",
+			dependentCount: 0,
+			outcome: deleted ? "deleted" : "cancelled",
+		});
+		return deleted;
 	}
-	if (options.detachAll !== true) return false;
+	if (options.detachAll !== true) {
+		// The user was told they must detach first and has not opted in — a
+		// BLOCKED attempt is exactly what §12 wants to count.
+		emit(ctx, {
+			type: "canvas.component.delete_attempted",
+			dependentCount: counts.total,
+			outcome: "blocked",
+		});
+		return false;
+	}
 	const ids = idsOf(options);
 	// `plan.command` is ALREADY one atomic batch, so it is committed directly
 	// rather than wrapped in a second batch: nesting is legal but would add an
@@ -255,8 +347,20 @@ export function deleteComponentImpl(
 			idFactory: ids.sourceNodeId,
 		}),
 	);
-	if (!plan) return false;
+	if (!plan) {
+		emit(ctx, {
+			type: "canvas.component.delete_attempted",
+			dependentCount: counts.total,
+			outcome: "blocked",
+		});
+		return false;
+	}
 	ctx.commit(plan.command);
+	emit(ctx, {
+		type: "canvas.component.delete_attempted",
+		dependentCount: counts.total,
+		outcome: "detached-and-deleted",
+	});
 	return true;
 }
 
@@ -306,6 +410,13 @@ export function detachComponentInstanceImpl(
 	// The materialized root keeps the instance's id, so the selection survives
 	// detach without being recomputed.
 	ctx.selectionStore.getState().setSelection([nodeId]);
+	const materialized = findNode(ctx.getIR(), nodeId);
+	emit(ctx, {
+		type: "canvas.component.detached",
+		nodeCount: materialized ? countNodes(materialized.node) : 1,
+		nestedDepth: nestedComponentDepth(ir, found.node),
+		warningCount: 0,
+	});
 	return true;
 }
 

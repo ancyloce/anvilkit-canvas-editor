@@ -61,7 +61,7 @@ const instanceNode = (id: string, componentId: string): CanvasNode =>
 	({
 		type: "component-instance",
 		id,
-		componentId,
+		source: { kind: "local", componentId },
 		transform: { x: 5, y: 7, rotation: 0, scaleX: 1, scaleY: 1 },
 		bounds: { width: 80, height: 40 },
 	}) as CanvasNode;
