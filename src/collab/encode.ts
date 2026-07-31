@@ -1,5 +1,8 @@
 import type { CanvasIR, CanvasRuntime } from "@anvilkit/canvas-core";
-import { loadCanvasDocument } from "../persistence/load-pipeline.js";
+import {
+	loadCanvasDocument,
+	unsupportedDeclaredCapabilities,
+} from "../persistence/load-pipeline.js";
 
 /**
  * Serialize a {@link CanvasIR} to a stable JSON string with sorted object
@@ -37,6 +40,32 @@ export function decodeCanvasIR(raw: string, runtime?: CanvasRuntime): CanvasIR {
 	// travel — and it keeps a future IR migration from applying to the collab
 	// path but not the load path, or vice versa.
 	return loadCanvasDocument(raw, runtime ? { runtime } : {});
+}
+
+/**
+ * A remote payload's unsupported capabilities, read WITHOUT parsing it
+ * (plan 0023 M6-06, decision D-7, LC-COMPAT-002, INV-14).
+ *
+ * Why this exists on the collab path specifically: {@link decodeCanvasIR} ends
+ * in a `discriminatedUnion` validation, so a peer on a NEWER build — one whose
+ * document uses a node kind or capability this build lacks — is rejected
+ * wholesale, and the local replica discards the entire remote document rather
+ * than degrading. An older peer could therefore destroy a newer peer's work.
+ *
+ * A binding calls this FIRST: a non-empty result means "do not decode, do not
+ * adopt, surface read-only preview". `decodeCanvasIR` stays unchanged for the
+ * supported case, so the fast path costs nothing.
+ */
+export function unsupportedCapabilitiesOf(raw: string): readonly string[] {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		// Malformed JSON is not a capability problem — let `decodeCanvasIR`
+		// produce its own parse error rather than mislabelling it here.
+		return [];
+	}
+	return unsupportedDeclaredCapabilities(parsed);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

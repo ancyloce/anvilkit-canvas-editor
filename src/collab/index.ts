@@ -32,7 +32,11 @@ export {
 	type CreateCanvasYjsBindingOptions,
 	createCanvasYjsBinding,
 } from "./binding.js";
-export { decodeCanvasIR, encodeCanvasIR } from "./encode.js";
+export {
+	decodeCanvasIR,
+	encodeCanvasIR,
+	unsupportedCapabilitiesOf,
+} from "./encode.js";
 export {
 	CANVAS_IR_KEY,
 	DEFAULT_CANVAS_MAP_NAME,
