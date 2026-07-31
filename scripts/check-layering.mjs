@@ -58,6 +58,18 @@ const LAYERS = [
 			p.startsWith("actions/") ||
 			p.startsWith("assets/") ||
 			p.startsWith("brand/") ||
+			// External Component Libraries and brand governance (plan 0021,
+			// D-3): the Provider seam, request store, integrity adapter, and
+			// the effective-policy context. Both sit with `brand/` for the same
+			// reason it does — they are interaction-layer domains consumed by
+			// `panels/` (rank 3), never the reverse. This deviates from
+			// Technical Design §26, which co-located their `.tsx` panels in one
+			// flat new directory; that placement would cross the shipped
+			// domain/panel split, so the panels go under `panels/` (rank 3)
+			// instead and only the domain logic lives here. Contract content is
+			// unchanged — see plan 0021 §4.2.
+			p.startsWith("brand-governance/") ||
+			p.startsWith("component-libraries/") ||
 			p.startsWith("context/") ||
 			p.startsWith("extensions/") ||
 			p.startsWith("perf/") ||
@@ -204,6 +216,20 @@ function selfTest() {
 		["workspace/index.ts", "panels/PropertyInspector.tsx", false], // downward
 		["index.ts", "workspace/index.ts", false], // root -> workspace
 		["a11y/ToolAnnouncer.tsx", "unmapped-thing.ts", true], // unmapped importee
+		// --- plan 0021 M0 (T-003) -------------------------------------------
+		// Both new domains are folded into `interaction-core`, so they may
+		// reference the rest of the cluster in either direction...
+		[
+			"component-libraries/web-crypto-verifier.ts",
+			"stores/scene-store.ts",
+			false,
+		],
+		["brand-governance/effective-policy.tsx", "brand/brand-context.tsx", false],
+		// ...their panels sit above them at rank 3, not beside them...
+		["panels/LibrariesPanel.tsx", "component-libraries/request-store.ts", false],
+		// ...and neither domain may reach up into a panel.
+		["component-libraries/request-store.ts", "panels/LibrariesPanel.tsx", true],
+		["brand-governance/effective-policy.tsx", "panels/CompliancePanel.tsx", true],
 	];
 	const failures = cases.filter(
 		([importer, importee, expectViolation]) =>
