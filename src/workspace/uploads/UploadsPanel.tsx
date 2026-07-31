@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@anvilkit/ui/button";
+import * as React from "react";
 import { useRef, useSyncExternalStore } from "react";
 import {
 	retryUploadImpl,
@@ -131,27 +132,29 @@ export function UploadsPanel(): React.JSX.Element {
 												? t("canvas.upload.cancelled", "Cancelled")
 												: t("canvas.upload.done", "Done")}
 									{task.status === "uploading" && uploadStore ? (
-										<button
+										<Button
 											type="button"
+											variant="ghost"
+											size="icon-xs"
 											data-testid={`upload-cancel-${task.id}`}
 											aria-label={`${t("canvas.upload.cancel", "Cancel upload")} — ${task.fileName}`}
 											title={t("canvas.upload.cancel", "Cancel upload")}
-											className="rounded px-1 hover:bg-background"
 											onClick={() => uploadStore.getState().cancel(task.id)}
 										>
 											×
-										</button>
+										</Button>
 									) : null}
 									{task.status === "failed" && hasUploader ? (
-										<button
+										<Button
 											type="button"
+											variant="ghost"
+											size="xs"
 											data-testid={`upload-retry-${task.id}`}
 											aria-label={`${t("canvas.upload.retry", "Retry")} — ${task.fileName}`}
-											className="rounded px-1 hover:bg-background"
 											onClick={() => handleRetry(task.id)}
 										>
 											{t("canvas.upload.retry", "Retry")}
-										</button>
+										</Button>
 									) : null}
 								</span>
 							</span>

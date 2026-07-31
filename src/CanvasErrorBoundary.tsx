@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@anvilkit/ui/button";
+import * as React from "react";
 import { Component, type ErrorInfo, type ReactNode, Suspense } from "react";
 
 /** Localizable labels for the default fallback (FR-172). */
@@ -195,8 +197,6 @@ export class CanvasErrorBoundary extends Component<
 		if (!error) return this.props.children;
 		if (this.props.fallback) return this.props.fallback(error, this.reset);
 		const labels = this.props.labels ?? {};
-		const buttonClass =
-			"rounded-md border border-border px-2 py-1 text-foreground hover:bg-muted";
 		return (
 			<>
 				<div
@@ -217,43 +217,47 @@ export class CanvasErrorBoundary extends Component<
 						</p>
 					) : null}
 					<div className="flex flex-wrap gap-1.5">
-						<button
+						<Button
 							type="button"
+							variant="outline"
+							size="sm"
 							data-testid="canvas-error-retry"
 							onClick={this.reset}
-							className={buttonClass}
 						>
 							{labels.retry ?? "Try again"}
-						</button>
+						</Button>
 						{this.props.onReloadDocument ? (
-							<button
+							<Button
 								type="button"
+								variant="outline"
+								size="sm"
 								data-testid="canvas-error-reload"
 								onClick={this.reloadDocument}
-								className={buttonClass}
 							>
 								{labels.reloadDocument ?? "Reload document"}
-							</button>
+							</Button>
 						) : null}
 						{this.props.onExportRecovery ? (
-							<button
+							<Button
 								type="button"
+								variant="outline"
+								size="sm"
 								data-testid="canvas-error-export-recovery"
 								onClick={this.props.onExportRecovery}
-								className={buttonClass}
 							>
 								{labels.exportRecovery ?? "Export recovery JSON"}
-							</button>
+							</Button>
 						) : null}
 						{errorId ? (
-							<button
+							<Button
 								type="button"
+								variant="outline"
+								size="sm"
 								data-testid="canvas-error-copy-id"
 								onClick={this.copyErrorId}
-								className={buttonClass}
 							>
 								{labels.copyErrorId ?? "Copy error ID"}
-							</button>
+							</Button>
 						) : null}
 						{/* FR-171: full-detail dialog. Always alongside the inline summary
 						    above (never a replacement for it), and — since this button only
@@ -262,14 +266,15 @@ export class CanvasErrorBoundary extends Component<
 						    `renderErrorDetails` (see this component's module doc): there is
 						    no dead trigger, it just doesn't exist. */}
 						{this.props.renderErrorDetails ? (
-							<button
+							<Button
 								type="button"
+								variant="outline"
+								size="sm"
 								data-testid="canvas-error-view-details"
 								onClick={this.openDetails}
-								className={buttonClass}
 							>
 								{labels.viewDetails ?? "View details"}
-							</button>
+							</Button>
 						) : null}
 					</div>
 				</div>

@@ -16,6 +16,15 @@ export default mergeConfig(
 		test: {
 			name: "@anvilkit/canvas-editor",
 			passWithNoTests: true,
+			// Merged with the preset's `@anvilkit/vitest-config/setup/jest-dom`,
+			// not replacing it — `mergeConfig` concatenates arrays. See the file
+			// for why this package needs a larger RTL async budget.
+			setupFiles: ["./vitest.setup.ts"],
+			// Must stay comfortably ABOVE the RTL `asyncUtilTimeout` set in
+			// `vitest.setup.ts` (10 s). When they are equal, a slow lazy chunk
+			// exhausts the test budget and reports an opaque "Test timed out"
+			// instead of RTL's message naming the element it could not find.
+			testTimeout: 20_000,
 			/**
 			 * T-M0-08 (plan 0022 M0): a coverage floor so later work cannot
 			 * silently reduce it. This package had **no** threshold at all,

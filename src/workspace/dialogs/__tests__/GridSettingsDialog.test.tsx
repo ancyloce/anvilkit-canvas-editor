@@ -1,6 +1,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import {
+	colorRowText,
+	setColor,
+} from "@/panels/__tests__/_color-test-helpers.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import GridSettingsDialog from "../GridSettingsDialog.js";
 
@@ -28,20 +32,21 @@ describe("GridSettingsDialog (FR-112)", () => {
 			(screen.getByTestId("grid-settings-subdivisions") as HTMLInputElement)
 				.value,
 		).toBe(String(vs().gridSubdivisions));
+		// ColorRow triggers are buttons showing the hex as text, not inputs.
+		expect(colorRowText("grid-settings-color")).toBe(vs().gridColor);
+		expect(colorRowText("grid-settings-sub-color")).toBe(vs().subGridColor);
+		// Base UI checkboxes are role="checkbox" buttons, not <input>s — their
+		// state reads off aria-checked rather than `.checked`.
 		expect(
-			(screen.getByTestId("grid-settings-color") as HTMLInputElement).value,
-		).toBe(vs().gridColor);
+			screen
+				.getByTestId("grid-settings-snap-grid")
+				.getAttribute("aria-checked"),
+		).toBe(String(vs().snapToGridEnabled));
 		expect(
-			(screen.getByTestId("grid-settings-sub-color") as HTMLInputElement).value,
-		).toBe(vs().subGridColor);
-		expect(
-			(screen.getByTestId("grid-settings-snap-grid") as HTMLInputElement)
-				.checked,
-		).toBe(vs().snapToGridEnabled);
-		expect(
-			(screen.getByTestId("grid-settings-snap-objects") as HTMLInputElement)
-				.checked,
-		).toBe(vs().snapToObjectsEnabled);
+			screen
+				.getByTestId("grid-settings-snap-objects")
+				.getAttribute("aria-checked"),
+		).toBe(String(vs().snapToObjectsEnabled));
 		expect(
 			(screen.getByTestId("grid-settings-snap-threshold") as HTMLInputElement)
 				.value,
@@ -80,15 +85,11 @@ describe("GridSettingsDialog (FR-112)", () => {
 		expect(vs().snapThreshold).toBe(1);
 	});
 
-	it("color inputs write straight to the store", () => {
+	it("color inputs write straight to the store", async () => {
 		const { vs } = setup();
-		fireEvent.change(screen.getByTestId("grid-settings-color"), {
-			target: { value: "#112233" },
-		});
+		await setColor("grid-settings-color", "#112233");
 		expect(vs().gridColor).toBe("#112233");
-		fireEvent.change(screen.getByTestId("grid-settings-sub-color"), {
-			target: { value: "#445566" },
-		});
+		await setColor("grid-settings-sub-color", "#445566");
 		expect(vs().subGridColor).toBe("#445566");
 	});
 
@@ -102,15 +103,13 @@ describe("GridSettingsDialog (FR-112)", () => {
 		expect(vs().snapToObjectsEnabled).toBe(false);
 	});
 
-	it("is transient UI state: NO history commits and history stays untouched", () => {
+	it("is transient UI state: NO history commits and history stays untouched", async () => {
 		const { h } = setup();
 		fireEvent.change(screen.getByTestId("grid-settings-size"), {
 			target: { value: "32" },
 		});
 		fireEvent.click(screen.getByTestId("grid-settings-snap-grid"));
-		fireEvent.change(screen.getByTestId("grid-settings-color"), {
-			target: { value: "#0000ff" },
-		});
+		await setColor("grid-settings-color", "#0000ff");
 		expect(h.commits).toHaveLength(0);
 		const history = h.studioCtx.historyStore.getState();
 		expect(history.past).toHaveLength(0);

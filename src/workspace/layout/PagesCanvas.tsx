@@ -12,6 +12,7 @@ import {
 import { Input } from "@anvilkit/ui/input";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { ChevronDown, ChevronUp, Copy, Plus, Trash2 } from "lucide-react";
+import * as React from "react";
 import {
 	lazy,
 	type ReactNode,
@@ -575,16 +576,19 @@ function AddPageButton({ width }: { width: number }): React.JSX.Element {
 	const t = useCanvasT();
 	const addPageLabel = t("canvas.pages.addPage", "Add page");
 	return (
-		<button
+		<Button
 			type="button"
+			variant="outline"
 			data-testid="page-add"
 			aria-label={addPageLabel}
 			onClick={() => addPage(ctx)}
-			className="flex h-12 items-center justify-center gap-2 rounded-lg border border-dashed border-foreground/20 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+			// Dashed "add" affordance: keeps the 48px slot height and the dashed
+			// border the grid expects, on top of the outline variant's chrome.
+			className="h-12 border-dashed border-foreground/20 text-sm font-medium text-muted-foreground"
 			style={width > 0 ? { width } : undefined}
 		>
 			<Plus className="size-4" aria-hidden />
 			{addPageLabel}
-		</button>
+		</Button>
 	);
 }

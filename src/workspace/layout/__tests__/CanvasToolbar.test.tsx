@@ -24,9 +24,19 @@ import {
 	type CanvasStudioContextValue,
 } from "@/context/canvas-studio-context.js";
 import {
+	optionLabels,
+	selectedLabel,
+	selectOption,
+} from "@/panels/__tests__/_select-test-helpers.js";
+import {
 	makeHarness,
 	type TestHarness,
 } from "@/tools/__tests__/_tool-test-helpers.js";
+import {
+	commitColor,
+	openColor,
+	setColor,
+} from "@/panels/__tests__/_color-test-helpers.js";
 import { CanvasToolbar } from "../CanvasToolbar.js";
 
 afterEach(cleanup);
@@ -125,9 +135,9 @@ function commitInput(testId: string, value: string): HTMLInputElement {
 }
 
 describe("CanvasToolbar — single shape through the field contract", () => {
-	it("commits a fill change as ONE coalesced entry", () => {
+	it("commits a fill change as ONE coalesced entry", async () => {
 		const { h } = setup(["r1"]);
-		commitInput("toolbar-fill", "#123456");
+		await setColor("toolbar-fill", "#123456");
 		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
 		expect(h.studioCtx.commit).not.toHaveBeenCalled();
 		expect(h.studioCtx.commitBatch).not.toHaveBeenCalled();
@@ -141,9 +151,9 @@ describe("CanvasToolbar — single shape through the field contract", () => {
 		]);
 	});
 
-	it("commits stroke + width + opacity, one coalesced entry each", () => {
+	it("commits stroke + width + opacity, one coalesced entry each", async () => {
 		const { h } = setup(["r1"]);
-		commitInput("toolbar-stroke", "#654321");
+		await setColor("toolbar-stroke", "#654321");
 		commitInput("toolbar-stroke-width", "4");
 		commitInput("toolbar-opacity", "0.5");
 		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(3);
@@ -152,10 +162,10 @@ describe("CanvasToolbar — single shape through the field contract", () => {
 		).toEqual([{ stroke: "#654321" }, { strokeWidth: 4 }, { opacity: 0.5 }]);
 	});
 
-	it("an unchanged blur commits nothing", () => {
+	it("opening and dismissing the picker without a change commits nothing", async () => {
 		const { h } = setup(["r1"]);
-		const input = screen.getByTestId("toolbar-fill") as HTMLInputElement;
-		fireEvent.blur(input);
+		await openColor("toolbar-fill");
+		commitColor();
 		expect(h.commits).toHaveLength(0);
 	});
 });
@@ -163,12 +173,14 @@ describe("CanvasToolbar — single shape through the field contract", () => {
 describe("CanvasToolbar — multi-selection mixed values", () => {
 	it("flags mixed fill on the swatch and mixed width as a placeholder", () => {
 		setup(["r1", "r2"]);
-		expect(screen.getByTestId("toolbar-fill")).toHaveAttribute(
+		// `data-mixed` lives on the control wrapper; the inner ColorRow trigger
+		// keeps the bare testid so the picker helpers can drive it.
+		expect(screen.getByTestId("toolbar-fill-control")).toHaveAttribute(
 			"data-mixed",
 			"true",
 		);
 		// Strokes match → not mixed.
-		expect(screen.getByTestId("toolbar-stroke")).not.toHaveAttribute(
+		expect(screen.getByTestId("toolbar-stroke-control")).not.toHaveAttribute(
 			"data-mixed",
 		);
 		const width = screen.getByTestId(
@@ -178,9 +190,9 @@ describe("CanvasToolbar — multi-selection mixed values", () => {
 		expect(width.placeholder).toBe("Mixed");
 	});
 
-	it("commits a mixed-fill change to EVERY node as one batch", () => {
+	it("commits a mixed-fill change to EVERY node as one batch", async () => {
 		const { h } = setup(["r1", "r2"]);
-		commitInput("toolbar-fill", "#abcdef");
+		await setColor("toolbar-fill", "#abcdef");
 		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
 		const cmd = h.commits[0] as {
 			type: string;
@@ -217,11 +229,9 @@ describe("CanvasToolbar — text selection typography (FR-180)", () => {
 		expect(size.placeholder).toBe("Mixed");
 	});
 
-	it("commits a font-family pick to both nodes as one batch", () => {
+	it("commits a font-family pick to both nodes as one batch", async () => {
 		const { h } = setup(["t1", "t2"]);
-		fireEvent.change(screen.getByTestId("toolbar-font-family"), {
-			target: { value: "Georgia" },
-		});
+		await selectOption("toolbar-font-family", "Georgia");
 		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
 		const cmd = h.commits[0] as {
 			type: string;
@@ -259,9 +269,9 @@ describe("CanvasToolbar — text selection typography (FR-180)", () => {
 		]);
 	});
 
-	it("text color commits through the contract", () => {
+	it("text color commits through the contract", async () => {
 		const { h } = setup(["t1"]);
-		commitInput("toolbar-text-color", "#ff00ff");
+		await setColor("toolbar-text-color", "#ff00ff");
 		expect(h.commits).toEqual([
 			{
 				type: "node.update",
@@ -328,11 +338,10 @@ describe("CanvasToolbar — single image (FR-180)", () => {
 		expect(screen.getByTestId("toolbar-image-crop")).not.toBeDisabled();
 	});
 
-	it("fit mode commits through the contract", () => {
+	it("fit mode commits through the contract", async () => {
 		const { h } = setup(["i1"]);
-		const select = screen.getByTestId("toolbar-fit-mode") as HTMLSelectElement;
-		expect(select.value).toBe("stretch");
-		fireEvent.change(select, { target: { value: "fill" } });
+		expect(selectedLabel("toolbar-fit-mode")).toBe("Stretch");
+		await selectOption("toolbar-fit-mode", "Fill");
 		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
 		expect(h.commits).toEqual([
 			{
@@ -344,7 +353,7 @@ describe("CanvasToolbar — single image (FR-180)", () => {
 		]);
 	});
 
-	it("fit-mode options are translated labels, not raw ids (AC-014)", () => {
+	it("fit-mode options are translated labels, not raw ids (AC-014)", async () => {
 		const h = makeHarness({ ir: fixtureIR() });
 		h.studioCtx.t = (key, fallback) =>
 			key === "canvas.inspector.fitModeStretch" ? "ESTIRAR" : (fallback ?? key);
@@ -354,11 +363,7 @@ describe("CanvasToolbar — single image (FR-180)", () => {
 				<CanvasToolbar />
 			</CanvasStudioContext.Provider>,
 		);
-		const select = screen.getByTestId("toolbar-fit-mode") as HTMLSelectElement;
-		const stretchOption = Array.from(select.options).find(
-			(o) => o.value === "stretch",
-		);
-		expect(stretchOption?.textContent).toBe("ESTIRAR");
+		expect(await optionLabels("toolbar-fit-mode")).toContain("ESTIRAR");
 	});
 
 	it("a mixed-kind selection hides the image section", () => {
@@ -470,13 +475,14 @@ describe("CanvasToolbar — image adjust popover (FR-180)", () => {
 describe("CanvasToolbar — locked gating (FR-024)", () => {
 	it("an all-locked selection renders every field disabled and commits nothing", () => {
 		const { h } = setup(["lr1"]);
-		const fill = screen.getByTestId("toolbar-fill") as HTMLInputElement;
+		// The colour trigger is a real <button disabled>, so `disabled` alone
+		// conveys the state — no redundant aria-disabled.
+		expect(screen.getByTestId("toolbar-fill")).toBeDisabled();
 		const opacity = screen.getByTestId("toolbar-opacity") as HTMLInputElement;
-		expect(fill).toBeDisabled();
-		expect(fill).toHaveAttribute("aria-disabled", "true");
 		expect(opacity).toBeDisabled();
 		expect(opacity).toHaveAttribute("aria-disabled", "true");
-		commitInput("toolbar-fill", "#999999");
+		fireEvent.click(screen.getByTestId("toolbar-fill"));
+		expect(screen.queryByTestId("toolbar-fill-hex")).toBeNull();
 		commitInput("toolbar-opacity", "0.1");
 		expect(h.commits).toHaveLength(0);
 	});

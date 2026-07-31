@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@anvilkit/ui/button";
+import { Checkbox } from "@anvilkit/ui/components/animate-ui/components/base/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -8,7 +9,9 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@anvilkit/ui/dialog";
+import { ColorRow } from "@anvilkit/ui/color-picker";
 import { Input } from "@anvilkit/ui/input";
+import * as React from "react";
 import { useSyncExternalStore } from "react";
 import {
 	useCanvasStudio,
@@ -103,46 +106,34 @@ export default function GridSettingsDialog({
 						</label>
 					</div>
 					<div className="flex items-center gap-4">
-						<label className="flex items-center gap-2 text-xs text-muted-foreground">
-							{t("canvas.grid.color", "Grid color")}
-							<input
-								type="color"
-								value={vs.gridColor}
-								data-testid="grid-settings-color"
-								className="h-7 w-10 cursor-pointer rounded border border-input bg-transparent"
-								onChange={(e) => vs.setGridColor(e.currentTarget.value)}
-							/>
-						</label>
-						<label className="flex items-center gap-2 text-xs text-muted-foreground">
-							{t("canvas.grid.subColor", "Sub-grid color")}
-							<input
-								type="color"
-								value={vs.subGridColor}
-								data-testid="grid-settings-sub-color"
-								className="h-7 w-10 cursor-pointer rounded border border-input bg-transparent"
-								onChange={(e) => vs.setSubGridColor(e.currentTarget.value)}
-							/>
-						</label>
+						<ColorRow
+							label={t("canvas.grid.color", "Grid color")}
+							value={vs.gridColor}
+							data-testid="grid-settings-color"
+							onValueChange={(next) => vs.setGridColor(next)}
+						/>
+						<ColorRow
+							label={t("canvas.grid.subColor", "Sub-grid color")}
+							value={vs.subGridColor}
+							data-testid="grid-settings-sub-color"
+							onValueChange={(next) => vs.setSubGridColor(next)}
+						/>
 					</div>
 					<label className="flex items-center gap-2 text-xs text-muted-foreground">
-						<input
-							type="checkbox"
+						<Checkbox
 							checked={vs.snapToGridEnabled}
 							data-testid="grid-settings-snap-grid"
-							className="h-3.5 w-3.5 cursor-pointer accent-primary"
-							onChange={(e) => vs.setSnapToGridEnabled(e.currentTarget.checked)}
+							className="size-3.5 cursor-pointer"
+							onCheckedChange={(checked) => vs.setSnapToGridEnabled(checked)}
 						/>
 						{t("canvas.grid.snapToGrid", "Snap to grid")}
 					</label>
 					<label className="flex items-center gap-2 text-xs text-muted-foreground">
-						<input
-							type="checkbox"
+						<Checkbox
 							checked={vs.snapToObjectsEnabled}
 							data-testid="grid-settings-snap-objects"
-							className="h-3.5 w-3.5 cursor-pointer accent-primary"
-							onChange={(e) =>
-								vs.setSnapToObjectsEnabled(e.currentTarget.checked)
-							}
+							className="size-3.5 cursor-pointer"
+							onCheckedChange={(checked) => vs.setSnapToObjectsEnabled(checked)}
 						/>
 						{t("canvas.grid.snapToObjects", "Snap to objects")}
 					</label>

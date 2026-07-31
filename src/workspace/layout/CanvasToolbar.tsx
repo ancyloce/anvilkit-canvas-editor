@@ -29,14 +29,17 @@ import {
 	ImageUp,
 	SlidersHorizontal,
 } from "lucide-react";
+import * as React from "react";
 import { useRef, useSyncExternalStore } from "react";
 import {
 	useCanvasStudio,
 	useCanvasT,
 } from "@/context/canvas-studio-context.js";
+import { ColorRow } from "@anvilkit/ui/color-picker";
 import {
 	type CommitPatchAll,
 	type FieldContractTarget,
+	SelectControl,
 	sharedFieldValue,
 	useCommitPatchAll,
 	useFieldContract,
@@ -338,7 +341,7 @@ export function CanvasToolbar({
 				) : null}
 				{isText && fontFamily && fontSize && bold && align && textFill ? (
 					<>
-						<SelectControl
+						<ToolbarSelect
 							label={t("canvas.toolbar.font", "Font")}
 							value={fontFamily.value}
 							mixed={fontFamily.mixed}
@@ -408,7 +411,7 @@ export function CanvasToolbar({
 						>
 							<ImageUp aria-hidden />
 						</Button>
-						<SelectControl
+						<ToolbarSelect
 							label={t("canvas.toolbar.fitMode", "Fit")}
 							value={fitMode ?? "stretch"}
 							disabled={allLocked}
@@ -518,60 +521,48 @@ function SwatchControl({
 	const dirty = useRef(false);
 	const fallback = value ?? "#000000";
 	return (
-		<label
+		<span
 			className={cn(
 				"inline-flex items-center gap-1.5 rounded-full px-2 py-1",
-				disabled
-					? "cursor-not-allowed opacity-50"
-					: "cursor-pointer hover:bg-muted",
+				disabled ? "opacity-50" : "hover:bg-muted",
 			)}
+			data-testid={`${testId}-control`}
+			data-mixed={mixed ? "true" : undefined}
 			title={mixed ? `${label}: ${field.mixedLabel}` : label}
 		>
-			<span
-				className="size-4 rounded-full ring-1 ring-border"
-				style={
+			<ColorRow
+				compact
+				label={label}
+				value={fallback}
+				data-testid={testId}
+				disabled={disabled}
+				// A mixed selection has no single hex, so the swatch shows the
+				// split-gradient marker instead of a colour.
+				swatchStyle={
 					mixed
 						? {
 								background: "linear-gradient(135deg, #d4d4d8 50%, #52525b 50%)",
 							}
-						: { backgroundColor: fallback }
+						: undefined
 				}
-				aria-hidden
-			/>
-			<span className="text-xs text-muted-foreground">{label}</span>
-			<input
-				// Commit-on-blur (after the picker closes); re-key on external change.
-				key={mixed ? "mixed" : fallback}
-				type="color"
-				aria-label={label}
-				aria-disabled={disabled || undefined}
-				disabled={disabled}
-				defaultValue={fallback}
-				data-testid={testId}
-				data-mixed={mixed ? "true" : undefined}
-				className="sr-only"
-				onChange={(e) => {
+				onValueChange={(next) => {
 					if (disabled) return;
 					dirty.current = true;
-					field.preview(e.currentTarget.value);
+					field.preview(next);
 				}}
-				onKeyDown={(e) => {
-					if (e.key === "Escape") {
-						e.stopPropagation();
-						e.currentTarget.value = fallback;
-						dirty.current = false;
-						field.cancel();
-					}
-				}}
-				onBlur={(e) => {
-					const next = e.currentTarget.value;
+				onCommit={(next) => {
 					const changed = dirty.current && (mixed || next !== value);
 					dirty.current = false;
 					if (!disabled && changed) field.commit(next);
 					else field.cancel();
 				}}
+				onCancel={() => {
+					dirty.current = false;
+					field.cancel();
+				}}
 			/>
-		</label>
+			<span className="text-xs text-muted-foreground">{label}</span>
+		</span>
 	);
 }
 
@@ -647,10 +638,11 @@ function NumberControl({
 	);
 }
 
-/** Compact native `<select>` wired through the §10 field contract — each pick
- * is one committed interaction (same pattern as the inspector's
- * `TextAlignField`). Mixed renders a disabled "Mixed" placeholder option. */
-function SelectControl({
+/** Compact picker wired through the §10 field contract — each pick is one
+ * committed interaction (same pattern as the inspector's `TextAlignField`).
+ * Thin adapter over the shared `SelectControl`: this shell names the prop
+ * `testId`, and wants a shorter, width-capped trigger. */
+function ToolbarSelect({
 	label,
 	value,
 	mixed,
@@ -667,32 +659,17 @@ function SelectControl({
 	testId: string;
 	contract: FieldContractTarget<string>;
 }): React.JSX.Element {
-	const field = useFieldContract(contract, testId);
 	return (
-		<select
-			aria-label={label}
-			aria-disabled={disabled || undefined}
-			title={label}
+		<SelectControl
+			label={label}
+			value={value}
+			mixed={mixed}
 			disabled={disabled}
-			data-testid={testId}
-			className="h-7 max-w-28 rounded-md border border-input bg-transparent px-1 text-xs"
-			value={mixed ? "" : value}
-			onChange={(e) => {
-				if (!disabled && e.currentTarget.value)
-					field.commit(e.currentTarget.value);
-			}}
-		>
-			{mixed ? (
-				<option value="" disabled>
-					{field.mixedLabel}
-				</option>
-			) : null}
-			{options.map((o) => (
-				<option key={o.value} value={o.value}>
-					{o.label}
-				</option>
-			))}
-		</select>
+			options={options}
+			dataTestId={testId}
+			contract={contract}
+			className="h-7 max-w-28"
+		/>
 	);
 }
 

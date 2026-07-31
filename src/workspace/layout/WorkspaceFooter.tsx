@@ -4,6 +4,8 @@ import { type CanvasNode, findNode } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import { Separator } from "@anvilkit/ui/separator";
+import { Slider } from "@anvilkit/ui/slider";
+import * as React from "react";
 import { useSyncExternalStore } from "react";
 import { ChromeIcons } from "@/chrome/icons.js";
 import {
@@ -85,16 +87,20 @@ export function WorkspaceFooter({
 				>
 					<ChromeIcons.zoomOut aria-hidden />
 				</Button>
-				<input
-					type="range"
+				{/* Single-thumb: `value` MUST be an array — the Slider wrapper falls
+				    back to [min, max] (two thumbs) for a bare number. */}
+				<Slider
 					aria-label={t("canvas.footer.zoom", "Zoom")}
 					data-testid="workspace-zoom-slider"
 					min={Math.round(ZOOM_MIN * 100)}
 					max={Math.round(ZOOM_MAX * 100)}
 					step={1}
-					value={percent}
-					onChange={(e) => setZoom(Number(e.currentTarget.value) / 100)}
-					className="h-1 w-28 cursor-pointer accent-primary"
+					value={[percent]}
+					onValueChange={(value) => {
+						const next = Array.isArray(value) ? value[0] : value;
+						if (typeof next === "number") setZoom(next / 100);
+					}}
+					className="w-28 cursor-pointer"
 				/>
 				<Button
 					type="button"
