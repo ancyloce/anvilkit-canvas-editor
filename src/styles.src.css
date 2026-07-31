@@ -36,6 +36,23 @@
 @source "../dist/**/*.js";
 
 /*
+ * ALSO scan `@anvilkit/ui`. The chrome renders its primitives (Select, Button,
+ * Input, ColorRow, Dialog, …), but `@anvilkit/ui` is EXTERNALIZED from the
+ * bundle — its class strings live in that package, never in our `dist/`, so
+ * scanning `dist/` alone silently omits every utility only it uses.
+ *
+ * That omission is invisible for inline chrome (the host's own Tailwind build
+ * usually covers it) but fatal for PORTALLED popups: a Select popup or the
+ * ColorRow picker rendered into `document.body` without `z-50`, `bg-popover`,
+ * `min-w-36`, or `shadow-md` is transparent, unsized, and painted UNDER the
+ * editor — indistinguishable from "the dropdown won't open".
+ *
+ * Resolved through `node_modules` rather than a `../../../..` sibling path so
+ * it survives this package being built as a standalone submodule checkout.
+ */
+@source "../node_modules/@anvilkit/ui/src/**/*.{ts,tsx}";
+
+/*
  * shadcn → Tailwind theme bridge: registers `bg-card`, `text-foreground`,
  * `border-border`, `rounded-lg`, … against the token vars below. Kept in
  * sync with `@anvilkit/core` and `@anvilkit/tailwind-config/shadcn`.
