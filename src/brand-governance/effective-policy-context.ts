@@ -59,13 +59,9 @@ export function useEffectivePolicyContext(): CanvasBrandPolicyContext {
 	const ctx = useCanvasStudio();
 	const host = ctx.brandGovernance;
 	const revision = host?.policyRevision;
-	return useMemo(
-		() => resolveEffectivePolicyContext(host),
-		// biome-ignore lint/correctness/useExhaustiveDependencies: `revision` is
-		// deliberately a dependency even though `resolveEffectivePolicyContext`
-		// does not read it — see the doc comment.
-		[host, revision],
-	);
+	// `revision` is deliberately in the dependency list even though
+	// `resolveEffectivePolicyContext` does not read it — see the doc comment.
+	return useMemo(() => resolveEffectivePolicyContext(host), [host, revision]);
 }
 
 /** Whether an affordance guarded by `capability` should be offered at all. */
@@ -135,6 +131,14 @@ const DENY_MESSAGE_KEYS: Readonly<
 	"variant-change-denied": {
 		key: "canvas.governance.variantDenied",
 		fallback: "This component's variant may not be changed.",
+	},
+	"source-update-denied": {
+		key: "canvas.governance.sourceUpdateDenied",
+		fallback: "This component's version is pinned and can't be changed.",
+	},
+	"source-swap-denied": {
+		key: "canvas.governance.sourceSwapDenied",
+		fallback: "This component can't be replaced with a different one.",
 	},
 	"token-not-allowed": {
 		key: "canvas.governance.tokenNotAllowed",
