@@ -154,6 +154,87 @@ describe("createResolvedDocumentStore", () => {
 });
 
 /**
+ * Plan 0024 Phase 2 — the PAGE half of the preview merge. Node patches cannot
+ * express page size/background, so these properties previously had no preview
+ * path at all and the artboard only updated on commit.
+ */
+describe("createResolvedDocumentStore — page previews (plan 0024 Phase 2)", () => {
+	it("merges a page preview into the resolved document without writing the IR", () => {
+		const { sceneStore, fieldPreviewStore, store, disconnect } = makeStores();
+		cleanup = disconnect;
+		const committedIR = sceneStore.getState().ir;
+		expect(store.getState().resolved.source.pages[0]?.size.width).toBe(
+			committedIR.pages[0]?.size.width,
+		);
+
+		fieldPreviewStore.getState().setPagePreviews({
+			p1: {
+				size: {
+					...(committedIR.pages[0]?.size ?? { unit: "px" }),
+					width: 1234,
+				},
+			},
+		});
+
+		expect(store.getState().resolved.source.pages[0]?.size.width).toBe(1234);
+		// The committed document is untouched — previews are transient.
+		expect(sceneStore.getState().ir).toBe(committedIR);
+
+		fieldPreviewStore.getState().clearPreviews();
+		expect(store.getState().resolved.source.pages[0]?.size.width).toBe(
+			committedIR.pages[0]?.size.width,
+		);
+	});
+
+	it("previews a page background and preserves the page's node subtree", () => {
+		const { sceneStore, fieldPreviewStore, store, disconnect } = makeStores();
+		cleanup = disconnect;
+		const committedRoot = sceneStore.getState().ir.pages[0]?.root;
+
+		fieldPreviewStore.getState().setPagePreviews({
+			p1: { background: { kind: "solid", value: "#ff0000" } },
+		});
+
+		const page = store.getState().resolved.source.pages[0];
+		expect(page?.background).toEqual({ kind: "solid", value: "#ff0000" });
+		// A page-only patch must not disturb the node walk: the untouched subtree
+		// stays reference-identical, which is what lets consumers memoise on it.
+		expect(page?.root).toBe(committedRoot);
+		expect(page?.id).toBe("p1");
+	});
+
+	it("applies node and page previews together in one resolution", () => {
+		const { fieldPreviewStore, store, disconnect } = makeStores();
+		cleanup = disconnect;
+		fieldPreviewStore.getState().setPagePreviews({
+			p1: { background: { kind: "solid", value: "#00ff00" } },
+		});
+		fieldPreviewStore
+			.getState()
+			.setPreviews({ r1: { bounds: { width: 80, height: 20 } } });
+
+		const page = store.getState().resolved.source.pages[0];
+		expect(page?.background).toEqual({ kind: "solid", value: "#00ff00" });
+		// r2 flows to x=80+gap once r1 is 80 wide — the node preview still applies.
+		expect(
+			store.getState().view.getRecord("r2")?.geometry.localTransform.x,
+		).toBe(90);
+	});
+
+	it("clearPreviews drops the page map too", () => {
+		const { fieldPreviewStore, store, disconnect } = makeStores();
+		cleanup = disconnect;
+		fieldPreviewStore.getState().setPagePreviews({
+			p1: { background: { kind: "solid", value: "#0000ff" } },
+		});
+		const previewed = store.getState().resolved;
+		fieldPreviewStore.getState().clearPreviews();
+		expect(store.getState().resolved).not.toBe(previewed);
+		expect(fieldPreviewStore.getState().pagePreviews).toEqual({});
+	});
+});
+
+/**
  * Plan 0023 M4-03 — the store's entry point is the COMPOSED resolver, so
  * component instances expand in the ONE resolution every consumer reads.
  */

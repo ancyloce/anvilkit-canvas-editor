@@ -20,6 +20,7 @@ import { subscribeFontManifest } from "../text/font-status.js";
 import type {
 	FieldPreviewPatch,
 	FieldPreviewStoreApi,
+	PagePreviewPatch,
 } from "./field-preview-store.js";
 import type { SceneStoreApi } from "./scene-store.js";
 
@@ -83,18 +84,31 @@ export interface CreateResolvedDocumentStoreOptions {
 	measurement?: CanvasLayoutMeasurementProvider;
 }
 
-/** Shallow-merge preview patches over their nodes, sharing every untouched subtree. */
+/**
+ * Shallow-merge preview patches over their nodes AND their pages, sharing every
+ * untouched subtree. Page patches (plan 0024 Phase 2) carry page-level
+ * properties — size, background — that no `node.update` can express.
+ */
 function withPreviews(
 	ir: CanvasIR,
 	previews: Readonly<Record<string, FieldPreviewPatch>>,
+	pagePreviews: Readonly<Record<string, PagePreviewPatch>>,
 ): CanvasIR {
-	if (Object.keys(previews).length === 0) return ir;
+	if (
+		Object.keys(previews).length === 0 &&
+		Object.keys(pagePreviews).length === 0
+	) {
+		return ir;
+	}
 	let changed = false;
 	const pages = ir.pages.map((page) => {
 		const root = patchNode(page.root, previews);
-		if (root === page.root) return page;
+		const pagePatch = pagePreviews[page.id];
+		if (root === page.root && !pagePatch) return page;
 		changed = true;
-		return { ...page, root: root as typeof page.root };
+		// `id`/`root` are excluded from PagePreviewPatch at the type level, so the
+		// spread can never clobber identity or bypass the node walk above.
+		return { ...page, ...(pagePatch ?? {}), root: root as typeof page.root };
 	});
 	return changed ? { ...ir, pages } : ir;
 }
@@ -162,9 +176,11 @@ export function createResolvedDocumentStore(
 	const resolve = (
 		previous?: CanvasResolvedComponentDocument,
 	): ResolvedDocumentState => {
+		const previewState = options.fieldPreviewStore.getState();
 		const effective = withPreviews(
 			options.sceneStore.getState().ir,
-			options.fieldPreviewStore.getState().previews,
+			previewState.previews,
+			previewState.pagePreviews,
 		);
 		const registry = effective.components;
 		const dirty = changedComponentIds(lastRegistry, registry);
