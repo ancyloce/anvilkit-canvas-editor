@@ -111,8 +111,14 @@ export function PagesCanvas({
 			return next;
 		});
 	}, []);
-	const pages = ctx.ir.pages;
 	const resolvedDocument = useResolvedDocument();
+	// Resolved-source pages (plan 0024 Phase 2) so a live page-size preview
+	// resizes the artboard frame as the user drags, not only on commit. Safe for
+	// the thumbnails below: page previews only ever target the ACTIVE page, and
+	// the active page is never rasterized here, so no fingerprint changes.
+	// The one-time fit effect above deliberately keeps reading the committed IR
+	// (T-2.5 — the viewport must not re-frame mid-edit).
+	const pages = resolvedDocument?.source.pages ?? ctx.ir.pages;
 	const thumbnails = usePageThumbnails({
 		pages,
 		activePageId,
