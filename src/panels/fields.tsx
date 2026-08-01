@@ -2,7 +2,6 @@
 
 import type {
 	CanvasAnyNodeUpdateCommand,
-	CanvasCommand,
 	CanvasNode,
 } from "@anvilkit/canvas-core";
 import { ColorRow } from "@anvilkit/ui/color-picker";
@@ -15,13 +14,12 @@ import {
 	SelectValue,
 } from "@anvilkit/ui/select";
 import * as React from "react";
-import { type ReactNode, use, useCallback, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
+import { useCanvasStores } from "../context/canvas-studio-context.js";
 import {
-	CanvasStudioContext,
-	CanvasStudioStableContext,
-	useCanvasStores,
-	useCanvasT,
-} from "../context/canvas-studio-context.js";
+	type FieldContractTarget,
+	useFieldContract,
+} from "../context/field-contract.js";
 
 /**
  * @file Shared inspector field primitives. Extracted verbatim from
@@ -100,98 +98,16 @@ export function FieldRow({
 }
 
 /**
- * §10 field-input contract target (B-12): the node(s) a field edits and the
- * `node.update` patch a given value maps to. Multi-selection passes every
- * selected node; `buildPatch` runs per node so patches can spread that node's
- * own current sub-objects (transform, bounds, crop, …). Plain data — the field
- * component wires preview/commit/revert internally.
+ * The §10 contract engine now lives in `context/field-contract.ts` (plan 0024
+ * Phase 1) so `tools/` can reach it too — `panels/` is rank 3 and `tools/` may
+ * not import it. Re-exported here because this module is the field primitives'
+ * public face: every existing `from "…/panels/fields.js"` import, including the
+ * package's `FieldContractTarget` export in `index.ts`, keeps working.
  */
-export interface FieldContractTarget<T> {
-	nodes: readonly CanvasNode[];
-	buildPatch: (node: CanvasNode, value: T) => Record<string, unknown>;
-	/**
-	 * Command-builder seam (T-M4-02): when present, commit dispatches this
-	 * command per node instead of wrapping `buildPatch` in a `node.update` —
-	 * the vehicle for `frame.set-layout` Inspector fields. Preview always
-	 * flows through `buildPatch` + the preview store regardless, and commit
-	 * still runs through the same coalescing pipeline; this hook only swaps
-	 * what command is built.
-	 */
-	buildCommand?: (node: CanvasNode, value: T) => CanvasCommand;
-}
-
-/**
- * Internal contract engine shared by every field kind: preview publishes
- * per-node patches to the `fieldPreviewStore`; commit clears the preview and
- * applies the same patches as one coalesced history entry (a `batch` for
- * multi-selection); cancel just clears the preview. All no-ops without a
- * `contract` target.
- */
-export function useFieldContract<T>(
-	contract: FieldContractTarget<T> | undefined,
-	fieldId: string,
-): {
-	preview: (value: T) => void;
-	commit: (value: T) => void;
-	cancel: () => void;
-	enabled: boolean;
-	/** Localized multi-selection placeholder ("Mixed"), host catalog willing. */
-	mixedLabel: string;
-} {
-	// Non-throwing context read: fields also render standalone (e.g. the
-	// token-aware fields' literal fallback in isolation); without a studio
-	// tree the contract features simply disable and `onCommit` still works.
-	const ctx = use(CanvasStudioStableContext) ?? use(CanvasStudioContext);
-	const preview = useCallback(
-		(value: T) => {
-			const store = ctx?.fieldPreviewStore;
-			if (!contract || !store) return;
-			const entries: Record<string, Record<string, unknown>> = {};
-			for (const node of contract.nodes) {
-				entries[node.id] = contract.buildPatch(node, value);
-			}
-			store.getState().setPreviews(entries);
-		},
-		[contract, ctx],
-	);
-	const cancel = useCallback(() => {
-		ctx?.fieldPreviewStore?.getState().clearPreviews();
-	}, [ctx]);
-	const commit = useCallback(
-		(value: T) => {
-			if (!contract || !ctx) return;
-			ctx.fieldPreviewStore?.getState().clearPreviews();
-			const cmds = contract.nodes.map(
-				(node): CanvasCommand =>
-					contract.buildCommand
-						? contract.buildCommand(node, value)
-						: ({
-								type: "node.update",
-								nodeId: node.id,
-								kind: node.type,
-								patch: contract.buildPatch(node, value),
-							} as CanvasAnyNodeUpdateCommand),
-			);
-			const first = cmds[0];
-			if (!first) return;
-			const mergeKey = `field:${fieldId}:${contract.nodes
-				.map((n) => n.id)
-				.join(",")}`;
-			const cmd: CanvasCommand =
-				cmds.length === 1 ? first : { type: "batch", commands: cmds };
-			if (ctx.commitCoalesced) ctx.commitCoalesced(cmd, mergeKey);
-			else ctx.commit(cmd);
-		},
-		[contract, ctx, fieldId],
-	);
-	return {
-		preview,
-		commit,
-		cancel,
-		enabled: contract !== undefined && ctx !== null,
-		mixedLabel: ctx?.t?.("canvas.inspector.mixed", "Mixed") ?? "Mixed",
-	};
-}
+export {
+	type FieldContractTarget,
+	useFieldContract,
+} from "../context/field-contract.js";
 
 export interface NumberFieldProps {
 	label: string;
