@@ -1,9 +1,11 @@
 "use client";
 
 import { findNode } from "@anvilkit/canvas-core";
+import * as React from "react";
 import { useSyncExternalStore } from "react";
 import { Rect } from "react-konva";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import { withFiniteGeometry } from "../stage/finite-geometry.js";
 
 /** Distinct from the selection Transformer's accent so focus ≠ selection. */
 const FOCUS_RING_STROKE = "#22c55e";
@@ -25,7 +27,11 @@ export function CanvasFocusRing(): React.JSX.Element | null {
 	if (!focusedId) return null;
 	const found = findNode(ctx.ir, focusedId);
 	if (!found || found.page.id !== ctx.activePageId) return null;
-	const node = found.node;
+	// Reads the IR directly rather than the rendered scene, so it needs the same
+	// finite-geometry guard `CanvasNodeRenderer` applies — a `NaN` here would
+	// hand Konva an unmeasurable ring on the SELECTION layer, poisoning that
+	// layer's client rect (see `stage/finite-geometry.ts`).
+	const node = withFiniteGeometry(found.node);
 	return (
 		<Rect
 			name={FOCUS_RING_NAME}
