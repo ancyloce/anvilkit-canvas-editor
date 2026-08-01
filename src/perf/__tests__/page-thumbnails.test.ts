@@ -94,6 +94,111 @@ describe("usePageThumbnails", () => {
 		).toHaveBeenCalledTimes(2);
 	});
 
+	/**
+	 * Plan 0024 T-4.3. `resolvedDocument` changes identity on EVERY resolution,
+	 * including every frame of a live preview, so it was moved out of the effect's
+	 * dependency array into a latest-value ref. The risk that swap introduces is
+	 * a STALE capture — a rasterize using the resolution from whenever the effect
+	 * last ran. This pins the opposite: the rasterize sees the newest one.
+	 */
+	it("rasterizes with the LATEST resolvedDocument, not the one captured when the effect last ran", async () => {
+		const { renderHook, act } = await import("@testing-library/react");
+		const rasterize = stubRasterize();
+		const first = { marker: "first" } as never;
+		const second = { marker: "second" } as never;
+		const p1 = pageWith("p1", ["r1"]);
+
+		const { rerender } = renderHook(
+			(props: { pages: CanvasPage[]; resolvedDocument: never }) =>
+				usePageThumbnails({
+					pages: props.pages,
+					activePageId: "p1",
+					assets: {},
+					rasterize,
+					resolvedDocument: props.resolvedDocument,
+				}),
+			{
+				initialProps: {
+					pages: [p1, pageWith("p2", ["r2"])],
+					resolvedDocument: first,
+				},
+			},
+		);
+		await act(async () => {
+			await Promise.resolve();
+		});
+		const spy = rasterize as unknown as ReturnType<typeof vi.fn>;
+		expect(spy.mock.calls[0]?.[0]?.resolvedDocument).toBe(first);
+
+		// New resolution AND changed inactive content: the re-rasterize must use
+		// the new resolution even though it was never a dependency.
+		rerender({
+			pages: [p1, pageWith("p2", ["r2", "r3"])],
+			resolvedDocument: second,
+		});
+		await act(async () => {
+			await Promise.resolve();
+		});
+		expect(spy).toHaveBeenCalledTimes(2);
+		expect(spy.mock.calls[1]?.[0]?.resolvedDocument).toBe(second);
+	});
+
+	/**
+	 * Plan 0024 T-4.3, the actual perf claim. `pageThumbnailKey` is
+	 * `JSON.stringify(page)`, so an enumerable counting getter records exactly
+	 * how many times the effect fingerprinted this page. Before the fix the
+	 * effect depended on `pages`, which `withPreviews` rebuilds on every preview
+	 * frame — so every inactive page was re-serialized per frame just to conclude
+	 * "still cached". Asserting on rasterize COUNT alone cannot see this (the
+	 * cache hit suppresses the call either way); the fingerprint count can.
+	 */
+	it("does not re-fingerprint inactive pages when only the active page changed (plan 0024 T-4.3)", async () => {
+		const { renderHook, act } = await import("@testing-library/react");
+		const rasterize = stubRasterize();
+		let fingerprints = 0;
+		const counted: CanvasPage = { ...pageWith("p2", ["r2"]) };
+		Object.defineProperty(counted, "name", {
+			enumerable: true,
+			configurable: true,
+			get() {
+				fingerprints += 1;
+				return "p2";
+			},
+		});
+
+		// Hoisted: an inline `{}` would be a new object every render and would
+		// re-run the effect on its own, masking what this test measures.
+		const assets = {};
+		const { rerender } = renderHook(
+			(props: { pages: CanvasPage[] }) =>
+				usePageThumbnails({
+					pages: props.pages,
+					activePageId: "p1",
+					assets,
+					rasterize,
+				}),
+			{ initialProps: { pages: [pageWith("p1", ["r1"]), counted] } },
+		);
+		await act(async () => {
+			await Promise.resolve();
+		});
+		const spy = rasterize as unknown as ReturnType<typeof vi.fn>;
+		expect(spy).toHaveBeenCalledTimes(1);
+		expect(fingerprints).toBe(1);
+
+		// Three preview frames: the ACTIVE page is rebuilt with different content
+		// each time (as `withPreviews` does), every other page reference-identical.
+		for (const extra of ["a", "b", "c"]) {
+			rerender({ pages: [pageWith("p1", ["r1", extra]), counted] });
+			await act(async () => {
+				await Promise.resolve();
+			});
+		}
+		// Unchanged: the effect never re-ran, so p2 was never re-serialized.
+		expect(fingerprints).toBe(1);
+		expect(spy).toHaveBeenCalledTimes(1);
+	});
+
 	// E-15: no in-flight dedup meant every effect re-run while a page's
 	// rasterize was still pending (e.g. a remote-collab commit stream
 	// recreating the `pages` array) launched ANOTHER concurrent off-screen

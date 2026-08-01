@@ -70,6 +70,36 @@ export function usePageThumbnails(
 	// at the same content version while the first is still in flight (E-15).
 	const pendingRef = useRef<Map<string, string>>(new Map());
 
+	/**
+	 * Latest resolution, read at rasterize time rather than depended on (T-4.3).
+	 * `resolvedDocument` changes identity on EVERY resolution — including every
+	 * frame of a live preview — so keeping it in the dependency array re-ran the
+	 * whole effect at pointer rate.
+	 */
+	const resolvedRef = useRef(resolvedDocument);
+	resolvedRef.current = resolvedDocument;
+
+	/**
+	 * The inactive pages, held by element identity (T-4.3).
+	 *
+	 * The active page is never rasterized here, and previews only ever target
+	 * the ACTIVE page — yet `withPreviews` rebuilds that page object on every
+	 * frame, which rebuilt `pages` and re-ran this effect. Each re-run recomputes
+	 * `pageThumbnailKey` for every other page, and that key is a full
+	 * `JSON.stringify(page)`: on a 50-page document, 49 whole-page serializations
+	 * per preview frame, always to conclude "still cached". Re-running only when
+	 * an INACTIVE page actually changes removes that entirely.
+	 */
+	const inactive = pages.filter((p) => p.id !== activePageId);
+	const inactiveRef = useRef<readonly CanvasPage[]>(inactive);
+	if (
+		inactive.length !== inactiveRef.current.length ||
+		inactive.some((p, i) => p !== inactiveRef.current[i])
+	) {
+		inactiveRef.current = inactive;
+	}
+	const inactivePages = inactiveRef.current;
+
 	useEffect(() => {
 		let cancelled = false;
 		const publish = () => {
@@ -78,8 +108,10 @@ export function usePageThumbnails(
 				new Map(Array.from(cacheRef.current, ([id, entry]) => [id, entry.url])),
 			);
 		};
-		// Drop cache entries for pages that no longer exist.
-		const liveIds = new Set(pages.map((p) => p.id));
+		// Drop cache entries for pages that no longer exist. The ACTIVE page is
+		// included so switching pages keeps its already-rasterized thumbnail.
+		const liveIds = new Set(inactivePages.map((p) => p.id));
+		liveIds.add(activePageId);
 		let pruned = false;
 		for (const id of cacheRef.current.keys()) {
 			if (!liveIds.has(id)) {
@@ -92,8 +124,7 @@ export function usePageThumbnails(
 		}
 		if (pruned) publish();
 
-		for (const page of pages) {
-			if (page.id === activePageId) continue; // active page is live
+		for (const page of inactivePages) {
 			const key = pageThumbnailKey(page);
 			const cached = cacheRef.current.get(page.id);
 			if (cached && cached.key === key) continue; // thumbnail still valid
@@ -103,7 +134,9 @@ export function usePageThumbnails(
 				page,
 				assets,
 				pixelRatio,
-				...(resolvedDocument ? { resolvedDocument } : {}),
+				...(resolvedRef.current
+					? { resolvedDocument: resolvedRef.current }
+					: {}),
 			})
 				.then((res) => {
 					if (cancelled) return;
@@ -123,7 +156,8 @@ export function usePageThumbnails(
 		return () => {
 			cancelled = true;
 		};
-	}, [pages, activePageId, assets, rasterize, pixelRatio, resolvedDocument]);
+		// `resolvedDocument` is intentionally absent — see `resolvedRef` above.
+	}, [inactivePages, activePageId, assets, rasterize, pixelRatio]);
 
 	return urls;
 }
