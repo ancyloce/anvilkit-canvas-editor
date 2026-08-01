@@ -67969,67 +67969,67 @@
 		},
 		"742": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "FieldContractTarget"
 		},
 		"743": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "FieldContractTarget.T"
 		},
 		"744": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "FieldContractTarget.nodes"
 		},
 		"745": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "FieldContractTarget.buildPatch"
 		},
 		"746": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "__type"
 		},
 		"747": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "__type"
 		},
 		"748": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "node"
 		},
 		"749": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "value"
 		},
 		"750": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "FieldContractTarget.buildCommand"
 		},
 		"751": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "__type"
 		},
 		"752": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "__type"
 		},
 		"753": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "node"
 		},
 		"754": {
 			"packageName": "@anvilkit/canvas-editor",
-			"packagePath": "src/panels/fields.tsx",
+			"packagePath": "src/context/field-contract.ts",
 			"qualifiedName": "value"
 		},
 		"755": {
