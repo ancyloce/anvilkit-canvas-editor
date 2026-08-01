@@ -7,6 +7,7 @@ import { useSyncExternalStore } from "react";
 import { Line, Rect } from "react-konva";
 import { useCanvasActions } from "../actions/editor-actions.js";
 import {
+	useActivePage,
 	useCanvasStores,
 	useCanvasStudio,
 } from "../context/canvas-studio-context.js";
@@ -36,7 +37,8 @@ interface GuideLineProps {
 	axis: CanvasGuideAxis;
 	index: number;
 	position: number;
-	page: CanvasPage;
+	/** Only the size is read — see `insetsRect` (T-4.2). */
+	page: Pick<CanvasPage, "size">;
 	zoom: number;
 	draggable: boolean;
 	onMove: (axis: CanvasGuideAxis, index: number, position: number) => void;
@@ -99,7 +101,9 @@ function GuideLine({
 
 function insetsRect(
 	insets: CanvasInsets,
-	page: CanvasPage,
+	// Only the page SIZE is needed; typing this as a full `CanvasPage` was
+	// over-specified and blocked the narrowed `useActivePage` value (T-4.2).
+	page: Pick<CanvasPage, "size">,
 ): { x: number; y: number; width: number; height: number } {
 	return {
 		x: insets.left,
@@ -131,7 +135,9 @@ export function GuideLayoutOverlay(): React.JSX.Element | null {
 		() => ctx.viewportStore.getState().zoom,
 		() => ctx.viewportStore.getState().zoom,
 	);
-	const page = ctx.ir.pages.find((p) => p.id === ctx.activePageId);
+	// Resolved-source page (plan 0024 Phase 2): margins/bleed/safe-area are
+	// computed from page size, so they must track a live size preview too.
+	const page = useActivePage();
 	if (!page || !chrome) return null;
 
 	const aids = page.layoutAids;

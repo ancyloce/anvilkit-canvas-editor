@@ -22,6 +22,12 @@ import {
 	FALLBACK_PAGE_BACKGROUND,
 	pageBackgroundFill,
 } from "@/render/page-background.js";
+import {
+	createFieldPreviewStore,
+	type PagePreviewPatch,
+} from "@/stores/field-preview-store.js";
+import { createResolvedDocumentStore } from "@/stores/resolved-document-store.js";
+import { createSceneStore } from "@/stores/scene-store.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { DesignBackground } from "../DesignBackground.js";
 
@@ -92,6 +98,62 @@ describe("DesignBackground (live stage page background, M0-04)", () => {
 		const ir = irWithBackground({ kind: "solid", value: "#123456" });
 		renderBackground(ir, "not-a-page");
 		expect(calls).toHaveLength(0);
+	});
+
+	/**
+	 * Plan 0024 Phase 2 end-to-end. The store work alone is not enough: this
+	 * component used to read `ctx.ir` directly, so a page preview resolved
+	 * correctly and then painted nowhere. It now reads the resolved SOURCE via
+	 * `useActivePage`, which is what makes the artboard track the picker live.
+	 */
+	function renderWithPreview(
+		ir: CanvasIR,
+		patch: PagePreviewPatch,
+	): () => void {
+		const h = makeHarness({ ir });
+		const sceneStore = createSceneStore({ initialIR: ir });
+		const fieldPreviewStore = createFieldPreviewStore();
+		const resolvedDocumentStore = createResolvedDocumentStore({
+			sceneStore,
+			fieldPreviewStore,
+		});
+		const disconnect = resolvedDocumentStore.connect();
+		fieldPreviewStore.getState().setPagePreviews({ p1: patch });
+		render(
+			<CanvasStudioContext.Provider
+				value={{
+					...h.studioCtx,
+					ir,
+					activePageId: "p1",
+					fieldPreviewStore,
+					resolvedDocumentStore,
+				}}
+			>
+				<DesignBackground />
+			</CanvasStudioContext.Provider>,
+		);
+		return disconnect;
+	}
+
+	it("paints a LIVE background preview, not the committed value (plan 0024 Phase 2)", () => {
+		const ir = irWithBackground({ kind: "solid", value: "#111111" });
+		const disconnect = renderWithPreview(ir, {
+			background: { kind: "solid", value: "#00ff00" },
+		});
+		expect(calls[0]?.props.fill).toBe("#00ff00");
+		disconnect();
+	});
+
+	it("resizes the artboard rect from a LIVE size preview (plan 0024 Phase 2)", () => {
+		const ir = irWithBackground({ kind: "solid", value: "#111111" });
+		const committed = ir.pages[0]?.size;
+		const disconnect = renderWithPreview(ir, {
+			size: { ...committed, width: 1000 },
+		});
+		expect(calls[0]?.props.width).toBe(1000);
+		// The untouched axis still comes from the committed page.
+		expect(calls[0]?.props.height).toBe(committed?.height);
+		disconnect();
 	});
 
 	it("never passes a raw non-solid value into the Konva fill (FR-063 narrowing)", () => {

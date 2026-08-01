@@ -1,7 +1,8 @@
 "use client";
 
+import * as React from "react";
 import { Rect } from "react-konva";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import { useActivePage } from "../context/canvas-studio-context.js";
 import { pageBackgroundFill } from "../render/page-background.js";
 
 /**
@@ -14,8 +15,9 @@ import { pageBackgroundFill } from "../render/page-background.js";
  * fallback instead of leaking a raw non-color string into Konva.
  */
 export function DesignBackground(): React.JSX.Element | null {
-	const { ir, activePageId } = useCanvasStudio();
-	const page = ir.pages.find((p) => p.id === activePageId);
+	// Resolved-source page (plan 0024 Phase 2), so a live background/size
+	// preview paints while the inspector field is still being dragged.
+	const page = useActivePage();
 	if (!page) return null;
 	return (
 		<Rect

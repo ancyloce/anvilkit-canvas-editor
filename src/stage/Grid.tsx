@@ -1,8 +1,12 @@
 "use client";
 
+import * as React from "react";
 import { useSyncExternalStore } from "react";
 import { Group, Line } from "react-konva";
-import { useCanvasStudio } from "../context/canvas-studio-context.js";
+import {
+	useActivePage,
+	useCanvasStudio,
+} from "../context/canvas-studio-context.js";
 
 /**
  * Per-axis budget for grid lines (main and sub-grid counted separately). See
@@ -71,7 +75,9 @@ export function Grid(): React.JSX.Element | null {
 		ctx.viewportStore.getState,
 		ctx.viewportStore.getState,
 	);
-	const page = ctx.ir.pages.find((p) => p.id === ctx.activePageId);
+	// Resolved-source page (plan 0024 Phase 2) so the grid extent tracks a live
+	// page-size preview instead of snapping only on commit.
+	const page = useActivePage();
 	if (!vs.gridEnabled || !page || vs.gridSize <= 0) return null;
 
 	const { width, height } = page.size;
