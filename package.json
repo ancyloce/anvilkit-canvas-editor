@@ -99,7 +99,7 @@
 	"dependencies": {
 		"@anvilkit/canvas-core": "workspace:*",
 		"@anvilkit/ui": "workspace:*",
-		"lucide-react": "^1.26.0",
+		"lucide-react": "^1.28.0",
 		"use-image": "^1.1.4",
 		"zustand": "^5.0.14"
 	},
