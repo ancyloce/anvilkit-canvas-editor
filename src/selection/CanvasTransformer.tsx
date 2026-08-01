@@ -14,6 +14,7 @@ import { Label, Tag, Text, Transformer } from "react-konva";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { draggedIdsKey } from "../perf/active-nodes.js";
 import { findNodeById } from "../stage/find-node-by-id.js";
+import { isFiniteBox } from "../stage/finite-geometry.js";
 import {
 	activeAnchorName,
 	type ChromeTheme,
@@ -738,7 +739,14 @@ export function CanvasTransformer(): React.JSX.Element | null {
 				// rotate-icon sync). Rejecting the offending edge here (falling
 				// back to `oldBox`) stops the collapse before Konva's math ever
 				// gets there.
+				//
+				// `isFiniteBox` closes the other half of that guard: an ALREADY
+				// non-finite box passes both magnitude tests (every `NaN`
+				// comparison is false), which is exactly how Konva's own
+				// `Util._inRange` size guards get bypassed and `NaN` reaches
+				// `rotation`/`scaleX`/… on the selected nodes.
 				boundBoxFunc={(oldBox, newBox) =>
+					!isFiniteBox(newBox) ||
 					Math.abs(newBox.width) < MIN_DIMENSION ||
 					Math.abs(newBox.height) < MIN_DIMENSION
 						? oldBox

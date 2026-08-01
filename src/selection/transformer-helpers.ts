@@ -186,6 +186,23 @@ const ASPECT_FIT_KINDS: ReadonlySet<CanvasNode["type"]> = new Set([
 ]);
 
 /**
+ * Discard a gesture: put the live Konva node back on the transform the IR
+ * declares, so the stage stops showing values that will never be committed.
+ * Mirrors what `CanvasNodeRenderer` would render for this node — including the
+ * aspect-fit factor polygon/star layer on top of their own `scaleY`.
+ */
+function resetKonvaToIR(knode: Konva.Node, irNode: CanvasNode): void {
+	const { transform, bounds } = irNode;
+	const fit = ASPECT_FIT_KINDS.has(irNode.type) ? aspectFitScaleY(bounds) : 1;
+	const offset = nodeRenderOffset(irNode);
+	knode.scaleX(transform.scaleX);
+	knode.scaleY(transform.scaleY * fit);
+	knode.rotation(transform.rotation);
+	knode.x(transform.x + offset.x);
+	knode.y(transform.y + offset.y);
+}
+
+/**
  * Translate the live Konva transforms of the selected nodes into IR commands
  * on `transformend` — one resize and/or rotate command per affected node so
  * the caller can commit a whole gesture (incl. simultaneous resize + rotate,
@@ -229,6 +246,28 @@ export function collectTransformEndCommands(
 		const konvaX = knode.x();
 		const konvaY = knode.y();
 		const newRotation = knode.rotation();
+
+		// A non-finite live transform means Konva's bounding-box math went
+		// singular mid-gesture (see the `boundBoxFunc` note in
+		// `CanvasTransformer.tsx`): Konva warns but STORES the `NaN`, so the
+		// values read back above are the corruption, not the user's intent.
+		// Committing them writes `NaN` geometry into the document, where it warns
+		// on every later render and re-poisons every gesture on that node.
+		//
+		// Most of the branches below already skip by accident — every
+		// `Math.abs(NaN - x) > EPSILON` test is false — but the elastic branch's
+		// `plan.layoutItem` is truthiness-tested, so an axis converting to Fixed
+		// commits `NaN` bounds regardless. Bail explicitly instead, and reset the
+		// live node to its IR transform exactly like a locked one so the stage
+		// stops rendering the corrupted values.
+		if (
+			![scaleX, scaleY, konvaX, konvaY, newRotation].every((n) =>
+				Number.isFinite(n),
+			)
+		) {
+			resetKonvaToIR(knode, irNode);
+			continue;
+		}
 
 		if (SCALE_SIZED.has(irNode.type)) {
 			// Path/line: persist the Transformer's scale into the IR transform so
