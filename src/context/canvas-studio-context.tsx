@@ -1,21 +1,20 @@
 "use client";
 
 import type {
-	CanvasBrandPolicyContext,
-	CanvasGovernanceAuditSink,
-} from "@anvilkit/canvas-core/brand-governance";
-import type { CanvasAnalyticsSink } from "../component-libraries/analytics.js";
-import type {
 	CanvasExportWarning,
 	CanvasIR,
+	CanvasPage,
 	CanvasResolvedComponentDocument,
 	CanvasResolvedNodeRecord,
 	CanvasRuntime,
 } from "@anvilkit/canvas-core";
-import type { CanvasComponentProvider } from "../component-libraries/component-provider.js";
 import { toResolvedNodeId } from "@anvilkit/canvas-core";
+import type {
+	CanvasBrandPolicyContext,
+	CanvasGovernanceAuditSink,
+} from "@anvilkit/canvas-core/brand-governance";
 import type Konva from "konva";
-import { createContext, use, useSyncExternalStore } from "react";
+import { createContext, use, useRef, useSyncExternalStore } from "react";
 import type { CanvasClipboardAdapter } from "../actions/clipboard-adapter.js";
 import type {
 	CanvasAssetPicker,
@@ -24,6 +23,8 @@ import type {
 } from "../assets/adapter-types.js";
 import type { CanvasLayoutEventHandler } from "../auto-layout/events.js";
 import type { BrandKit } from "../brand/brand-kit.js";
+import type { CanvasAnalyticsSink } from "../component-libraries/analytics.js";
+import type { CanvasComponentProvider } from "../component-libraries/component-provider.js";
 import type {
 	CanvasKindInspector,
 	CanvasKindRenderer,
@@ -534,6 +535,87 @@ export function useResolvedDocument():
 	return useSyncExternalStore(
 		store ? store.subscribe : NOOP_SUBSCRIBE,
 		() => store?.getState().resolved,
+		() => undefined,
+	);
+}
+
+/**
+ * The active page's CHROME fields — everything the stage overlays draw from.
+ *
+ * Deliberately excludes `root`: this value is memoised on the chrome fields
+ * alone (see {@link useActivePage}), so a `root` carried alongside them could
+ * be a frame stale. Node content is read through the resolved records, never
+ * from here.
+ */
+export interface CanvasActivePageChrome {
+	id: string;
+	name?: string;
+	size: CanvasPage["size"];
+	background: CanvasPage["background"];
+	layoutAids?: CanvasPage["layoutAids"];
+}
+
+/**
+ * The active page as the stage should DRAW it (plan 0024 Phase 2, narrowed in
+ * Phase 4).
+ *
+ * Reads the resolved document's `source` — the committed IR with live preview
+ * patches merged — so page-level previews (size, background) paint while the
+ * user is still dragging the field, exactly like node previews already do.
+ * Falls back to the committed IR outside a full studio context (headless
+ * rasterization, partial test contexts), where the two are identical anyway.
+ *
+ * Replaces the `ctx.ir.pages.find(p => p.id === ctx.activePageId)` line that was
+ * duplicated across every stage overlay; each copy silently read PAST the
+ * preview store, which is why page previews rendered nowhere.
+ *
+ * **Identity-scoped (T-4.2).** `withPreviews` rebuilds the page object whenever
+ * any NODE preview changes (`{...page, root}`), so subscribing on the page
+ * object would re-render every stage overlay on every frame of an unrelated
+ * node drag — which is exactly what the Phase 2 version did. The snapshot is
+ * therefore cached and only replaced when a chrome field actually changes
+ * reference, letting React bail out of the render entirely.
+ */
+export function useActivePage(): CanvasActivePageChrome | undefined {
+	const ctx = use(CanvasStudioContext);
+	const store = ctx?.resolvedDocumentStore;
+	const activePageId = ctx?.activePageId;
+	const fallbackPages = ctx?.ir.pages;
+	// Stable across renders; only ever read/written inside getSnapshot, which
+	// React calls during render — never concurrently.
+	const cache = useRef<CanvasActivePageChrome | undefined>(undefined);
+	const getSnapshot = (): CanvasActivePageChrome | undefined => {
+		const pages = store?.getState().resolved.source.pages ?? fallbackPages;
+		const page = pages?.find((p) => p.id === activePageId);
+		const prev = cache.current;
+		if (!page) {
+			cache.current = undefined;
+			return undefined;
+		}
+		if (
+			prev &&
+			prev.id === page.id &&
+			prev.name === page.name &&
+			prev.size === page.size &&
+			prev.background === page.background &&
+			prev.layoutAids === page.layoutAids
+		) {
+			// Only `root` moved — nothing this hook exposes changed.
+			return prev;
+		}
+		const next: CanvasActivePageChrome = {
+			id: page.id,
+			size: page.size,
+			background: page.background,
+			...(page.name !== undefined ? { name: page.name } : {}),
+			...(page.layoutAids !== undefined ? { layoutAids: page.layoutAids } : {}),
+		};
+		cache.current = next;
+		return next;
+	};
+	return useSyncExternalStore(
+		store ? store.subscribe : NOOP_SUBSCRIBE,
+		getSnapshot,
 		() => undefined,
 	);
 }

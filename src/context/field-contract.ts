@@ -4,8 +4,10 @@ import type {
 	CanvasAnyNodeUpdateCommand,
 	CanvasCommand,
 	CanvasNode,
+	CanvasPage,
 } from "@anvilkit/canvas-core";
 import { use, useCallback } from "react";
+import type { PagePreviewPatch } from "../stores/field-preview-store.js";
 import {
 	CanvasStudioContext,
 	CanvasStudioStableContext,
@@ -48,14 +50,48 @@ export interface FieldContractTarget<T> {
 }
 
 /**
+ * Page-level contract (plan 0024 Phase 2): the artboard's own properties —
+ * size, background — which no `node.update` can express.
+ *
+ * `buildCommand` is REQUIRED here, unlike the node contract. There is no
+ * generic `page.update`: each property has its own command (`page.resize`,
+ * `page.set-background`, …), so there is nothing to synthesise a default from.
+ * Build both functions from ONE derivation of the next value — see
+ * `pageFieldContract` in `PropertyInspector` — or preview and commit can
+ * silently disagree and the canvas will lie mid-drag.
+ */
+export interface FieldPageContract<T> {
+	page: CanvasPage;
+	buildPatch: (page: CanvasPage, value: T) => PagePreviewPatch;
+	buildCommand: (page: CanvasPage, value: T) => CanvasCommand;
+}
+
+/**
+ * Either target. Deliberately NOT folded into `FieldContractTarget` itself:
+ * neither `nodes` nor `page` is a literal type, so TypeScript cannot use them
+ * to discriminate a bare object literal, and every one of the ~65 existing
+ * `contract={{ nodes, buildPatch }}` literals would lose contextual typing on
+ * `buildPatch`'s parameters (TS7006). Keeping the two named types separate and
+ * uniting them only where a VARIABLE is passed preserves inference on both
+ * sides — page fields take their own prop and get full inference from a
+ * single, non-union contextual type.
+ */
+export type AnyFieldContract<T> = FieldContractTarget<T> | FieldPageContract<T>;
+
+/**
  * Internal contract engine shared by every field kind: preview publishes
  * per-node patches to the `fieldPreviewStore`; commit clears the preview and
  * applies the same patches as one coalesced history entry (a `batch` for
  * multi-selection); cancel just clears the preview. All no-ops without a
  * `contract` target.
+ *
+ * Accepts either target shape (plan 0024 Phase 2). A page contract previews
+ * through `setPagePreviews` and commits its own single command; everything
+ * else — coalescing, revert, the `enabled`/`mixedLabel` surface — is identical,
+ * which is the point of routing both through one engine.
  */
 export function useFieldContract<T>(
-	contract: FieldContractTarget<T> | undefined,
+	contract: AnyFieldContract<T> | undefined,
 	fieldId: string,
 ): {
 	preview: (value: T) => void;
@@ -73,6 +109,12 @@ export function useFieldContract<T>(
 		(value: T) => {
 			const store = ctx?.fieldPreviewStore;
 			if (!contract || !store) return;
+			if ("page" in contract) {
+				store.getState().setPagePreviews({
+					[contract.page.id]: contract.buildPatch(contract.page, value),
+				});
+				return;
+			}
 			const entries: Record<string, Record<string, unknown>> = {};
 			for (const node of contract.nodes) {
 				entries[node.id] = contract.buildPatch(node, value);
@@ -88,6 +130,13 @@ export function useFieldContract<T>(
 		(value: T) => {
 			if (!contract || !ctx) return;
 			ctx.fieldPreviewStore?.getState().clearPreviews();
+			if ("page" in contract) {
+				const cmd = contract.buildCommand(contract.page, value);
+				const mergeKey = `field:${fieldId}:${contract.page.id}`;
+				if (ctx.commitCoalesced) ctx.commitCoalesced(cmd, mergeKey);
+				else ctx.commit(cmd);
+				return;
+			}
 			const cmds = contract.nodes.map(
 				(node): CanvasCommand =>
 					contract.buildCommand
