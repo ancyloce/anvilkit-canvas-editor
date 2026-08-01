@@ -469,4 +469,38 @@ describe("ComponentPropertySection (M5-04)", () => {
 		expect(update?.to?.id).toBe("p-inst-vis");
 		expect(update?.to?.name).toBe("Show badge");
 	});
+
+	/**
+	 * Plan 0024 Phase 3 (T-3.3). Phase 3 swept the inspector's remaining
+	 * `onCommit` fields onto the §10 contract; THIS one must stay behind. A
+	 * property rename is a Registry edit (`component.update-property`), not a
+	 * node patch — there is no node to preview and no per-node batch to
+	 * coalesce, and `TextField` ignores `onCommit` whenever a contract is
+	 * present, so wiring an empty-node contract here would silently commit
+	 * NOTHING. This test exists so a future "finish the migration" sweep fails
+	 * loudly instead of quietly breaking renames.
+	 */
+	it("keeps the property rename on the LEGACY commit path (plan 0024 T-3.3)", () => {
+		const withProp = definition([
+			{
+				id: "p-inst-vis",
+				name: "Visible",
+				nodeId: "inst-1",
+				kind: "visibility",
+			},
+		]);
+		const { view, h } = renderInScope("inst-1", withProp);
+		const input = view.getByTestId("property-name-p-inst-vis");
+		fireEvent.change(input, { target: { value: "Renamed" } });
+
+		// Typing must NOT publish a field preview — there is no node to preview.
+		expect(h.studioCtx.fieldPreviewStore?.getState().previews).toEqual({});
+
+		fireEvent.blur(input);
+		// Plain `commit`, not the contract's coalescing path.
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+		expect(h.commits.some((c) => c.type === "component.update-property")).toBe(
+			true,
+		);
+	});
 });

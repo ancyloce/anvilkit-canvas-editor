@@ -25,7 +25,12 @@ import {
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import type { BrandKit } from "../../brand/brand-kit.js";
 import { PropertyInspector } from "../PropertyInspector.js";
-import { colorRowText, setColor } from "./_color-test-helpers.js";
+import {
+	colorRowText,
+	commitColor,
+	openColor,
+	setColor,
+} from "./_color-test-helpers.js";
 import { selectedLabel, selectOption } from "./_select-test-helpers.js";
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
@@ -195,6 +200,80 @@ describe("PropertyInspector — empty state", () => {
 		const last = h.commits.at(-1) as { type: string; to?: { width: number } };
 		expect(last.type).toBe("page.resize");
 		expect(last.to?.width).toBe(1234);
+	});
+
+	/**
+	 * Plan 0024 Phase 2. Page size/background previously had NO preview path —
+	 * `fieldPreviewStore` was keyed by node id and `withPreviews` only walked
+	 * `page.root` — so the artboard only moved on commit. These assert the live
+	 * half: the canvas updates while editing, history does not.
+	 */
+	it("previews the page width live and commits once on blur (plan 0024 Phase 2)", () => {
+		const h = makeHarness();
+		const { container } = mount(h.studioCtx);
+		const width = container.querySelector(
+			"[data-testid='prop-page-width']",
+		) as HTMLInputElement;
+
+		fireEvent.change(width, { target: { value: "1234" } });
+
+		const previewed = h.studioCtx.fieldPreviewStore?.getState().pagePreviews.p1;
+		expect(previewed?.size?.width).toBe(1234);
+		// The other axis and the unit survive the merge — the preview patch
+		// spreads the page's own size rather than replacing it.
+		expect(previewed?.size?.height).toBe(h.ir.pages[0]?.size.height);
+		expect(previewed?.size?.unit).toBe(h.ir.pages[0]?.size.unit);
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+
+		fireEvent.blur(width);
+		const last = h.commits.at(-1) as { type: string; to?: { width: number } };
+		expect(last.type).toBe("page.resize");
+		expect(last.to?.width).toBe(1234);
+		expect(h.studioCtx.fieldPreviewStore?.getState().pagePreviews).toEqual({});
+	});
+
+	it("Escape reverts an in-progress page-size edit without committing (plan 0024 Phase 2)", () => {
+		const h = makeHarness();
+		const { container } = mount(h.studioCtx);
+		const width = container.querySelector(
+			"[data-testid='prop-page-width']",
+		) as HTMLInputElement;
+
+		fireEvent.change(width, { target: { value: "999" } });
+		expect(
+			h.studioCtx.fieldPreviewStore?.getState().pagePreviews.p1,
+		).toBeDefined();
+
+		fireEvent.keyDown(width, { key: "Escape" });
+		expect(h.studioCtx.fieldPreviewStore?.getState().pagePreviews).toEqual({});
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+	});
+
+	it("previews the page background before the picker commits (plan 0024 Phase 2)", async () => {
+		const h = makeHarness();
+		const { container } = mount(h.studioCtx);
+
+		// This file has no afterEach(cleanup), so the colour helpers need a scope.
+		const hex = await openColor("prop-page-background", container);
+		fireEvent.change(hex, { target: { value: "#ff0000" } });
+		fireEvent.blur(hex);
+
+		expect(
+			h.studioCtx.fieldPreviewStore?.getState().pagePreviews.p1?.background,
+		).toEqual({ kind: "solid", value: "#ff0000" });
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+
+		commitColor();
+		const last = h.commits.at(-1) as {
+			type: string;
+			to?: { kind: string; value: string };
+		};
+		expect(last.type).toBe("page.set-background");
+		expect(last.to).toEqual({ kind: "solid", value: "#ff0000" });
+		expect(h.studioCtx.fieldPreviewStore?.getState().pagePreviews).toEqual({});
 	});
 
 	it("exposes the panel as a labeled region even when empty", () => {

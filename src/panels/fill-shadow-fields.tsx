@@ -168,6 +168,18 @@ export function FillAndShadowFields({
 		commitPatchAll(nodes, () => ({ [fillKey]: next }));
 	};
 
+	/**
+	 * The fill value a chosen KIND maps to (FR-074). Extracted from the fill-type
+	 * select's old inline `onCommit` so the §10 contract's `buildPatch` is the
+	 * only place the mapping lives (plan 0024 Phase 3).
+	 */
+	const fillForKind = (next: FillKind): CanvasFill | undefined => {
+		// FR-074 no-fill: clear the fill entirely.
+		if (next === "none") return undefined;
+		if (next === "solid") return grad?.stops[0]?.color ?? solidColor;
+		return grad ? { ...grad, kind: next } : defaultGradient(next, solidColor);
+	};
+
 	const effShadow = shadowOf(node);
 	/** Replace the first drop shadow inside NODE's OWN effect list (other
 	 * effects ride along), clearing the legacy field — per-node so a batch
@@ -226,17 +238,11 @@ export function FillAndShadowFields({
 							},
 						]}
 						dataTestId="prop-fill-type"
-						onCommit={(next: FillKind) => {
-							if (next === "none") {
-								// FR-074 no-fill: clear the fill entirely.
-								commitFillAll(undefined);
-							} else if (next === "solid") {
-								commitFillAll(grad?.stops[0]?.color ?? solidColor);
-							} else if (grad) {
-								commitFillAll({ ...grad, kind: next });
-							} else {
-								commitFillAll(defaultGradient(next, solidColor));
-							}
+						contract={{
+							nodes,
+							buildPatch: (_n, next: FillKind) => ({
+								[fillKey]: fillForKind(next),
+							}),
 						}}
 					/>
 					{grad ? (

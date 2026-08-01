@@ -18,6 +18,7 @@ import { type ReactNode, useCallback, useState } from "react";
 import { useCanvasStores } from "../context/canvas-studio-context.js";
 import {
 	type FieldContractTarget,
+	type FieldPageContract,
 	useFieldContract,
 } from "../context/field-contract.js";
 
@@ -105,7 +106,9 @@ export function FieldRow({
  * package's `FieldContractTarget` export in `index.ts`, keeps working.
  */
 export {
+	type AnyFieldContract,
 	type FieldContractTarget,
+	type FieldPageContract,
 	useFieldContract,
 } from "../context/field-contract.js";
 
@@ -116,10 +119,16 @@ export interface NumberFieldProps {
 	min?: number;
 	max?: number;
 	dataTestId: string;
-	/** Legacy commit path; ignored when {@link contract} is present. */
+	/** Legacy commit path; ignored when {@link contract}/{@link pageContract} is present. */
 	onCommit?: (next: number) => void;
 	/** §10 field-input contract (B-12): preview + coalesced commit + revert. */
 	contract?: FieldContractTarget<number>;
+	/**
+	 * PAGE-level §10 contract (plan 0024 Phase 2) — the artboard's own size.
+	 * Mutually exclusive with {@link contract}; a separate prop rather than a
+	 * union so both keep full parameter inference (see `AnyFieldContract`).
+	 */
+	pageContract?: FieldPageContract<number>;
 	/** Multi-selection mixed value (B-12): renders an empty "Mixed" field. */
 	mixed?: boolean;
 }
@@ -139,13 +148,14 @@ export function NumberField({
 	dataTestId,
 	onCommit,
 	contract,
+	pageContract,
 	mixed,
 }: NumberFieldProps): React.JSX.Element {
 	// Uncontrolled (commit-on-blur), re-keyed on external value changes
 	// (drag/nudge/undo) to remount with a fresh defaultValue — but the key is
 	// frozen while focused (W3) so an external update mid-edit never steals focus.
 	const fk = useFrozenKey(mixed ? "mixed" : String(value));
-	const field = useFieldContract(contract, dataTestId);
+	const field = useFieldContract(contract ?? pageContract, dataTestId);
 	const commitValue = (parsed: number): void => {
 		if (field.enabled) field.commit(parsed);
 		else onCommit?.(parsed);
@@ -374,10 +384,15 @@ export interface ColorFieldProps {
 	label: string;
 	value: string | undefined;
 	dataTestId: string;
-	/** Legacy commit path; ignored when {@link contract} is present. */
+	/** Legacy commit path; ignored when {@link contract}/{@link pageContract} is present. */
 	onCommit?: (next: string) => void;
 	/** §10 field-input contract (B-12): preview + coalesced commit + revert. */
 	contract?: FieldContractTarget<string>;
+	/**
+	 * PAGE-level §10 contract (plan 0024 Phase 2) — the artboard background.
+	 * Mutually exclusive with {@link contract}; see {@link NumberFieldProps.pageContract}.
+	 */
+	pageContract?: FieldPageContract<string>;
 	/** Native tooltip, e.g. flagging an unresolved brand-token value (canvas-m1-013). */
 	title?: string;
 	/** FR-074: hide the R/G/B numeric inputs for space-constrained hosts. */
@@ -423,11 +438,12 @@ export function ColorField({
 	dataTestId,
 	onCommit,
 	contract,
+	pageContract,
 	title,
 	rgb = true,
 	eyeDropper,
 }: ColorFieldProps): React.JSX.Element {
-	const field = useFieldContract(contract, dataTestId);
+	const field = useFieldContract(contract ?? pageContract, dataTestId);
 	return (
 		// `title` (unresolved brand-token flag, canvas-m1-013) has no ColorRow
 		// prop, so it stays on a wrapper.

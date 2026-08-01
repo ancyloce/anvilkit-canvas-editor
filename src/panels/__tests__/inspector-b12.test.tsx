@@ -120,6 +120,43 @@ describe("PropertyInspector multi-selection (B-12, FR-070)", () => {
 		});
 	});
 
+	/**
+	 * Plan 0024 Phase 3 (T-3.2). These discrete pickers were already instant —
+	 * the gap was that they bypassed the §10 contract, so each pick took a
+	 * different code path from every neighbouring field and landed its own
+	 * `commitBatch` entry rather than one coalesced batch. Now they match.
+	 */
+	it("a converted SELECT commits one coalesced batch across the selection (plan 0024 Phase 3)", async () => {
+		const h = mount(twoRectIR(), ["r1", "r2"]);
+		await selectOption("prop-fill-type", "Solid");
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		const [cmd] = (
+			h.studioCtx.commitCoalesced as unknown as {
+				mock: { calls: [unknown, string][] };
+			}
+		).mock.calls[0] ?? [null];
+		expect(cmd).toMatchObject({
+			type: "batch",
+			commands: [
+				{ type: "node.update", nodeId: "r1" },
+				{ type: "node.update", nodeId: "r2" },
+			],
+		});
+	});
+
+	it("select merge keys are per-field and per-selection (plan 0024 Phase 3)", async () => {
+		const h = mount(twoRectIR(), ["r1", "r2"]);
+		await selectOption("prop-fill-type", "Solid");
+		const mergeKey = (
+			h.studioCtx.commitCoalesced as unknown as {
+				mock: { calls: [unknown, string][] };
+			}
+		).mock.calls[0]?.[1];
+		// Keyed by field id + the node ids it targets, so two DIFFERENT fields
+		// never fold into one another's undo entry.
+		expect(mergeKey).toBe("field:prop-fill-type:r1,r2");
+	});
+
 	it("mixed transform edits build per-node patches (own transform spread)", () => {
 		const h = mount(twoRectIR(), ["r1", "r2"]);
 		const x = screen.getByTestId("prop-x") as HTMLInputElement;

@@ -323,9 +323,10 @@ export function renderRichTextFields(
 						{ value: "none", label: t("canvas.inspector.wrapNone", "None") },
 					]}
 					dataTestId="prop-rich-text-wrap"
-					onCommit={(v: RichTextWrap) =>
-						commitPatchAll(nodes, () => ({ wrap: v }))
-					}
+					contract={{
+						nodes,
+						buildPatch: (_n, v: RichTextWrap) => ({ wrap: v }),
+					}}
 				/>
 				<SelectField
 					label={t("canvas.inspector.overflow", "Overflow")}
@@ -349,9 +350,10 @@ export function renderRichTextFields(
 						},
 					]}
 					dataTestId="prop-rich-text-overflow"
-					onCommit={(v: RichTextOverflow) =>
-						commitPatchAll(nodes, () => ({ overflow: v }))
-					}
+					contract={{
+						nodes,
+						buildPatch: (_n, v: RichTextOverflow) => ({ overflow: v }),
+					}}
 				/>
 				{overflowing ? (
 					<div
@@ -415,12 +417,13 @@ export function renderRichTextFields(
 						},
 					]}
 					dataTestId="prop-rich-text-sizing"
-					onCommit={(v: "fixed" | "auto-width") =>
-						commitPatchAll(nodes, () => ({
+					contract={{
+						nodes,
+						buildPatch: (_n, v: "fixed" | "auto-width") => ({
 							// "fixed" is the schema default — written back as absent.
 							sizing: v === "fixed" ? undefined : v,
-						}))
-					}
+						}),
+					}}
 				/>
 				<SelectField
 					label={t("canvas.inspector.verticalAlign", "Vertical align")}
@@ -437,12 +440,13 @@ export function renderRichTextFields(
 						},
 					]}
 					dataTestId="prop-rich-text-vertical-align"
-					onCommit={(v: "top" | "middle" | "bottom") =>
-						commitPatchAll(nodes, () => ({
+					contract={{
+						nodes,
+						buildPatch: (_n, v: "top" | "middle" | "bottom") => ({
 							// "top" is the schema default — written back as absent.
 							verticalAlign: v === "top" ? undefined : v,
-						}))
-					}
+						}),
+					}}
 				/>
 			</Section>
 			<Section title={t("canvas.inspector.paragraph", "Paragraph")}>
@@ -451,11 +455,11 @@ export function renderRichTextFields(
 					value={align}
 					options={alignOptions(t)}
 					dataTestId="prop-rich-text-align"
-					onCommit={(v: CanvasTextAlign) =>
-						commitPatchAll(nodes, (n) =>
+					contract={{
+						nodes,
+						buildPatch: (n, v: CanvasTextAlign) =>
 							allParagraphsPatch(n as CanvasRichTextNode, { align: v }),
-						)
-					}
+					}}
 				/>
 				<NumberField
 					label={t("canvas.inspector.lineHeight", "Line height")}
@@ -605,11 +609,11 @@ export function renderRichTextFields(
 						},
 					]}
 					dataTestId="prop-rich-text-transform"
-					onCommit={(v: RichTextTransform) =>
-						commitPatchAll(nodes, (n) =>
+					contract={{
+						nodes,
+						buildPatch: (n, v: RichTextTransform) =>
 							allSpansPatch(n as CanvasRichTextNode, { textTransform: v }),
-						)
-					}
+					}}
 				/>
 			</Section>
 		</>

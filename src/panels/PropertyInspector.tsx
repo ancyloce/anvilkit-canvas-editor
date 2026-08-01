@@ -1,12 +1,19 @@
 "use client";
 
-import type { CanvasNode, CanvasPage } from "@anvilkit/canvas-core";
+import type {
+	CanvasCommand,
+	CanvasNode,
+	CanvasPage,
+	CanvasPageBackground,
+} from "@anvilkit/canvas-core";
 import * as React from "react";
 import { useSyncExternalStore } from "react";
 import {
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
+import type { FieldPageContract } from "../context/field-contract.js";
+import type { PagePreviewPatch } from "../stores/field-preview-store.js";
 import {
 	ColorField,
 	NumberField,
@@ -169,27 +176,80 @@ function shared(
 }
 
 /**
- * FR-070 page properties — shown when nothing is selected. Size edits commit
- * `page.resize` (canvas-only mode; the full mode picker lives in the page
- * settings dialog, B-11) and the background commits `page.set-background`,
- * both coalescing rapid re-commits per §10.
+ * Builds a page-level §10 contract whose preview and commit are BOTH derived
+ * from ONE `next(value)` function (plan 0024 T-2.7).
+ *
+ * This shape exists to make divergence structurally impossible. A page's
+ * preview patch and its command carry the SAME value in DIFFERENT shapes — the
+ * preview shallow-merges a whole `CanvasPageSize` onto the page, while
+ * `page.resize` takes a bare `{width, height}` — so writing the two by hand
+ * invites them to drift, and a drifted pair makes the artboard render one size
+ * during the drag and commit another on release. Here `next` is the single
+ * derivation and `toPatch`/`toCommand` are pure adapters over its result.
+ */
+function pageFieldContract<T, N>(
+	page: CanvasPage,
+	next: (value: T) => N,
+	toPatch: (next: N) => PagePreviewPatch,
+	toCommand: (page: CanvasPage, next: N) => CanvasCommand,
+): FieldPageContract<T> {
+	return {
+		page,
+		buildPatch: (_p, value) => toPatch(next(value)),
+		buildCommand: (p, value) => toCommand(p, next(value)),
+	};
+}
+
+/**
+ * FR-070 page properties — shown when nothing is selected. Size and background
+ * edits now PREVIEW live on the artboard and commit once on release (plan 0024
+ * Phase 2): `page.resize` in canvas-only mode (the full mode picker lives in
+ * the page settings dialog, B-11) and `page.set-background`.
+ *
+ * The viewport deliberately does NOT re-fit while a size preview is in flight —
+ * `zoomToFit` is user-triggered only, and re-framing mid-drag would fight the
+ * user (T-2.5).
  */
 function PageProperties({ page }: { page: CanvasPage }): React.JSX.Element {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
-	const resize = (size: { width: number; height: number }): void => {
-		const cmd = {
-			type: "page.resize" as const,
-			pageId: page.id,
-			from: { width: page.size.width, height: page.size.height },
-			to: size,
-		};
-		if (ctx.commitCoalesced) ctx.commitCoalesced(cmd, `page-size:${page.id}`);
-		else ctx.commit(cmd);
-	};
+
+	/** Resize along one axis, holding the other. */
+	const sizeContract = (axis: "width" | "height"): FieldPageContract<number> =>
+		pageFieldContract<number, { width: number; height: number }>(
+			page,
+			(v) => ({
+				width: axis === "width" ? Math.round(v) : page.size.width,
+				height: axis === "height" ? Math.round(v) : page.size.height,
+			}),
+			// Spread the page's own size so `unit`/`dpi` survive the preview merge —
+			// the command preserves them by only carrying width/height.
+			(size) => ({ size: { ...page.size, ...size } }),
+			(p, size) => ({
+				type: "page.resize",
+				pageId: p.id,
+				from: { width: p.size.width, height: p.size.height },
+				to: size,
+			}),
+		);
+
+	const backgroundContract = pageFieldContract<string, CanvasPageBackground>(
+		page,
+		(v) => ({ kind: "solid", value: v }),
+		(background) => ({ background }),
+		(p, background) => ({
+			type: "page.set-background",
+			pageId: p.id,
+			from: p.background,
+			to: background,
+		}),
+	);
+
 	return (
 		<div className="flex flex-col gap-4" data-testid="page-properties">
 			<Section title={t("canvas.inspector.page", "Page")}>
+				{/* Commit-on-blur by design (plan 0024 T-2.6): a page NAME has no
+				    canvas geometry, so there is nothing for a live preview to show. */}
 				<TextField
 					label={t("canvas.inspector.name", "Name")}
 					value={page.name ?? ""}
@@ -208,18 +268,14 @@ function PageProperties({ page }: { page: CanvasPage }): React.JSX.Element {
 					value={page.size.width}
 					min={1}
 					dataTestId="prop-page-width"
-					onCommit={(v) =>
-						resize({ width: Math.round(v), height: page.size.height })
-					}
+					pageContract={sizeContract("width")}
 				/>
 				<NumberField
 					label={t("canvas.inspector.height", "Height")}
 					value={page.size.height}
 					min={1}
 					dataTestId="prop-page-height"
-					onCommit={(v) =>
-						resize({ width: page.size.width, height: Math.round(v) })
-					}
+					pageContract={sizeContract("height")}
 				/>
 				<ColorField
 					label={t("canvas.pageSettings.background", "Background")}
@@ -227,17 +283,7 @@ function PageProperties({ page }: { page: CanvasPage }): React.JSX.Element {
 						page.background.kind === "solid" ? page.background.value : undefined
 					}
 					dataTestId="prop-page-background"
-					onCommit={(v) => {
-						const cmd = {
-							type: "page.set-background" as const,
-							pageId: page.id,
-							from: page.background,
-							to: { kind: "solid" as const, value: v },
-						};
-						if (ctx.commitCoalesced)
-							ctx.commitCoalesced(cmd, `page-bg:${page.id}`);
-						else ctx.commit(cmd);
-					}}
+					pageContract={backgroundContract}
 				/>
 			</Section>
 		</div>
