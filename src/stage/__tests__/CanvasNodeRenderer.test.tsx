@@ -193,6 +193,88 @@ describe("CanvasNodeRenderer", () => {
 		expect(p?.data).toBe("M 0 0 L 10 10");
 	});
 
+	/**
+	 * A `Konva.Path` whose data yields no measurable point reports an all-`NaN`
+	 * client rect, and a container unions its children's rects with
+	 * `Math.min`/`Math.max` — so ONE such node turns its whole ancestor chain's
+	 * box into `NaN`. `Konva.Transformer` then reads that box and writes `NaN`
+	 * onto every selected node's `rotation`/`scaleX`/… The IR only requires
+	 * `d.length >= 1`, so `"Z"` and friends are valid documents.
+	 */
+	it.each([
+		"",
+		"Z",
+		"M",
+		"garbage",
+	])("renders nothing for unmeasurable path data %o", (d) => {
+		render(
+			<CanvasNodeRenderer
+				node={{
+					id: "p-bad",
+					type: "path" as const,
+					transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+					bounds: { width: 50, height: 50 },
+					zIndex: 0,
+					d,
+				}}
+			/>,
+		);
+		expect(callsOfType("Path")).toHaveLength(0);
+	});
+
+	it("never hands Konva a non-finite transform or bounds", () => {
+		render(
+			<CanvasNodeRenderer
+				node={createRect({
+					id: "r-nan",
+					transform: {
+						x: Number.NaN,
+						y: 4,
+						rotation: Number.NaN,
+						scaleX: Number.POSITIVE_INFINITY,
+						scaleY: 1,
+					},
+					bounds: { width: Number.NaN, height: 10 },
+				})}
+			/>,
+		);
+		const p = callsOfType("Rect")[0]?.props;
+		expect(p).toMatchObject({ x: 0, y: 4, rotation: 0, scaleX: 1, scaleY: 1 });
+		expect(p?.width).toBe(0);
+		expect(p?.height).toBe(10);
+	});
+
+	it("clamps a non-finite opacity to 1", () => {
+		render(
+			<CanvasNodeRenderer
+				node={{
+					...createRect({ id: "r-op", bounds: { width: 10, height: 10 } }),
+					opacity: Number.NaN,
+				}}
+			/>,
+		);
+		expect(callsOfType("Rect")[0]?.props.opacity).toBe(1);
+	});
+
+	/**
+	 * The aspect-fit factor polygon/star layer on top of their own `scaleY`
+	 * divides by `bounds.width`; a non-finite bound would otherwise reach Konva
+	 * as a `NaN` scale, which is one of the matrix entries
+	 * `Transform.decompose()` turns into a `NaN` rotation.
+	 */
+	it("keeps polygon aspect-fit scaleY finite for degenerate bounds", () => {
+		render(
+			<CanvasNodeRenderer
+				node={createPolygon({
+					id: "poly-nan",
+					sides: 5,
+					bounds: { width: 40, height: Number.NaN },
+				})}
+			/>,
+		);
+		expect(callsOfType("RegularPolygon")[0]?.props.scaleY).toBe(0);
+	});
+
 	it("dispatches to Text with text + font + alignment", () => {
 		const text = createText({
 			id: "t1",

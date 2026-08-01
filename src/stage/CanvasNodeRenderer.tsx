@@ -76,6 +76,11 @@ import { useCanvasAsset } from "./CanvasAssetsContext.js";
 import { useCanvasBrandKit } from "./CanvasBrandKitContext.js";
 import { CanvasResolvedDocumentContext } from "./CanvasResolvedDocumentContext.js";
 import {
+	finiteOr,
+	hasDrawablePathData,
+	withFiniteGeometry,
+} from "./finite-geometry.js";
+import {
 	ISOLATION_DIM_OPACITY,
 	IsolationRenderContext,
 } from "./isolation-render-context.js";
@@ -109,7 +114,10 @@ function commonProps(node: CanvasNodeBase & { id: string }): CommonProps {
 		rotation: node.transform.rotation,
 		scaleX: node.transform.scaleX,
 		scaleY: node.transform.scaleY,
-		opacity: node.opacity ?? 1,
+		// Geometry is already finite here — `CanvasNodeRenderer` runs every node
+		// through `withFiniteGeometry` — but `opacity` is not geometry and never
+		// passes through it.
+		opacity: finiteOr(node.opacity ?? 1, 1),
 		visible: node.visible ?? true,
 		...(node.blendMode
 			? {
@@ -504,6 +512,13 @@ function CanvasLineNodeRenderer({ node }: { node: CanvasLineNode }) {
 
 function CanvasPathNodeRenderer({ node }: { node: CanvasPathNode }) {
 	const brandKit = useCanvasBrandKit();
+	// Path data Konva cannot turn into points measures as an all-`NaN` rect,
+	// which poisons every ancestor's rect and the selection Transformer's matrix
+	// math (see `finite-geometry.ts`). There is nothing to draw either way, so
+	// render nothing — the same neutral degrade `fillProps` uses for an
+	// unresolvable brand token. Memoised: Konva re-parses on every call.
+	const drawable = React.useMemo(() => hasDrawablePathData(node.d), [node.d]);
+	if (!drawable) return null;
 	return (
 		<Path
 			{...commonProps(node)}
@@ -1564,12 +1579,18 @@ function useRenderRecord(nodeId: string) {
 function useResolvedGeometry(node: CanvasNode): CanvasNode {
 	const record = useRenderRecord(node.id);
 	return useMemo(() => {
-		if (!record) return node;
-		return {
+		// One choke point for the whole scene graph: nothing Konva cannot measure
+		// gets past here, so every kind's props — and everything derived from them
+		// (`nodeRenderOffset`, `aspectFitScaleY`, radii, clip rects, gradient
+		// stops) — are finite by construction. See `finite-geometry.ts` for what a
+		// single `NaN` does to Konva's Transformer. `withFiniteGeometry` returns
+		// the same reference when nothing needs correcting.
+		if (!record) return withFiniteGeometry(node);
+		return withFiniteGeometry({
 			...node,
 			transform: record.geometry.localTransform,
 			bounds: record.geometry.bounds,
-		} as CanvasNode;
+		} as CanvasNode);
 	}, [node, record]);
 }
 
