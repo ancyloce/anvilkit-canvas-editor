@@ -95,10 +95,23 @@ export function createViewportStore(
 		snapToObjectsEnabled: options.snapToObjectsEnabled ?? true,
 		snapThreshold: options.snapThreshold ?? DEFAULT_SNAP_THRESHOLD,
 		viewportSize: null,
+		// Zoom and pan become the Konva STAGE's scale and position, i.e. part of
+		// every node's absolute transform. A non-finite zoom is therefore the
+		// widest-reach corruption in the editor: `Transform.decompose()` turns a
+		// `NaN` matrix into a `NaN` rotation, and `Transformer.nodes()` writes
+		// that straight onto itself — so one bad zoom makes EVERY selection log
+		// `Konva warning: NaN is a not valid value for "rotation" attribute`
+		// until the page is reloaded. Every producer is a division by a page or
+		// viewport dimension (`zoomToFit`, the fit-on-entry effect, wheel zoom),
+		// and `clampZoom` cannot sanitise it — `Math.min`/`Math.max` propagate
+		// `NaN`. Dropping the update is better than clamping to a fallback: the
+		// view stays where the user left it instead of jumping.
 		setZoom(zoom) {
+			if (!Number.isFinite(zoom)) return;
 			set({ zoom });
 		},
 		setPan(panX, panY) {
+			if (!Number.isFinite(panX) || !Number.isFinite(panY)) return;
 			set({ panX, panY });
 		},
 		setGridEnabled(enabled) {

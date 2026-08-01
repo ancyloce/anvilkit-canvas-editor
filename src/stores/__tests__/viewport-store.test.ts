@@ -117,6 +117,43 @@ describe("createViewportStore — setters", () => {
 	});
 });
 
+/**
+ * Zoom/pan become the Konva stage's scale/position, so a non-finite value lands
+ * in every node's absolute transform — where `Transform.decompose()` turns it
+ * into a `NaN` rotation that `Transformer.nodes()` writes onto itself, making
+ * EVERY later selection log `NaN is a not valid value for "rotation"`. Every
+ * producer divides by a page or viewport dimension, and `clampZoom` cannot
+ * sanitise it (`Math.min`/`Math.max` propagate `NaN`).
+ */
+describe("createViewportStore — non-finite viewport values are ignored", () => {
+	it.each([
+		Number.NaN,
+		Number.POSITIVE_INFINITY,
+		Number.NEGATIVE_INFINITY,
+	])("setZoom(%p) leaves the previous zoom in place", (bad) => {
+		const store = createViewportStore({ zoom: 1.5 });
+		store.getState().setZoom(bad);
+		expect(store.getState().zoom).toBe(1.5);
+	});
+
+	it("setPan ignores an update when EITHER axis is non-finite", () => {
+		const store = createViewportStore({ panX: 5, panY: 6 });
+		store.getState().setPan(Number.NaN, 20);
+		store.getState().setPan(20, Number.POSITIVE_INFINITY);
+		expect(store.getState().panX).toBe(5);
+		expect(store.getState().panY).toBe(6);
+	});
+
+	it("still accepts legitimate zero and fractional values", () => {
+		const store = createViewportStore({ zoom: 1 });
+		store.getState().setZoom(0.1);
+		store.getState().setPan(0, -12.5);
+		expect(store.getState().zoom).toBe(0.1);
+		expect(store.getState().panX).toBe(0);
+		expect(store.getState().panY).toBe(-12.5);
+	});
+});
+
 describe("createViewportStore — independent instances", () => {
 	it("two stores do not share state", () => {
 		const a = createViewportStore();
