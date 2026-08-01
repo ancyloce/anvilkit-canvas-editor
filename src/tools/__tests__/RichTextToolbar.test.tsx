@@ -9,6 +9,10 @@ import {
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import {
+	commitColor,
+	openColor,
+} from "@/panels/__tests__/_color-test-helpers.js";
 import { selectOption } from "@/panels/__tests__/_select-test-helpers.js";
 import { RichTextToolbar } from "../RichTextToolbar.js";
 import { makeFakeStage, makeHarness } from "./_tool-test-helpers.js";
@@ -133,26 +137,85 @@ describe("RichTextToolbar (C-11, FR-082)", () => {
 		).toBe(true);
 	});
 
-	it("font size input rewrites every span's size", () => {
+	it("font size input rewrites every span's size on commit", () => {
 		const { h, view } = mount();
-		fireEvent.change(view.getByTestId("rich-text-size"), {
-			target: { value: "32" },
-		});
+		const input = view.getByTestId("rich-text-size");
+		fireEvent.change(input, { target: { value: "32" } });
+		fireEvent.blur(input); // blur commits — typing alone only previews
 		expect(
 			lastPatch(h).paragraphs[0]?.spans.every((s) => s.fontSize === 32),
 		).toBe(true);
 	});
 
-	it("commits the size field through commitCoalesced with a stable merge key, not a fresh undo entry per keystroke (E-19)", () => {
+	/**
+	 * Plan 0024 Phase 1. This replaces the E-19 test that asserted one
+	 * `commitCoalesced` PER KEYSTROKE with a stable merge key. Coalescing kept
+	 * undo clean, but `commitCoalesced` writes the IR and fires
+	 * `onChange`/`onChanges` every call, so typing "24" rewrote the document and
+	 * broadcast to collab peers twice. The field contract makes typing fully
+	 * transient instead — strictly stronger: zero writes, not merged writes.
+	 */
+	it("previews the size field with NO history write, then commits once on blur (plan 0024 Phase 1)", () => {
 		const { h, view } = mount();
 		const input = view.getByTestId("rich-text-size");
 		fireEvent.change(input, { target: { value: "2" } });
 		fireEvent.change(input, { target: { value: "24" } });
+
 		expect(h.studioCtx.commit).not.toHaveBeenCalled();
-		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(2);
-		const calls = (h.studioCtx.commitCoalesced as ReturnType<typeof vi.fn>).mock
-			.calls;
-		expect(calls[0]?.[1]).toBe(calls[1]?.[1]);
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+
+		// …yet the canvas DOES show the in-progress value.
+		const preview = h.studioCtx.fieldPreviewStore?.getState().previews["rt-1"];
+		expect(
+			(
+				preview as { paragraphs: CanvasRichTextNode["paragraphs"] } | undefined
+			)?.paragraphs[0]?.spans.every((s) => s.fontSize === 24),
+		).toBe(true);
+
+		fireEvent.blur(input);
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		expect(
+			lastPatch(h).paragraphs[0]?.spans.every((s) => s.fontSize === 24),
+		).toBe(true);
+		// The preview is handed off to the commit, never left behind.
+		expect(h.studioCtx.fieldPreviewStore?.getState().previews).toEqual({});
+	});
+
+	it("Escape reverts an in-progress size edit without committing (plan 0024 Phase 1)", () => {
+		const { h, view } = mount();
+		const input = view.getByTestId("rich-text-size");
+		fireEvent.change(input, { target: { value: "99" } });
+		expect(
+			h.studioCtx.fieldPreviewStore?.getState().previews["rt-1"],
+		).toBeDefined();
+
+		fireEvent.keyDown(input, { key: "Escape" });
+		expect(h.studioCtx.fieldPreviewStore?.getState().previews).toEqual({});
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+	});
+
+	it("previews the colour picker while dragging and commits once on dismissal (plan 0024 Phase 1)", async () => {
+		const { h } = mount();
+		const hex = await openColor("rich-text-color");
+		fireEvent.change(hex, { target: { value: "#ff0000" } });
+		fireEvent.blur(hex);
+
+		// Mid-gesture: the swatch has moved, history has not.
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+		const preview = h.studioCtx.fieldPreviewStore?.getState().previews["rt-1"];
+		expect(
+			(
+				preview as { paragraphs: CanvasRichTextNode["paragraphs"] } | undefined
+			)?.paragraphs[0]?.spans.every((s) => s.fill === "#ff0000"),
+		).toBe(true);
+
+		commitColor();
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		expect(
+			lastPatch(h).paragraphs[0]?.spans.every((s) => s.fill === "#ff0000"),
+		).toBe(true);
 	});
 
 	it("font-family control rewrites every span's family (FR-082)", async () => {

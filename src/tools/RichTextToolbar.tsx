@@ -29,12 +29,17 @@ import {
 	Underline,
 } from "lucide-react";
 import * as React from "react";
-import { useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 import {
+	type CanvasT,
 	useCanvasStudio,
 	useCanvasT,
 	useResolvedDocument,
 } from "../context/canvas-studio-context.js";
+import {
+	type FieldContractTarget,
+	useFieldContract,
+} from "../context/field-contract.js";
 import { resolveNodeWorldPosition } from "../stage/node-world-position.js";
 import { resolvedNodeWorldPosition } from "../stage/resolved-page-space.js";
 import {
@@ -70,6 +75,128 @@ function everySpan(
 	test: (span: RichTextSpan) => boolean,
 ): boolean {
 	return node.paragraphs.every((p) => p.spans.every(test));
+}
+
+/**
+ * Shared wiring for the toolbar's two CONTINUOUS controls (plan 0024 Phase 1).
+ *
+ * Both previously drove `commitCoalesced` on every pointer move / keystroke.
+ * That kept undo clean, but `commitCoalesced` writes the IR and fires
+ * `onChange`/`onChanges` on every call (`CanvasStudio.tsx`), so a colour drag
+ * rewrote the document, notified the host, and broadcast to collab peers once
+ * per frame. They now use the §10 field contract like every other continuous
+ * field: transient preview while adjusting, ONE commit on release.
+ *
+ * `buildParagraphs` is a callback rather than a prebuilt patch because the
+ * paragraphs must be rebuilt from the LIVE textarea at the moment of each
+ * preview/commit (E-4) — see `currentRichText` in the parent.
+ */
+function useParagraphContract<T>(
+	node: CanvasRichTextNode,
+	buildParagraphs: (value: T) => RichTextParagraph[],
+	fieldId: string,
+): ReturnType<typeof useFieldContract<T>> {
+	const contract: FieldContractTarget<T> = {
+		nodes: [node],
+		buildPatch: (_n, value) => ({ paragraphs: buildParagraphs(value) }),
+	};
+	return useFieldContract<T>(contract, fieldId);
+}
+
+/** FR-082 text colour — swatch only; the toolbar supplies its own chrome. */
+function RichTextColorControl({
+	node,
+	value,
+	buildParagraphs,
+	t,
+}: {
+	node: CanvasRichTextNode;
+	value: string;
+	buildParagraphs: (fill: string) => RichTextParagraph[];
+	t: CanvasT;
+}): React.JSX.Element {
+	const field = useParagraphContract(node, buildParagraphs, "rich-text-color");
+	// Only commit when this interaction actually moved the picker — closing an
+	// untouched picker must not land an undo entry.
+	const dirty = useRef(false);
+	return (
+		<ColorRow
+			compact
+			label={t("canvas.richText.color", "Text color")}
+			data-testid="rich-text-color"
+			value={value}
+			onValueChange={(fill) => {
+				dirty.current = true;
+				field.preview(fill);
+			}}
+			onCommit={(fill) => {
+				const changed = dirty.current && fill !== value;
+				dirty.current = false;
+				if (changed) field.commit(fill);
+				else field.cancel();
+			}}
+			onCancel={() => {
+				dirty.current = false;
+				field.cancel();
+			}}
+		/>
+	);
+}
+
+/** FR-082 font size — uncontrolled/commit-on-blur, mirroring `NumberField`. */
+function RichTextSizeControl({
+	node,
+	value,
+	buildParagraphs,
+	t,
+}: {
+	node: CanvasRichTextNode;
+	value: number;
+	buildParagraphs: (fontSize: number) => RichTextParagraph[];
+	t: CanvasT;
+}): React.JSX.Element {
+	const field = useParagraphContract(node, buildParagraphs, "rich-text-size");
+	return (
+		<Input
+			// Uncontrolled so preview-only typing is not fought by a controlled
+			// value. Re-keys when an EXTERNAL change lands (undo, another client);
+			// `value` reads the committed node, which previews never touch, so this
+			// key cannot change mid-edit and steal focus.
+			key={value}
+			type="number"
+			data-testid="rich-text-size"
+			aria-label={t("canvas.richText.size", "Font size")}
+			title={t("canvas.richText.size", "Font size")}
+			className="h-6 w-14 px-1 text-xs"
+			min={1}
+			defaultValue={value}
+			onChange={(e) => {
+				const fontSize = Number(e.currentTarget.value);
+				if (!Number.isFinite(fontSize) || fontSize < 1) return;
+				field.preview(fontSize);
+			}}
+			onKeyDown={(e) => {
+				if (e.key === "Enter")
+					e.currentTarget.blur(); // blur commits
+				else if (e.key === "Escape") {
+					// Revert to the pre-edit value; stop propagation so the workspace
+					// Escape stack (which would exit text editing) stays out of it.
+					e.stopPropagation();
+					e.currentTarget.value = String(value);
+					field.cancel();
+				}
+			}}
+			onBlur={(e) => {
+				const fontSize = Number(e.currentTarget.value);
+				if (!Number.isFinite(fontSize) || fontSize < 1) {
+					field.cancel();
+					return;
+				}
+				if (fontSize !== value) field.commit(fontSize);
+				else field.cancel();
+			}}
+		/>
+	);
 }
 
 /**
@@ -162,37 +289,6 @@ export function RichTextToolbar(): React.JSX.Element | null {
 			patch: { paragraphs },
 		};
 		ctx.commit(cmd);
-	};
-
-	// The size field fires on every keystroke — typing "24" sends fontSize 2
-	// then 24 through plain `commit`, which is two undo entries, a visible
-	// flash, and two collab broadcasts (E-19). Route it through the §10 field
-	// contract's coalescing commit instead, like every other live-typing field.
-	const commitSizeCoalesced = (paragraphs: RichTextParagraph[]): void => {
-		const cmd: CanvasNodeUpdateCommand<"rich-text"> = {
-			type: "node.update",
-			nodeId: node.id,
-			kind: "rich-text",
-			patch: { paragraphs },
-		};
-		if (ctx.commitCoalesced)
-			ctx.commitCoalesced(cmd, `rich-text-size:${node.id}`);
-		else ctx.commit(cmd);
-	};
-
-	// FR-082 color: same coalescing contract as the size field above — the
-	// picker emits on every pointer move, and each move must NOT become its own
-	// undo entry or collab broadcast.
-	const commitFillCoalesced = (paragraphs: RichTextParagraph[]): void => {
-		const cmd: CanvasNodeUpdateCommand<"rich-text"> = {
-			type: "node.update",
-			nodeId: node.id,
-			kind: "rich-text",
-			patch: { paragraphs },
-		};
-		if (ctx.commitCoalesced)
-			ctx.commitCoalesced(cmd, `rich-text-fill:${node.id}`);
-		else ctx.commit(cmd);
 	};
 
 	const boldActive = everySpan(
@@ -341,37 +437,23 @@ export function RichTextToolbar(): React.JSX.Element | null {
 					))}
 				</SelectContent>
 			</Select>
-			{/* Compact: the toolbar supplies its own chrome, so only the swatch
-			    renders. Dragging the picker fires continuously, so this coalesces
-			    into ONE undo entry the same way the size field does (E-19). */}
-			<ColorRow
-				compact
-				label={t("canvas.richText.color", "Text color")}
-				data-testid="rich-text-color"
+			<RichTextColorControl
+				node={node}
 				value={
 					typeof firstStyle.fill === "string" ? firstStyle.fill : "#000000"
 				}
-				onValueChange={(fill) => {
-					commitFillCoalesced(
-						mapSpans(currentRichText(), (s) => ({ ...s, fill })),
-					);
-				}}
+				buildParagraphs={(fill) =>
+					mapSpans(currentRichText(), (s) => ({ ...s, fill }))
+				}
+				t={t}
 			/>
-			<Input
-				type="number"
-				data-testid="rich-text-size"
-				aria-label={t("canvas.richText.size", "Font size")}
-				title={t("canvas.richText.size", "Font size")}
-				className="h-6 w-14 px-1 text-xs"
-				min={1}
-				value={firstStyle.fontSize}
-				onChange={(e) => {
-					const fontSize = Number(e.currentTarget.value);
-					if (!Number.isFinite(fontSize) || fontSize < 1) return;
-					commitSizeCoalesced(
-						mapSpans(currentRichText(), (s) => ({ ...s, fontSize })),
-					);
-				}}
+			<RichTextSizeControl
+				node={node}
+				value={firstStyle.fontSize ?? DEFAULT_RICH_TEXT_STYLE.fontSize}
+				buildParagraphs={(fontSize) =>
+					mapSpans(currentRichText(), (s) => ({ ...s, fontSize }))
+				}
+				t={t}
 			/>
 			<Button
 				type="button"
