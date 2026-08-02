@@ -13,6 +13,7 @@ import {
 } from "../../context/canvas-studio-context.js";
 import { useCanvasToaster } from "../../context/toast-context.js";
 import { ASSET_DRAG_MIME } from "./CanvasDropZone.js";
+import { runUploadWork } from "./upload-failure.js";
 
 const EMPTY_TASKS: never[] = [];
 
@@ -40,11 +41,18 @@ export function UploadsPanel(): React.JSX.Element {
 		// the canvas, so there's no drop-relative page point to convert (unlike
 		// `CanvasDropZone`, which anchors to the real cursor position — FR-092).
 		// Page-center insertion is the correct semantic here.
-		void uploadFilesImpl(ctx, Array.from(list), undefined, toaster);
+		// Same E-17-R guard as `CanvasDropZone`: the panel is the OTHER
+		// fire-and-forget entry point into the identical pipeline, so a bare
+		// `void` here leaks exactly the same unobserved rejections.
+		runUploadWork(
+			uploadFilesImpl(ctx, Array.from(list), undefined, toaster),
+			toaster,
+			t,
+		);
 	};
 
 	const handleRetry = (taskId: string): void => {
-		void retryUploadImpl(ctx, taskId, toaster);
+		runUploadWork(retryUploadImpl(ctx, taskId, toaster), toaster, t);
 	};
 
 	return (

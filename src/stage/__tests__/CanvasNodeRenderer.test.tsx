@@ -20,12 +20,47 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-type ElementCall = { type: string; props: Record<string, unknown> };
+/**
+ * The imperative half of a Konva node. Real react-konva attaches a
+ * `Konva.Node` to whatever `ref` a renderer passes, so anything driven through
+ * that handle — `AdjustedKonvaImage`'s filter cache (E-11) — is invisible
+ * behind a props-only mock. Only the methods the renderer actually calls are
+ * stubbed.
+ */
+type KonvaNodeStub = {
+	cache: ReturnType<typeof vi.fn>;
+	clearCache: ReturnType<typeof vi.fn>;
+	getLayer: () => null;
+};
+type KonvaNodeRef = { current: KonvaNodeStub | null };
+
+type ElementCall = {
+	type: string;
+	props: Record<string, unknown>;
+	/** The stub attached to this element's `ref`, or null when it had none. */
+	node: KonvaNodeStub | null;
+};
 const calls: ElementCall[] = [];
+
+// One stub per ref object, so the same instance survives re-renders the way a
+// real Konva node does (and its call counts stay comparable across them).
+const nodeStubs = new WeakMap<KonvaNodeRef, KonvaNodeStub>();
+
+function attachNodeStub(ref: KonvaNodeRef): KonvaNodeStub {
+	let stub = nodeStubs.get(ref);
+	if (!stub) {
+		stub = { cache: vi.fn(), clearCache: vi.fn(), getLayer: () => null };
+		nodeStubs.set(ref, stub);
+	}
+	ref.current = stub;
+	return stub;
+}
 
 function makeMock(type: string) {
 	return (props: Record<string, unknown>) => {
-		calls.push({ type, props });
+		// React 19 hands `ref` to function components as an ordinary prop.
+		const ref = props.ref as KonvaNodeRef | undefined;
+		calls.push({ type, props, node: ref ? attachNodeStub(ref) : null });
 		const { children } = props as { children?: ReactNode };
 		return (
 			<div data-testid={type} data-id={props.id as string}>
@@ -1673,5 +1708,97 @@ describe("CanvasNodeRenderer — FR-081 vertical align + auto-width", () => {
 		// The measured natural width is far smaller than the stale 999.
 		expect(cmd.patch.width).toBeLessThan(999);
 		expect(cmd.patch.bounds.width).toBe(cmd.patch.width);
+	});
+});
+
+/**
+ * E-11 — `AdjustedKonvaImage`'s Konva filter cache.
+ *
+ * Konva re-runs pixel filters only when a node's cache is rebuilt, so the
+ * cache-rebuild effect's dependency list IS the correctness contract, and it is
+ * wrong in BOTH directions: too narrow and a cropped, adjusted image keeps
+ * painting the pre-crop cached pixels; too wide (an inline `filters` array
+ * literal — a fresh reference every render) and the expensive pixel pass
+ * re-runs on every commit. Both are observed through the react-konva mock's
+ * `ref` stub: the `crop`-prop assertions above say nothing about whether the
+ * cache behind it was refreshed.
+ */
+describe("CanvasNodeRenderer — adjusted image filter cache (E-11)", () => {
+	beforeEachReset();
+	afterEach(() => {
+		cleanup();
+	});
+
+	const assets = { a1: { id: "a1", uri: "data:image/png;base64,XXX" } };
+	// Stable identity across re-renders, like a real loaded HTMLImageElement —
+	// `image` is itself one of the cache effect's dependencies.
+	const fakeImg = {
+		src: "data:image/png;base64,XXX",
+		width: 200,
+		height: 200,
+	} as HTMLImageElement;
+
+	const adjusted = (
+		over: Partial<Parameters<typeof createImage>[0]> = {},
+	): CanvasImageNode =>
+		createImage({
+			id: "i-adjusted",
+			bounds: { width: 100, height: 100 },
+			assetId: "a1",
+			// Non-neutral, so `computeAdjustmentColorMatrix` returns a matrix and
+			// the node is genuinely filtered (`active`).
+			adjustments: { brightness: 0.2 },
+			crop: { x: 0, y: 0, width: 50, height: 50 },
+			...over,
+		});
+
+	const tree = (node: CanvasImageNode) => (
+		<CanvasAssetsContext.Provider value={assets}>
+			<CanvasNodeRenderer node={node} />
+		</CanvasAssetsContext.Provider>
+	);
+
+	const lastImage = () => callsOfType("Image").at(-1);
+
+	it("keeps the `filters` array reference stable across an unrelated re-render", () => {
+		useImageMock.mockReturnValue([fakeImg, "loaded"]);
+		const { rerender } = render(tree(adjusted()));
+		const first = lastImage();
+		expect(Array.isArray(first?.props.filters)).toBe(true);
+
+		rerender(tree(adjusted({ transform: { x: 25, y: 0 } })));
+		const second = lastImage();
+		// The re-render really reached Konva...
+		expect(callsOfType("Image").length).toBeGreaterThan(1);
+		expect(second?.props.x).toBe(25);
+		// ...and carried the SAME array. An unmemoized literal is a new
+		// reference every render, and Konva re-runs the pixel filter whenever
+		// the `filters` reference changes — not only when it needs to.
+		expect(Object.is(first?.props.filters, second?.props.filters)).toBe(true);
+	});
+
+	it("rebuilds the cache when the crop CONTENT changes, and not otherwise", () => {
+		useImageMock.mockReturnValue([fakeImg, "loaded"]);
+		const { rerender } = render(tree(adjusted()));
+		const stub = lastImage()?.node;
+		expect(stub).toBeDefined();
+		expect(stub?.cache).toHaveBeenCalledTimes(1);
+
+		// Control: a prop outside the cache's inputs must NOT rebuild it.
+		rerender(tree(adjusted({ transform: { x: 25, y: 0 } })));
+		expect(lastImage()?.props.x).toBe(25);
+		expect(stub?.cache).toHaveBeenCalledTimes(1);
+
+		// `crop` is a fresh object every render, so only its serialized CONTENT
+		// can invalidate the effect — drop `cropKey` from the deps and the
+		// newly cropped image keeps drawing the stale cached pixels.
+		rerender(tree(adjusted({ crop: { x: 10, y: 10, width: 50, height: 50 } })));
+		expect(lastImage()?.props.crop).toEqual({
+			x: 10,
+			y: 10,
+			width: 50,
+			height: 50,
+		});
+		expect(stub?.cache).toHaveBeenCalledTimes(2);
 	});
 });

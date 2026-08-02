@@ -21,6 +21,7 @@ import {
 } from "../../selection/frame-image-actions.js";
 import { resolvedPageSpace } from "../../stage/resolved-page-space.js";
 import { type CanvasDropTarget, resolveDropTarget } from "./drop-target.js";
+import { runUploadWork } from "./upload-failure.js";
 
 /**
  * FR-093: internal drag payload for an ALREADY-registered asset (a done
@@ -285,7 +286,15 @@ export function CanvasDropZone({
 				}
 				if (files && files.length > 0) {
 					e.preventDefault();
-					void handleFileDrop(Array.from(files), e.clientX, e.clientY);
+					// Never plain `void` (E-17-R): the guarded no-such-node path is
+					// only ONE of the ways this pipeline can reject — the uploader,
+					// the post-upload insert commit, and the selection update can all
+					// throw too, and a bare `void` would let those escape unobserved.
+					runUploadWork(
+						handleFileDrop(Array.from(files), e.clientX, e.clientY),
+						toaster,
+						t,
+					);
 				}
 			}}
 		>
