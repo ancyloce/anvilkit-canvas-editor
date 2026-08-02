@@ -826,11 +826,38 @@ describe("CanvasNodeRenderer — frame", () => {
 		expect(frameGroup()?.props.name).toBe("f1");
 	});
 
-	it("paints no background Rect when the frame has no background", () => {
+	it("paints nothing for the frame box when the frame has no background", () => {
 		render(<CanvasNodeRenderer node={frameFixture()} />);
-		// Only the child rect — no backdrop.
-		expect(callsOfType("Rect")).toHaveLength(1);
-		expect(callsOfType("Rect")[0]?.props.id).toBe("r1");
+		const box = callsOfType("Rect").find((c) => c.props.id === undefined);
+		// The box Rect is still emitted (see below) — it just carries no paint.
+		expect(box?.props.fill).toBeUndefined();
+		expect(box?.props.stroke).toBeUndefined();
+		// The child rect is untouched.
+		expect(callsOfType("Rect").some((c) => c.props.id === "r1")).toBe(true);
+	});
+
+	// A frame OWNS its bounds, but a Konva Container measures itself PURELY from
+	// its children — so a background-less, childless frame (what the frame tool
+	// drags out) measured 0×0. That fed `Transformer._fitNodesInto` a singular
+	// `oldTr`, whose `oldTr.invert()` divided by a zero determinant and wrote
+	// `NaN` geometry onto the node ("NaN is a not valid value for …" bursts).
+	// The box Rect is what keeps the frame measurable.
+	it("emits a bounds-sized box Rect even with no background, so the frame is measurable", () => {
+		render(<CanvasNodeRenderer node={frameFixture({ children: [] })} />);
+		const box = callsOfType("Rect").find((c) => c.props.id === undefined);
+		expect(box).toBeDefined();
+		expect(box?.props.x).toBe(0);
+		expect(box?.props.y).toBe(0);
+		expect(box?.props.width).toBe(200);
+		expect(box?.props.height).toBe(100);
+	});
+
+	// Contributing geometry must not make an unfilled frame's interior clickable:
+	// `findHitNodeId` would then resolve clicks that used to pass through.
+	it("keeps the box Rect non-listening when the frame has no background", () => {
+		render(<CanvasNodeRenderer node={frameFixture({ children: [] })} />);
+		const box = callsOfType("Rect").find((c) => c.props.id === undefined);
+		expect(box?.props.listening).toBe(false);
 	});
 
 	it("routes a gradient background through the shared fillProps helper", () => {
@@ -994,7 +1021,13 @@ describe("CanvasNodeRenderer — frame image well (placeholder)", () => {
 			createFrame({ id: "well", bounds: { width: 50, height: 50 } }),
 		);
 		expect(frameGroup()).toBeDefined();
-		expect(callsOfType("Rect")).toHaveLength(0);
+		// The bounds-sized box Rect is always emitted (it is what keeps the frame
+		// measurable), but it must carry no paint: no fallback fill, and none of
+		// the dashed outline / label an empty WELL gets.
+		const rects = callsOfType("Rect");
+		expect(rects).toHaveLength(1);
+		expect(rects[0]?.props.fill).toBeUndefined();
+		expect(rects[0]?.props.stroke).toBeUndefined();
 		expect(callsOfType("Text")).toHaveLength(0);
 	});
 });

@@ -321,31 +321,48 @@ function CanvasFrameNodeRenderer({ node }: { node: CanvasFrameNode }) {
 
 	return (
 		<Group {...commonProps(node)} {...frameClipProps(node)}>
-			{fill !== undefined ? (
-				<Rect
-					// Deliberately carries NO id/name. `findHitNodeId` resolves a click by
-					// walking UP the Konva tree to the first node whose name matches a
-					// top-level IR id, so an anonymous backdrop makes a click on the
-					// frame's background select the FRAME. An id here would instead
-					// collide with the Group's, and `listening={false}` would make the
-					// background unclickable entirely.
-					x={0}
-					y={0}
-					width={width}
-					height={height}
-					cornerRadius={
-						node.cornerRadii
-							? [
-									node.cornerRadii.topLeft,
-									node.cornerRadii.topRight,
-									node.cornerRadii.bottomRight,
-									node.cornerRadii.bottomLeft,
-								]
-							: node.radius
-					}
-					{...fillProps(fill, node.bounds, brandKit)}
-				/>
-			) : null}
+			<Rect
+				// Deliberately carries NO id/name. `findHitNodeId` resolves a click by
+				// walking UP the Konva tree to the first node whose name matches a
+				// top-level IR id, so an anonymous backdrop makes a click on the
+				// frame's background select the FRAME. An id here would instead
+				// collide with the Group's, and `listening={false}` would make the
+				// background unclickable entirely.
+				//
+				// Rendered even with NO background, because a frame OWNS its bounds
+				// while a Konva `Container` derives its client rect PURELY from its
+				// children (`Container.getClientRect` unions child rects and falls
+				// back to `0,0,0,0`). A background-less, childless frame — exactly
+				// what the frame tool drags out — would otherwise measure 0×0, so
+				// the whole geometry stack reads the frame as sizeless: the
+				// selection box collapses to a point, and `Transformer._fitNodesInto`
+				// builds `oldTr` from that 0×0 box, making it singular. Its
+				// `oldTr.invert()` then divides by a zero determinant and writes
+				// `NaN` x/y/scale/rotation onto the node — the `NaN` warning burst.
+				// Konva's own zero-size guard only checks the NEW box, so it cannot
+				// catch this. Giving the group a bounds-sized child fixes the
+				// measurement at the source.
+				//
+				// With no fill this paints nothing (`fillProps` yields no fill, and
+				// there is no stroke) and is non-listening, so click-through on an
+				// unfilled frame is preserved — it contributes geometry only.
+				x={0}
+				y={0}
+				width={width}
+				height={height}
+				listening={fill !== undefined}
+				cornerRadius={
+					node.cornerRadii
+						? [
+								node.cornerRadii.topLeft,
+								node.cornerRadii.topRight,
+								node.cornerRadii.bottomRight,
+								node.cornerRadii.bottomLeft,
+							]
+						: node.radius
+				}
+				{...fillProps(fill, node.bounds, brandKit)}
+			/>
 			{emptyWell && isInteractive ? (
 				<Group listening={false}>
 					<Rect
