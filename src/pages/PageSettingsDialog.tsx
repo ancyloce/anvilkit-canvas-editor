@@ -6,6 +6,7 @@ import type {
 	CanvasPageResizeMode,
 } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
+import { ColorRow } from "@anvilkit/ui/color-picker";
 import {
 	Dialog,
 	DialogContent,
@@ -13,7 +14,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@anvilkit/ui/dialog";
-import { ColorRow } from "@anvilkit/ui/color-picker";
 import { Input } from "@anvilkit/ui/input";
 import * as React from "react";
 import { useState } from "react";
@@ -25,6 +25,11 @@ import { CampaignResizePanel } from "./CampaignResizePanel.js";
 import { SizePresetPicker } from "./SizePresetPicker.js";
 
 export interface PageSettingsDialogProps {
+	/**
+	 * The page to edit. Only its `id` is trusted — see the resolution note in
+	 * the component: every value this dialog reads comes from the COMMITTED
+	 * document, because it writes undo inverses.
+	 */
 	page: CanvasPage;
 	onClose: () => void;
 }
@@ -50,11 +55,19 @@ const MODE_LABELS: Record<CanvasPageResizeMode, [string, string]> = {
  * trigger like every dialog (constraint 20.15).
  */
 export default function PageSettingsDialog({
-	page,
+	page: pageProp,
 	onClose,
 }: PageSettingsDialogProps): React.JSX.Element {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
+	// Re-resolve against the COMMITTED IR instead of trusting the prop. Callers
+	// legitimately render page rows from the RESOLVED source so live page-size
+	// previews paint the artboard mid-drag (`PagesCanvas`), and a previewed page
+	// carries an uncommitted size/background. Every `from:` below is an undo
+	// INVERSE, so seeding one from a preview makes undo restore a value that was
+	// never committed — permanently losing the real one. A dialog that writes
+	// history must read history's own state.
+	const page = ctx.ir.pages.find((p) => p.id === pageProp.id) ?? pageProp;
 	const [width, setWidth] = useState(String(page.size.width));
 	const [height, setHeight] = useState(String(page.size.height));
 	const [mode, setMode] = useState<CanvasPageResizeMode>("canvas-only");

@@ -1,8 +1,12 @@
-import { CANVAS_SIZE_PRESETS, createPage } from "@anvilkit/canvas-core";
+import {
+	CANVAS_SIZE_PRESETS,
+	createCanvasIR,
+	createPage,
+} from "@anvilkit/canvas-core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { setColor } from "@/panels/__tests__/_color-test-helpers.js";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import { setColor } from "@/panels/__tests__/_color-test-helpers.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import PageSettingsDialog from "../PageSettingsDialog.js";
 
@@ -18,11 +22,17 @@ function page() {
 }
 
 function setup() {
-	const h = makeHarness();
+	const committed = page();
+	// The dialog resolves its page from the COMMITTED IR rather than trusting the
+	// prop (it writes undo inverses), so the harness document has to actually
+	// contain the page under edit — as it does in every real caller.
+	const h = makeHarness({
+		ir: createCanvasIR({ id: "ir-1", pages: [committed] }),
+	});
 	const onClose = vi.fn();
 	render(
 		<CanvasStudioContext.Provider value={h.studioCtx}>
-			<PageSettingsDialog page={page()} onClose={onClose} />
+			<PageSettingsDialog page={committed} onClose={onClose} />
 		</CanvasStudioContext.Provider>,
 	);
 	return { h, onClose };
