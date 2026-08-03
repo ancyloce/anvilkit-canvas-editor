@@ -29,7 +29,7 @@ import {
 	Underline,
 } from "lucide-react";
 import * as React from "react";
-import { useRef, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
 	type CanvasT,
 	useCanvasStudio,
@@ -96,22 +96,48 @@ function useParagraphContract<T>(
 	buildParagraphs: (value: T) => RichTextParagraph[],
 	fieldId: string,
 ): ReturnType<typeof useFieldContract<T>> {
-	const contract: FieldContractTarget<T> = {
-		nodes: [node],
-		buildPatch: (_n, value) => ({ paragraphs: buildParagraphs(value) }),
-	};
+	// The parent rebuilds `buildParagraphs` on every render (it closes over a
+	// fresh read of the live textarea), and this toolbar re-renders on every
+	// zoom/pan tick — it holds three viewport subscriptions. Keying the contract
+	// on the callback would therefore allocate a new contract object per frame
+	// during any pan, and since `useFieldContract` lists `contract` in all three
+	// of its `useCallback` deps, every one of its closures would be rebuilt too.
+	// Hold the callback in a ref instead and key the contract on `node` alone.
+	const latest = useRef(buildParagraphs);
+	// Synced in an effect, never during render: a render React later discards
+	// must not leave its closure behind. Events only fire after commit, so a
+	// handler always sees the committed render's callback.
+	useEffect(() => {
+		latest.current = buildParagraphs;
+	});
+	const contract = useMemo<FieldContractTarget<T>>(
+		() => ({
+			nodes: [node],
+			// Still read at CALL time (E-4), so a click builds from whatever is
+			// currently in the textarea rather than a per-render snapshot.
+			buildPatch: (_n, value) => ({ paragraphs: latest.current(value) }),
+		}),
+		[node],
+	);
 	return useFieldContract<T>(contract, fieldId);
 }
+
+/** Colour the picker shows for a fill it cannot represent as a hex swatch. */
+const UNSET_FILL_DISPLAY = "#000000";
 
 /** FR-082 text colour — swatch only; the toolbar supplies its own chrome. */
 function RichTextColorControl({
 	node,
-	value,
+	fill: committedFill,
 	buildParagraphs,
 	t,
 }: {
 	node: CanvasRichTextNode;
-	value: string;
+	/**
+	 * The first span's COMMITTED fill as a plain hex, or `undefined` when it is
+	 * not one — a gradient, or an unresolved brand token.
+	 */
+	fill: string | undefined;
 	buildParagraphs: (fill: string) => RichTextParagraph[];
 	t: CanvasT;
 }): React.JSX.Element {
@@ -119,6 +145,15 @@ function RichTextColorControl({
 	// Only commit when this interaction actually moved the picker — closing an
 	// untouched picker must not land an undo entry.
 	const dirty = useRef(false);
+	// The picker needs a concrete colour, so a span whose fill is NOT a plain hex
+	// — a gradient, or an unresolved brand token — displays as black. The change
+	// test below compares against the COMMITTED fill rather than this display
+	// fallback: testing `picked !== displayed` made black compare equal to
+	// "unchanged" for those spans, so gradient-filled text could never be set to
+	// solid black. (A span with no fill at all is a different case: it resolves
+	// to black upstream via `DEFAULT_RICH_TEXT_STYLE`, so picking black there is
+	// genuinely a no-op and still cancels.)
+	const value = committedFill ?? UNSET_FILL_DISPLAY;
 	return (
 		<ColorRow
 			compact
@@ -130,7 +165,7 @@ function RichTextColorControl({
 				field.preview(fill);
 			}}
 			onCommit={(fill) => {
-				const changed = dirty.current && fill !== value;
+				const changed = dirty.current && fill !== committedFill;
 				dirty.current = false;
 				if (changed) field.commit(fill);
 				else field.cancel();
@@ -439,9 +474,7 @@ export function RichTextToolbar(): React.JSX.Element | null {
 			</Select>
 			<RichTextColorControl
 				node={node}
-				value={
-					typeof firstStyle.fill === "string" ? firstStyle.fill : "#000000"
-				}
+				fill={typeof firstStyle.fill === "string" ? firstStyle.fill : undefined}
 				buildParagraphs={(fill) =>
 					mapSpans(currentRichText(), (s) => ({ ...s, fill }))
 				}

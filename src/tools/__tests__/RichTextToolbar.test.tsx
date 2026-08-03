@@ -55,6 +55,46 @@ function mount() {
 	return { h, view };
 }
 
+/** Same as {@link mount}, with an explicit fill on every span. */
+function mountWithFill(
+	fill: NonNullable<
+		CanvasRichTextNode["paragraphs"][number]["spans"][number]["fill"]
+	>,
+) {
+	const node = createRichText({
+		id: "rt-1",
+		width: 200,
+		bounds: { width: 200, height: 60 },
+		paragraphs: [
+			{
+				spans: [
+					{ text: "Hello", fill },
+					{ text: " world", fill },
+				],
+			},
+		],
+	});
+	const page = createPage({
+		id: "p1",
+		root: createGroup({ children: [node] }),
+	});
+	const ir = createCanvasIR({ id: "doc", pages: [page] });
+	const h = makeHarness({ ir });
+	h.studioCtx.editingStore.getState().setEditing("rt-1");
+	const view = render(
+		<CanvasStudioContext.Provider
+			value={{
+				...h.studioCtx,
+				ir: h.studioCtx.getIR(),
+				stage: makeFakeStage(),
+			}}
+		>
+			<RichTextToolbar />
+		</CanvasStudioContext.Provider>,
+	);
+	return { h, view };
+}
+
 function lastPatch(h: ReturnType<typeof makeHarness>) {
 	const cmd = h.commits.at(-1) as CanvasNodeUpdateCommand<"rich-text">;
 	return cmd.patch as { paragraphs: CanvasRichTextNode["paragraphs"] };
@@ -216,6 +256,65 @@ describe("RichTextToolbar (C-11, FR-082)", () => {
 		expect(
 			lastPatch(h).paragraphs[0]?.spans.every((s) => s.fill === "#ff0000"),
 		).toBe(true);
+	});
+
+	/**
+	 * A span whose fill is not a plain hex — here a gradient — cannot be shown on
+	 * a hex swatch, so the picker displays black. Testing the picked value
+	 * against that DISPLAY fallback made black compare equal to "unchanged", so
+	 * gradient-filled text could never be set to solid black: the edit cancelled
+	 * and the swatch snapped back with no feedback. The comparison has to be
+	 * against the COMMITTED fill, which is not a hex at all here.
+	 */
+	it("commits #000000 over a gradient fill (plan 0024 Phase 1)", async () => {
+		const { h } = mountWithFill({
+			kind: "linear",
+			from: { x: 0, y: 0 },
+			to: { x: 1, y: 0 },
+			stops: [
+				{ offset: 0, color: "#ff0000" },
+				{ offset: 1, color: "#0000ff" },
+			],
+		});
+		const hex = await openColor("rich-text-color");
+		// The swatch already displays black (the not-a-hex fallback), so a colour
+		// input emits nothing for a direct black pick. Landing on black by way of
+		// another colour is the reachable path — and the one that used to be lost.
+		fireEvent.change(hex, { target: { value: "#ff0000" } });
+		fireEvent.blur(hex);
+		fireEvent.change(hex, { target: { value: "#000000" } });
+		fireEvent.blur(hex);
+		commitColor();
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		expect(
+			lastPatch(h).paragraphs[0]?.spans.every((s) => s.fill === "#000000"),
+		).toBe(true);
+	});
+
+	/**
+	 * The neighbouring case, pinned so the fix above is not over-applied: a span
+	 * with NO fill resolves to black upstream (`DEFAULT_RICH_TEXT_STYLE`), so
+	 * picking black really is unchanged and must not land an undo entry.
+	 */
+	it("does not commit when black is picked on an already-black span", async () => {
+		const { h } = mount();
+		const hex = await openColor("rich-text-color");
+		fireEvent.change(hex, { target: { value: "#ff0000" } });
+		fireEvent.blur(hex);
+		fireEvent.change(hex, { target: { value: "#000000" } });
+		fireEvent.blur(hex);
+		commitColor();
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+	});
+
+	it("still commits nothing when the picker closes untouched", async () => {
+		const { h } = mount();
+		await openColor("rich-text-color");
+		commitColor();
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+		expect(h.studioCtx.fieldPreviewStore?.getState().previews).toEqual({});
 	});
 
 	it("font-family control rewrites every span's family (FR-082)", async () => {
