@@ -1,16 +1,17 @@
-import { createFrame, createRect } from "@anvilkit/canvas-core";
+import { createFrame, createPage, createRect } from "@anvilkit/canvas-core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
-import { commitColor, openColor } from "./_color-test-helpers.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import {
 	ColorField,
 	type FieldContractTarget,
+	type FieldPageContract,
 	NumberField,
 	TextField,
 } from "../fields.js";
+import { commitColor, openColor } from "./_color-test-helpers.js";
 
 afterEach(cleanup);
 
@@ -438,5 +439,161 @@ describe("§10 field-input contract (B-12)", () => {
 		expect(onCommit).toHaveBeenCalledWith(0.8);
 		expect(h.studioCtx.commit).not.toHaveBeenCalled();
 		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * Lifecycle half of the §10 contract. A preview is TRANSIENT state that renders
+ * over the committed document, so it must not outlive the field that published
+ * it. Before this, the only things that ever cleared one were an explicit
+ * commit or cancel on the field itself — so any interruption (unmount, a
+ * selection change that never fires the input's blur, a peer deleting the
+ * edited node) stranded the patch in the store, and `withPreviews` kept merging
+ * it into every resolution indefinitely.
+ */
+describe("§10 contract lifecycle — a preview cannot outlive its field", () => {
+	const pageFixture = (id = "p1") =>
+		createPage({
+			id,
+			size: { width: 800, height: 600, unit: "px" },
+			background: { kind: "solid", value: "#ffffff" },
+		});
+
+	const widthContract = (
+		page: ReturnType<typeof pageFixture>,
+	): FieldPageContract<number> => ({
+		page,
+		buildPatch: (p, v) => ({ size: { ...p.size, width: v } }),
+		buildCommand: (p, v) => ({
+			type: "page.resize",
+			pageId: p.id,
+			from: { width: p.size.width, height: p.size.height },
+			to: { width: v, height: p.size.height },
+		}),
+	});
+
+	it("clears an in-flight node preview when the field unmounts", () => {
+		const node = nodeFixture();
+		const h = makeHarness();
+		const { unmount } = render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<NumberField
+					label="Opacity"
+					value={0.5}
+					dataTestId="f-num"
+					contract={numberContract(node)}
+				/>
+			</CanvasStudioContext.Provider>,
+		);
+		fireEvent.change(screen.getByTestId("f-num"), { target: { value: "0.8" } });
+		expect(previews(h)).toEqual({ n1: { opacity: 0.8 } });
+		unmount();
+		expect(previews(h)).toEqual({});
+	});
+
+	/**
+	 * The page case is the severe one: `PageProperties` renders only when nothing
+	 * is selected, so a keyboard select-all or a host/collab-driven selection
+	 * unmounts the field without a blur — leaving the artboard, grid extent and
+	 * guide insets rendering a size the document does not have.
+	 */
+	it("clears an in-flight PAGE preview when the field unmounts", () => {
+		const page = pageFixture();
+		const h = makeHarness();
+		const pagePreviews = () =>
+			h.studioCtx.fieldPreviewStore?.getState().pagePreviews ?? {};
+		const { unmount } = render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<NumberField
+					label="Width"
+					value={800}
+					dataTestId="f-page-w"
+					pageContract={widthContract(page)}
+				/>
+			</CanvasStudioContext.Provider>,
+		);
+		fireEvent.change(screen.getByTestId("f-page-w"), {
+			target: { value: "1200" },
+		});
+		expect(pagePreviews()).toEqual({
+			p1: { size: { width: 1200, height: 600, unit: "px" } },
+		});
+		unmount();
+		expect(pagePreviews()).toEqual({});
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
+	});
+
+	it("clears an in-flight preview when the edited target changes", () => {
+		const h = makeHarness();
+		const tree = (node: ReturnType<typeof nodeFixture>) => (
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<NumberField
+					label="Opacity"
+					value={0.5}
+					dataTestId="f-num"
+					contract={numberContract(node)}
+				/>
+			</CanvasStudioContext.Provider>
+		);
+		const { rerender } = render(tree(nodeFixture("n1")));
+		fireEvent.change(screen.getByTestId("f-num"), { target: { value: "0.8" } });
+		expect(previews(h)).toEqual({ n1: { opacity: 0.8 } });
+		rerender(tree(nodeFixture("n2")));
+		expect(previews(h)).toEqual({});
+	});
+
+	/**
+	 * Ownership matters: the clear is gated on THIS field having published the
+	 * pending preview. An unrelated field unmounting must not wipe an edit in
+	 * flight somewhere else.
+	 */
+	it("an untouched field unmounting leaves another field's preview alone", () => {
+		const h = makeHarness();
+		const tree = (showB: boolean) => (
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<NumberField
+					label="A"
+					value={0.5}
+					dataTestId="f-a"
+					contract={numberContract(nodeFixture("n1"))}
+				/>
+				{showB ? (
+					<NumberField
+						label="B"
+						value={0.5}
+						dataTestId="f-b"
+						contract={numberContract(nodeFixture("n2"))}
+					/>
+				) : null}
+			</CanvasStudioContext.Provider>
+		);
+		const { rerender } = render(tree(true));
+		fireEvent.change(screen.getByTestId("f-a"), { target: { value: "0.8" } });
+		expect(previews(h)).toEqual({ n1: { opacity: 0.8 } });
+		rerender(tree(false));
+		expect(previews(h)).toEqual({ n1: { opacity: 0.8 } });
+	});
+
+	it("a normal commit still clears without the unmount path double-firing", () => {
+		const node = nodeFixture();
+		const h = makeHarness();
+		const { unmount } = render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<NumberField
+					label="Opacity"
+					value={0.5}
+					dataTestId="f-num"
+					contract={numberContract(node)}
+				/>
+			</CanvasStudioContext.Provider>,
+		);
+		const input = screen.getByTestId("f-num");
+		fireEvent.change(input, { target: { value: "0.8" } });
+		fireEvent.blur(input);
+		expect(previews(h)).toEqual({});
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		unmount();
+		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
 	});
 });

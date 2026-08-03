@@ -301,7 +301,12 @@ export interface SelectFieldProps<T extends string> {
 	/**
 	 * §10 field-input contract (B-12). A select is DISCRETE — there is no
 	 * in-progress value to preview or revert — so it only uses the contract's
-	 * commit half, landing one coalesced history entry across the selection.
+	 * commit half, landing one history entry across the selection.
+	 *
+	 * Commits do NOT coalesce here (`coalesce: false`). Merging is for the
+	 * continuous stream a drag or a held arrow key produces; two deliberate picks
+	 * on the same select inside the merge window are two separate acts, and
+	 * folding them would make the intermediate one unreachable by undo.
 	 */
 	contract?: FieldContractTarget<T>;
 	/** Multi-selection mixed value (B-12): renders no selection + a "Mixed" placeholder. */
@@ -330,7 +335,7 @@ export function SelectControl<T extends string>({
 	disabled,
 	className,
 }: Omit<SelectFieldProps<T>, "title">): React.JSX.Element {
-	const field = useFieldContract<T>(contract, dataTestId);
+	const field = useFieldContract<T>(contract, dataTestId, { coalesce: false });
 	return (
 		<Select
 			items={options.map((o) => ({ value: o.value, label: o.label }))}

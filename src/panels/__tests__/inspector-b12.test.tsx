@@ -123,16 +123,16 @@ describe("PropertyInspector multi-selection (B-12, FR-070)", () => {
 	/**
 	 * Plan 0024 Phase 3 (T-3.2). These discrete pickers were already instant —
 	 * the gap was that they bypassed the §10 contract, so each pick took a
-	 * different code path from every neighbouring field and landed its own
-	 * `commitBatch` entry rather than one coalesced batch. Now they match.
+	 * different code path from every neighbouring field. Now they match, still
+	 * landing ONE entry across the whole selection.
 	 */
-	it("a converted SELECT commits one coalesced batch across the selection (plan 0024 Phase 3)", async () => {
+	it("a converted SELECT commits one batch across the selection (plan 0024 Phase 3)", async () => {
 		const h = mount(twoRectIR(), ["r1", "r2"]);
 		await selectOption("prop-fill-type", "Solid");
-		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		expect(h.studioCtx.commit).toHaveBeenCalledTimes(1);
 		const [cmd] = (
-			h.studioCtx.commitCoalesced as unknown as {
-				mock: { calls: [unknown, string][] };
+			h.studioCtx.commit as unknown as {
+				mock: { calls: [unknown][] };
 			}
 		).mock.calls[0] ?? [null];
 		expect(cmd).toMatchObject({
@@ -144,17 +144,21 @@ describe("PropertyInspector multi-selection (B-12, FR-070)", () => {
 		});
 	});
 
-	it("select merge keys are per-field and per-selection (plan 0024 Phase 3)", async () => {
+	/**
+	 * A select is DISCRETE, so it must NOT coalesce. Coalescing exists for the
+	 * continuous stream a drag or a held arrow key produces; two deliberate picks
+	 * are two separate acts. Routed through `commitCoalesced` they shared one
+	 * merge key (`field:<id>:<nodeIds>`) and the history store folds a repeat of
+	 * the same key inside its merge window into the previous entry WITHOUT
+	 * pushing a new inverse — so the intermediate pick became unreachable by
+	 * undo. Two picks must stay two undo entries.
+	 */
+	it("consecutive SELECT picks stay separate undo entries (no coalescing)", async () => {
 		const h = mount(twoRectIR(), ["r1", "r2"]);
 		await selectOption("prop-fill-type", "Solid");
-		const mergeKey = (
-			h.studioCtx.commitCoalesced as unknown as {
-				mock: { calls: [unknown, string][] };
-			}
-		).mock.calls[0]?.[1];
-		// Keyed by field id + the node ids it targets, so two DIFFERENT fields
-		// never fold into one another's undo entry.
-		expect(mergeKey).toBe("field:prop-fill-type:r1,r2");
+		await selectOption("prop-fill-type", "Linear");
+		expect(h.studioCtx.commit).toHaveBeenCalledTimes(2);
+		expect(h.studioCtx.commitCoalesced).not.toHaveBeenCalled();
 	});
 
 	it("mixed transform edits build per-node patches (own transform spread)", () => {

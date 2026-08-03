@@ -194,15 +194,14 @@ describe("AutoLayoutSection", () => {
 			"Fill container",
 		]);
 		await selectOption("prop-layout-width-sizing", "Fill container");
-		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledWith(
-			{
-				type: "node.update",
-				nodeId: "r1",
-				kind: "rect",
-				patch: { layoutItem: { widthSizing: "fill" } },
-			},
-			"field:prop-layout-width-sizing:r1",
-		);
+		// Plain `commit`, not `commitCoalesced` — a select is discrete, so
+		// consecutive picks must not fold into one undo entry.
+		expect(h.studioCtx.commit).toHaveBeenCalledWith({
+			type: "node.update",
+			nodeId: "r1",
+			kind: "rect",
+			patch: { layoutItem: { widthSizing: "fill" } },
+		});
 	});
 
 	it("item group: Flow/Absolute toggle requires one shared parent and commits a layoutItem patch", () => {

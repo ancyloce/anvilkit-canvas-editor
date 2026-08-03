@@ -7,7 +7,7 @@ import type {
 	CanvasPageBackground,
 } from "@anvilkit/canvas-core";
 import * as React from "react";
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import {
 	useCanvasStudio,
 	useCanvasT,
@@ -200,6 +200,44 @@ function pageFieldContract<T, N>(
 	};
 }
 
+/** Resize along one axis, holding the other. */
+function pageSizeContract(
+	page: CanvasPage,
+	axis: "width" | "height",
+): FieldPageContract<number> {
+	return pageFieldContract<number, { width: number; height: number }>(
+		page,
+		(v) => ({
+			width: axis === "width" ? Math.round(v) : page.size.width,
+			height: axis === "height" ? Math.round(v) : page.size.height,
+		}),
+		// Spread the page's own size so `unit`/`dpi` survive the preview merge —
+		// the command preserves them by only carrying width/height.
+		(size) => ({ size: { ...page.size, ...size } }),
+		(p, size) => ({
+			type: "page.resize",
+			pageId: p.id,
+			from: { width: p.size.width, height: p.size.height },
+			to: size,
+		}),
+	);
+}
+
+/** Solid artboard background. */
+function pageBackgroundContract(page: CanvasPage): FieldPageContract<string> {
+	return pageFieldContract<string, CanvasPageBackground>(
+		page,
+		(v) => ({ kind: "solid", value: v }),
+		(background) => ({ background }),
+		(p, background) => ({
+			type: "page.set-background",
+			pageId: p.id,
+			from: p.background,
+			to: background,
+		}),
+	);
+}
+
 /**
  * FR-070 page properties — shown when nothing is selected. Size and background
  * edits now PREVIEW live on the artboard and commit once on release (plan 0024
@@ -214,35 +252,18 @@ function PageProperties({ page }: { page: CanvasPage }): React.JSX.Element {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
 
-	/** Resize along one axis, holding the other. */
-	const sizeContract = (axis: "width" | "height"): FieldPageContract<number> =>
-		pageFieldContract<number, { width: number; height: number }>(
-			page,
-			(v) => ({
-				width: axis === "width" ? Math.round(v) : page.size.width,
-				height: axis === "height" ? Math.round(v) : page.size.height,
-			}),
-			// Spread the page's own size so `unit`/`dpi` survive the preview merge —
-			// the command preserves them by only carrying width/height.
-			(size) => ({ size: { ...page.size, ...size } }),
-			(p, size) => ({
-				type: "page.resize",
-				pageId: p.id,
-				from: { width: p.size.width, height: p.size.height },
-				to: size,
-			}),
-		);
-
-	const backgroundContract = pageFieldContract<string, CanvasPageBackground>(
-		page,
-		(v) => ({ kind: "solid", value: v }),
-		(background) => ({ background }),
-		(p, background) => ({
-			type: "page.set-background",
-			pageId: p.id,
-			from: p.background,
-			to: background,
-		}),
+	// Memoised on `page`, not rebuilt inline in the JSX below: `useFieldContract`
+	// lists the contract in all three of its `useCallback` dependency arrays, so
+	// handing it a fresh object every render rebuilds every one of its closures
+	// and makes the memoisation pure overhead.
+	const widthContract = useMemo(() => pageSizeContract(page, "width"), [page]);
+	const heightContract = useMemo(
+		() => pageSizeContract(page, "height"),
+		[page],
+	);
+	const backgroundContract = useMemo(
+		() => pageBackgroundContract(page),
+		[page],
 	);
 
 	return (
@@ -268,14 +289,14 @@ function PageProperties({ page }: { page: CanvasPage }): React.JSX.Element {
 					value={page.size.width}
 					min={1}
 					dataTestId="prop-page-width"
-					pageContract={sizeContract("width")}
+					pageContract={widthContract}
 				/>
 				<NumberField
 					label={t("canvas.inspector.height", "Height")}
 					value={page.size.height}
 					min={1}
 					dataTestId="prop-page-height"
-					pageContract={sizeContract("height")}
+					pageContract={heightContract}
 				/>
 				<ColorField
 					label={t("canvas.pageSettings.background", "Background")}
