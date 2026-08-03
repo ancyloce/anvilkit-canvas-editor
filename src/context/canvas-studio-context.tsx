@@ -14,7 +14,7 @@ import type {
 	CanvasGovernanceAuditSink,
 } from "@anvilkit/canvas-core/brand-governance";
 import type Konva from "konva";
-import { createContext, use, useRef, useSyncExternalStore } from "react";
+import { createContext, use, useMemo, useSyncExternalStore } from "react";
 import type { CanvasClipboardAdapter } from "../actions/clipboard-adapter.js";
 import type {
 	CanvasAssetPicker,
@@ -549,7 +549,6 @@ export function useResolvedDocument():
  */
 export interface CanvasActivePageChrome {
 	id: string;
-	name?: string;
 	size: CanvasPage["size"];
 	background: CanvasPage["background"];
 	layoutAids?: CanvasPage["layoutAids"];
@@ -581,42 +580,44 @@ export function useActivePage(): CanvasActivePageChrome | undefined {
 	const store = ctx?.resolvedDocumentStore;
 	const activePageId = ctx?.activePageId;
 	const fallbackPages = ctx?.ir.pages;
-	// Stable across renders; only ever read/written inside getSnapshot, which
-	// React calls during render — never concurrently.
-	const cache = useRef<CanvasActivePageChrome | undefined>(undefined);
-	const getSnapshot = (): CanvasActivePageChrome | undefined => {
+	// PURE, as `useSyncExternalStore` requires: a lookup returning a reference
+	// the store's own page array already holds. It allocates nothing and caches
+	// nothing, so the render pass, the post-commit consistency check and the
+	// change handler cannot disagree. (Memoising by WRITING a ref in here would
+	// leak state out of renders React discards — a concurrent transition, an
+	// offscreen pass, StrictMode's second pass — and the mismatch React then
+	// detects forces the synchronous re-render this hook exists to avoid.)
+	const getPage = (): CanvasPage | undefined => {
 		const pages = store?.getState().resolved.source.pages ?? fallbackPages;
-		const page = pages?.find((p) => p.id === activePageId);
-		const prev = cache.current;
-		if (!page) {
-			cache.current = undefined;
-			return undefined;
-		}
-		if (
-			prev &&
-			prev.id === page.id &&
-			prev.name === page.name &&
-			prev.size === page.size &&
-			prev.background === page.background &&
-			prev.layoutAids === page.layoutAids
-		) {
-			// Only `root` moved — nothing this hook exposes changed.
-			return prev;
-		}
-		const next: CanvasActivePageChrome = {
-			id: page.id,
-			size: page.size,
-			background: page.background,
-			...(page.name !== undefined ? { name: page.name } : {}),
-			...(page.layoutAids !== undefined ? { layoutAids: page.layoutAids } : {}),
-		};
-		cache.current = next;
-		return next;
+		return pages?.find((p) => p.id === activePageId);
 	};
-	return useSyncExternalStore(
+	const page = useSyncExternalStore(
 		store ? store.subscribe : NOOP_SUBSCRIBE,
-		getSnapshot,
+		getPage,
 		() => undefined,
+	);
+	// The identity-scoped narrowing (T-4.2) lives here instead: `withPreviews`
+	// rebuilds the page object whenever any NODE preview changes, so returning
+	// the page itself would re-render every stage overlay on every frame of an
+	// unrelated drag. Depending on the chrome fields' REFERENCES gives the same
+	// bail-out without mutating during render. `name` is deliberately not among
+	// them — no consumer reads it, and including it made a per-keystroke page
+	// rename rebuild the snapshot and re-run `Grid`'s full line generation.
+	const id = page?.id;
+	const size = page?.size;
+	const background = page?.background;
+	const layoutAids = page?.layoutAids;
+	return useMemo(
+		() =>
+			id === undefined || size === undefined || background === undefined
+				? undefined
+				: {
+						id,
+						size,
+						background,
+						...(layoutAids !== undefined ? { layoutAids } : {}),
+					},
+		[id, size, background, layoutAids],
 	);
 }
 

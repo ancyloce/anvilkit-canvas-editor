@@ -6,7 +6,7 @@ import type {
 	CanvasNode,
 	CanvasPage,
 } from "@anvilkit/canvas-core";
-import { use, useCallback } from "react";
+import { use, useCallback, useEffect, useRef } from "react";
 import type { PagePreviewPatch } from "../stores/field-preview-store.js";
 import {
 	CanvasStudioContext,
@@ -78,6 +78,22 @@ export interface FieldPageContract<T> {
  */
 export type AnyFieldContract<T> = FieldContractTarget<T> | FieldPageContract<T>;
 
+/** Per-field tuning for {@link useFieldContract}. */
+export interface FieldContractOptions {
+	/**
+	 * Whether consecutive commits from this field fold into ONE history entry
+	 * (default `true`).
+	 *
+	 * Coalescing is what makes a CONTINUOUS control (drag a slider, hold an
+	 * arrow key) land a single undo step instead of one per frame. A DISCRETE
+	 * control has no such stream: each pick is a deliberate, separate act, so
+	 * folding two picks inside the merge window silently destroys the
+	 * intermediate state the user might want back. Discrete fields
+	 * (`SelectControl`) pass `false`.
+	 */
+	coalesce?: boolean;
+}
+
 /**
  * Internal contract engine shared by every field kind: preview publishes
  * per-node patches to the `fieldPreviewStore`; commit clears the preview and
@@ -93,6 +109,7 @@ export type AnyFieldContract<T> = FieldContractTarget<T> | FieldPageContract<T>;
 export function useFieldContract<T>(
 	contract: AnyFieldContract<T> | undefined,
 	fieldId: string,
+	options?: FieldContractOptions,
 ): {
 	preview: (value: T) => void;
 	commit: (value: T) => void;
@@ -105,6 +122,38 @@ export function useFieldContract<T>(
 	// token-aware fields' literal fallback in isolation); without a studio
 	// tree the contract features simply disable and `onCommit` still works.
 	const ctx = use(CanvasStudioStableContext) ?? use(CanvasStudioContext);
+	const coalesce = options?.coalesce ?? true;
+	// Does THIS field own the preview currently in the store? `setPreviews`
+	// replaces the whole map, so at most one field is ever mid-edit — but "a
+	// preview exists" is not "this field published it", and the lifecycle clear
+	// below must not wipe a preview some other field owns.
+	const previewing = useRef(false);
+	const previewStore = ctx?.fieldPreviewStore;
+	// The nodes/page this field currently edits. Keyed on IDs rather than on the
+	// `contract` object: nearly every call site builds that object inline, so its
+	// identity changes on every render and a dependency on it would cancel the
+	// very preview in flight.
+	const targetKey = contract
+		? "page" in contract
+			? `page:${contract.page.id}`
+			: contract.nodes.map((n) => n.id).join(",")
+		: "";
+	// The ONLY thing that used to clear a preview was an explicit commit/cancel
+	// on the field itself, so any interruption — unmount, a selection change that
+	// never fires the input's blur, a peer deleting the edited node — stranded
+	// the patch in the store. `withPreviews` keeps merging a stranded patch into
+	// every resolution, which for a PAGE preview leaves the whole artboard (and
+	// the grid extent and guide insets) rendering a value the document does not
+	// have, with no way back short of a reload. This cleanup fires on unmount AND
+	// whenever the edited target changes, which covers both.
+	useEffect(
+		() => () => {
+			if (!previewing.current) return;
+			previewing.current = false;
+			previewStore?.getState().clearPreviews();
+		},
+		[previewStore, targetKey],
+	);
 	const preview = useCallback(
 		(value: T) => {
 			const store = ctx?.fieldPreviewStore;
@@ -113,6 +162,7 @@ export function useFieldContract<T>(
 				store.getState().setPagePreviews({
 					[contract.page.id]: contract.buildPatch(contract.page, value),
 				});
+				previewing.current = true;
 				return;
 			}
 			const entries: Record<string, Record<string, unknown>> = {};
@@ -120,20 +170,23 @@ export function useFieldContract<T>(
 				entries[node.id] = contract.buildPatch(node, value);
 			}
 			store.getState().setPreviews(entries);
+			previewing.current = true;
 		},
 		[contract, ctx],
 	);
 	const cancel = useCallback(() => {
+		previewing.current = false;
 		ctx?.fieldPreviewStore?.getState().clearPreviews();
 	}, [ctx]);
 	const commit = useCallback(
 		(value: T) => {
 			if (!contract || !ctx) return;
+			previewing.current = false;
 			ctx.fieldPreviewStore?.getState().clearPreviews();
 			if ("page" in contract) {
 				const cmd = contract.buildCommand(contract.page, value);
 				const mergeKey = `field:${fieldId}:${contract.page.id}`;
-				if (ctx.commitCoalesced) ctx.commitCoalesced(cmd, mergeKey);
+				if (coalesce && ctx.commitCoalesced) ctx.commitCoalesced(cmd, mergeKey);
 				else ctx.commit(cmd);
 				return;
 			}
@@ -155,10 +208,10 @@ export function useFieldContract<T>(
 				.join(",")}`;
 			const cmd: CanvasCommand =
 				cmds.length === 1 ? first : { type: "batch", commands: cmds };
-			if (ctx.commitCoalesced) ctx.commitCoalesced(cmd, mergeKey);
+			if (coalesce && ctx.commitCoalesced) ctx.commitCoalesced(cmd, mergeKey);
 			else ctx.commit(cmd);
 		},
-		[contract, ctx, fieldId],
+		[coalesce, contract, ctx, fieldId],
 	);
 	return {
 		preview,
