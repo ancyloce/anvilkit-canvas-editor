@@ -232,6 +232,66 @@ describe("createResolvedDocumentStore — page previews (plan 0024 Phase 2)", ()
 		expect(store.getState().resolved).not.toBe(previewed);
 		expect(fieldPreviewStore.getState().pagePreviews).toEqual({});
 	});
+
+	/**
+	 * `PagePreviewPatch` excludes `id` at the TYPE level only — nothing checks at
+	 * runtime, and a `buildPatch` that returns a widened or spread page object
+	 * carries `id` straight through. A resolved page whose id no longer matches
+	 * `activePageId` makes `useActivePage` return undefined, blanking the
+	 * background, grid and guide overlays mid-drag.
+	 */
+	it("a patch cannot clobber the page id, even carrying one at runtime", () => {
+		const { fieldPreviewStore, store, disconnect } = makeStores();
+		cleanup = disconnect;
+		fieldPreviewStore.getState().setPagePreviews({
+			p1: {
+				id: "hijacked",
+				background: { kind: "solid", value: "#123456" },
+			} as never,
+		});
+		const page = store.getState().resolved.source.pages[0];
+		expect(page?.id).toBe("p1");
+		expect(page?.background).toEqual({ kind: "solid", value: "#123456" });
+	});
+
+	/**
+	 * The preview maps are plain object literals, so a bare `map[id]` lookup
+	 * resolves an inherited `Object.prototype` member for an id like `constructor`
+	 * or `toString` — truthy, so a page with no preview pending is treated as
+	 * patched and rebuilt on every single resolution, defeating the structural
+	 * sharing consumers memoise on.
+	 */
+	it("does not treat a prototype-named page id as having a pending patch", () => {
+		const hostile = createPage({ id: "constructor" });
+		const target = createPage({ id: "p1" });
+		let ir = createCanvasIR({
+			id: "doc",
+			title: "t",
+			pages: [hostile, target],
+		});
+		ir = insertNode(ir, {
+			parentId: target.root.id,
+			node: createRect({ id: "r1", bounds: { width: 40, height: 20 } }),
+		});
+		const sceneStore = createSceneStore({ initialIR: ir });
+		const fieldPreviewStore = createFieldPreviewStore();
+		const store = createResolvedDocumentStore({
+			sceneStore,
+			fieldPreviewStore,
+		});
+		cleanup = store.connect();
+
+		const hostileBefore = store.getState().resolved.source.pages[0];
+		// A preview on a node in the OTHER page: enough to get past the
+		// "no previews at all" short-circuit, but nothing targets `constructor`.
+		fieldPreviewStore
+			.getState()
+			.setPreviews({ r1: { bounds: { width: 80, height: 20 } } });
+
+		const hostileAfter = store.getState().resolved.source.pages[0];
+		expect(hostileAfter?.id).toBe("constructor");
+		expect(hostileAfter).toBe(hostileBefore);
+	});
 });
 
 /**

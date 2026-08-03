@@ -103,12 +103,24 @@ function withPreviews(
 	let changed = false;
 	const pages = ir.pages.map((page) => {
 		const root = patchNode(page.root, previews);
-		const pagePatch = pagePreviews[page.id];
+		const pagePatch = Object.hasOwn(pagePreviews, page.id)
+			? pagePreviews[page.id]
+			: undefined;
 		if (root === page.root && !pagePatch) return page;
 		changed = true;
-		// `id`/`root` are excluded from PagePreviewPatch at the type level, so the
-		// spread can never clobber identity or bypass the node walk above.
-		return { ...page, ...(pagePatch ?? {}), root: root as typeof page.root };
+		// `id`/`root` are excluded from PagePreviewPatch at the TYPE level only —
+		// nothing checks at runtime, and a `buildPatch` that returns a widened or
+		// spread page object (`{...page, size}`) carries `id` straight through.
+		// A previewed page whose id no longer matches `activePageId` makes
+		// `useActivePage` return undefined and blanks the background, grid and
+		// guide overlays mid-drag, so restore BOTH identity fields after the
+		// spread rather than trusting the type to hold.
+		return {
+			...page,
+			...(pagePatch ?? {}),
+			id: page.id,
+			root: root as typeof page.root,
+		};
 	});
 	return changed ? { ...ir, pages } : ir;
 }
@@ -117,7 +129,13 @@ function patchNode(
 	node: CanvasNode,
 	previews: Readonly<Record<string, FieldPreviewPatch>>,
 ): CanvasNode {
-	const patch = previews[node.id];
+	// `Object.hasOwn`, not a bare lookup: these maps are plain object literals, so
+	// an id of `constructor`/`toString` would otherwise resolve to an INHERITED
+	// function — truthy, so every resolution would allocate a fresh node and
+	// spread a function's properties over it.
+	const patch = Object.hasOwn(previews, node.id)
+		? previews[node.id]
+		: undefined;
 	let children: CanvasNode[] | undefined;
 	if (isContainerNode(node)) {
 		let childChanged = false;
