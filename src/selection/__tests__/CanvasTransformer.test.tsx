@@ -50,6 +50,11 @@ vi.mock("react-konva", () => ({
 		const refObj = ref as { current: unknown } | undefined;
 		const fakeTransformer = {
 			nodes: vi.fn(),
+			update: vi.fn(),
+			// `forceUpdate` re-MEASURES; `update` redraws from the cached node rect.
+			// The distinction matters when a gesture ends by mutating the live node
+			// imperatively — see the "commits nothing" test below.
+			forceUpdate: vi.fn(),
 			getLayer: () => ({ batchDraw: vi.fn() }),
 		};
 		if (refObj && "current" in refObj) {
@@ -491,6 +496,63 @@ describe("CanvasTransformer", () => {
 		expect(cmd.to).toEqual({ x: 10, y: 20, width: 200, height: 100 });
 		// Scale must be reset on the Konva node after commit.
 		expect((node as unknown as { scaleX: () => number }).scaleX()).toBe(1);
+	});
+
+	/**
+	 * `collectTransformEndCommands` ends some gestures by RESETTING the live
+	 * Konva node to its IR transform and contributing no command — a locked node
+	 * that was dragged anyway, and a gesture whose live transform went
+	 * non-finite. With no command there is no commit and so no re-render, while
+	 * the `tr.update()` at the top of `onTransformEnd` ran BEFORE the reset. The
+	 * border, anchors and rotate handle were therefore left drawn at the
+	 * abandoned geometry until some unrelated interaction refreshed them.
+	 */
+	it("re-measures the transformer chrome when a gesture commits nothing", () => {
+		transformerCalls.length = 0;
+		const page = createPage({ id: "p1" });
+		page.root = createGroup({
+			id: "p1-root",
+			bounds: page.root.bounds,
+			children: [
+				{
+					...createRect({
+						id: "rectA",
+						bounds: { width: 100, height: 50 },
+						transform: { x: 10, y: 20 },
+					}),
+					locked: true,
+				},
+			],
+		});
+		const ir = createCanvasIR({
+			id: "ir-1",
+			pages: [page],
+			now: () => FIXED_TS,
+		});
+		// A drag Konva already applied to the live node; the lock means it must be
+		// rolled back rather than committed.
+		const node = makeNode({ x: 99, y: 99, scaleX: 3, scaleY: 3 });
+		const stage = makeFakeStage({ rectA: node });
+		const { ctx, commits } = makeCtx(stage, ir);
+		ctx.selectionStore.getState().setSelection(["rectA"]);
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<CanvasTransformer />
+			</CanvasStudioContext.Provider>,
+		);
+		const entry = transformerCalls[0];
+		const transformerProps = entry?.props as { onTransformEnd: () => void };
+		act(() => {
+			transformerProps.onTransformEnd();
+		});
+
+		expect(commits).toHaveLength(0);
+		// The live node was rolled back to its IR transform …
+		expect((node as unknown as { x: () => number }).x()).toBe(10);
+		expect((node as unknown as { scaleX: () => number }).scaleX()).toBe(1);
+		// … so the chrome must be re-measured, not redrawn from the stale rect.
+		const tr = entry?.ref?.current as { forceUpdate: () => void } | undefined;
+		expect(tr?.forceUpdate).toHaveBeenCalled();
 	});
 
 	it("commits a resize for a node NESTED inside a group, not just top-level children (E-3)", () => {

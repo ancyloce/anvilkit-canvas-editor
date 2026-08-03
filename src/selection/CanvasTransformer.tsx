@@ -14,7 +14,7 @@ import { Label, Tag, Text, Transformer } from "react-konva";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
 import { draggedIdsKey } from "../perf/active-nodes.js";
 import { findNodeById } from "../stage/find-node-by-id.js";
-import { isFiniteBox } from "../stage/finite-geometry.js";
+import { isFiniteBox, sanitizeBox } from "../stage/finite-geometry.js";
 import {
 	activeAnchorName,
 	type ChromeTheme,
@@ -697,6 +697,18 @@ export function CanvasTransformer(): React.JSX.Element | null {
 			commitBatch(cmds, "Transform");
 		} else if (cmds.length === 1 && cmds[0]) {
 			commit(cmds[0]);
+		} else {
+			// Nothing to commit means `collectTransformEndCommands` may have RESET
+			// the live Konva nodes back to their IR transform — it does that for a
+			// locked node and for a gesture whose live transform went non-finite,
+			// then contributes no command. With no command there is no re-render,
+			// so the `tr.update()` above (which ran BEFORE the reset) leaves the
+			// border, anchors and rotate handle drawn at the abandoned geometry
+			// until an unrelated interaction happens to refresh them. `forceUpdate`
+			// re-measures rather than redrawing from the cached node rect, which is
+			// the whole point here — the rect it cached is the stale one.
+			tr?.forceUpdate?.();
+			tr?.getLayer?.()?.batchDraw?.();
 		}
 	}, [
 		stage,
@@ -745,13 +757,26 @@ export function CanvasTransformer(): React.JSX.Element | null {
 				// comparison is false), which is exactly how Konva's own
 				// `Util._inRange` size guards get bypassed and `NaN` reaches
 				// `rotation`/`scaleX`/… on the selected nodes.
-				boundBoxFunc={(oldBox, newBox) =>
-					!isFiniteBox(newBox) ||
-					Math.abs(newBox.width) < MIN_DIMENSION ||
-					Math.abs(newBox.height) < MIN_DIMENSION
+				// It checks the box's `rotation` too — Konva types this box as
+				// `IRect & {rotation}` and feeds that field straight into
+				// `newTr.rotate()`, so skipping it would leave the headline symptom
+				// reachable through the very guard built to stop it.
+				boundBoxFunc={(oldBox, newBox) => {
+					if (
+						isFiniteBox(newBox) &&
+						Math.abs(newBox.width) >= MIN_DIMENSION &&
+						Math.abs(newBox.height) >= MIN_DIMENSION
+					) {
+						return newBox;
+					}
+					// `oldBox` is Konva's own `_getNodeRect()` measurement, not a
+					// known-good value: once a node's rect has gone non-finite BOTH
+					// boxes are corrupt, and returning `oldBox` propagates precisely
+					// what this guard exists to contain.
+					return isFiniteBox(oldBox)
 						? oldBox
-						: newBox
-				}
+						: sanitizeBox(oldBox, MIN_DIMENSION);
+				}}
 			/>
 			{/* The rotate-icon glyph is created imperatively and added as a CHILD of
 			    the Transformer (see `useRotateIcon`) so it inherits the transformer's
