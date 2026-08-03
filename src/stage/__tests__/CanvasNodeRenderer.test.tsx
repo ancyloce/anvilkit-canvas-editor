@@ -241,7 +241,7 @@ describe("CanvasNodeRenderer", () => {
 		"Z",
 		"M",
 		"garbage",
-	])("renders nothing for unmeasurable path data %o", (d) => {
+	])("draws no Path for unmeasurable path data %o", (d) => {
 		render(
 			<CanvasNodeRenderer
 				node={{
@@ -255,6 +255,45 @@ describe("CanvasNodeRenderer", () => {
 			/>,
 		);
 		expect(callsOfType("Path")).toHaveLength(0);
+	});
+
+	/**
+	 * Undrawable is not the same as absent. Every geometry lookup goes through
+	 * `findNodeById(stage, id)` — selection box, `measureSelection`,
+	 * `collectTransformEndCommands`, the Transformer — so rendering NOTHING made
+	 * a schema-valid path (`d.length >= 1` admits `"Z"`, and SVG import produces
+	 * it) unselectable and untransformable, with no selection border or handles
+	 * even when picked from the LayerPanel and no diagnostic anywhere.
+	 */
+	it.each([
+		"",
+		"Z",
+		"M",
+		"garbage",
+	])("keeps an unmeasurable path ADDRESSABLE via a placeholder %o", (d) => {
+		render(
+			<CanvasNodeRenderer
+				node={{
+					id: "p-bad",
+					type: "path" as const,
+					transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+					bounds: { width: 50, height: 50 },
+					zIndex: 0,
+					d,
+				}}
+			/>,
+		);
+		const placeholder = callsOfType("Rect").find(
+			(c) => c.props.id === "p-bad",
+		)?.props;
+		expect(placeholder).toBeDefined();
+		// `name` is what `findHitNodeId`/`findNodeById` walk up to.
+		expect(placeholder?.name).toBe("p-bad");
+		expect(placeholder?.width).toBe(50);
+		expect(placeholder?.height).toBe(50);
+		// Nothing is painted, so it must not swallow clicks meant for what is
+		// underneath it.
+		expect(placeholder?.listening).toBe(false);
 	});
 
 	it("never hands Konva a non-finite transform or bounds", () => {
@@ -861,14 +900,38 @@ describe("CanvasNodeRenderer — frame", () => {
 		expect(frameGroup()?.props.name).toBe("f1");
 	});
 
-	it("paints nothing for the frame box when the frame has no background", () => {
-		render(<CanvasNodeRenderer node={frameFixture()} />);
+	it("paints nothing for the frame box when a childless frame has no background", () => {
+		render(<CanvasNodeRenderer node={frameFixture({ children: [] })} />);
 		const box = callsOfType("Rect").find((c) => c.props.id === undefined);
 		// The box Rect is still emitted (see below) — it just carries no paint.
 		expect(box?.props.fill).toBeUndefined();
 		expect(box?.props.stroke).toBeUndefined();
+	});
+
+	/**
+	 * The measurement fix is scoped to the case that can actually degenerate:
+	 * a CHILDLESS frame. `Container.getClientRect` unions children and ignores
+	 * `listening`, so emitting the bounds-sized Rect unconditionally would
+	 * re-measure every background-less frame that HAS children from its content
+	 * to its declared bounds — silently moving the selection border, the
+	 * Transformer's `oldBox` (and so the resize ratio) and the ElementControls
+	 * anchor for frames that were never broken.
+	 */
+	it("emits NO box Rect for a background-less frame that has children", () => {
+		render(<CanvasNodeRenderer node={frameFixture()} />);
+		expect(
+			callsOfType("Rect").find((c) => c.props.id === undefined),
+		).toBeUndefined();
 		// The child rect is untouched.
 		expect(callsOfType("Rect").some((c) => c.props.id === "r1")).toBe(true);
+	});
+
+	it("still paints the box Rect for a frame with BOTH a background and children", () => {
+		render(<CanvasNodeRenderer node={frameFixture({ background: "#0af" })} />);
+		const box = callsOfType("Rect").find((c) => c.props.id === undefined);
+		expect(box?.props.fill).toBe("#0af");
+		expect(box?.props.width).toBe(200);
+		expect(box?.props.listening).toBe(true);
 	});
 
 	// A frame OWNS its bounds, but a Konva Container measures itself PURELY from

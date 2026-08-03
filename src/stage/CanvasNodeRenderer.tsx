@@ -318,51 +318,59 @@ function CanvasFrameNodeRenderer({ node }: { node: CanvasFrameNode }) {
 	const fill = emptyWell
 		? (node.background ?? FRAME_PLACEHOLDER_FALLBACK_FILL)
 		: node.background;
+	// A frame OWNS its bounds, but a Konva `Container` derives its client rect
+	// PURELY from its children (`Container.getClientRect` unions child rects and
+	// falls back to `0,0,0,0`), so a background-less frame needs a bounds-sized
+	// child to measure correctly. Gated on being CHILDLESS because only that case
+	// can degenerate to 0×0 — the failure this exists to prevent. Emitting it
+	// unconditionally would instead re-measure every background-less frame that
+	// HAS children from its content to its declared bounds, silently moving the
+	// selection box, the Transformer's `oldBox` (and so the resize ratio) and the
+	// floating ElementControls anchor for frames that were never broken.
+	const needsGeometryRect = fill !== undefined || node.children.length === 0;
 
 	return (
 		<Group {...commonProps(node)} {...frameClipProps(node)}>
-			<Rect
-				// Deliberately carries NO id/name. `findHitNodeId` resolves a click by
-				// walking UP the Konva tree to the first node whose name matches a
-				// top-level IR id, so an anonymous backdrop makes a click on the
-				// frame's background select the FRAME. An id here would instead
-				// collide with the Group's, and `listening={false}` would make the
-				// background unclickable entirely.
-				//
-				// Rendered even with NO background, because a frame OWNS its bounds
-				// while a Konva `Container` derives its client rect PURELY from its
-				// children (`Container.getClientRect` unions child rects and falls
-				// back to `0,0,0,0`). A background-less, childless frame — exactly
-				// what the frame tool drags out — would otherwise measure 0×0, so
-				// the whole geometry stack reads the frame as sizeless: the
-				// selection box collapses to a point, and `Transformer._fitNodesInto`
-				// builds `oldTr` from that 0×0 box, making it singular. Its
-				// `oldTr.invert()` then divides by a zero determinant and writes
-				// `NaN` x/y/scale/rotation onto the node — the `NaN` warning burst.
-				// Konva's own zero-size guard only checks the NEW box, so it cannot
-				// catch this. Giving the group a bounds-sized child fixes the
-				// measurement at the source.
-				//
-				// With no fill this paints nothing (`fillProps` yields no fill, and
-				// there is no stroke) and is non-listening, so click-through on an
-				// unfilled frame is preserved — it contributes geometry only.
-				x={0}
-				y={0}
-				width={width}
-				height={height}
-				listening={fill !== undefined}
-				cornerRadius={
-					node.cornerRadii
-						? [
-								node.cornerRadii.topLeft,
-								node.cornerRadii.topRight,
-								node.cornerRadii.bottomRight,
-								node.cornerRadii.bottomLeft,
-							]
-						: node.radius
-				}
-				{...fillProps(fill, node.bounds, brandKit)}
-			/>
+			{needsGeometryRect ? (
+				<Rect
+					// Deliberately carries NO id/name. `findHitNodeId` resolves a
+					// click by walking UP the Konva tree to the first node whose name
+					// matches a top-level IR id, so an anonymous backdrop makes a
+					// click on the frame's background select the FRAME. An id here
+					// would instead collide with the Group's, and `listening={false}`
+					// would make the background unclickable entirely.
+					//
+					// For a CHILDLESS background-less frame — exactly what the frame
+					// tool drags out — this is the only thing giving the group a
+					// measurable size. Without it the whole geometry stack reads the
+					// frame as 0×0: the selection box collapses to a point, and
+					// `Transformer._fitNodesInto` builds `oldTr` from that box, making
+					// it singular. Its `oldTr.invert()` then divides by a zero
+					// determinant and writes `NaN` x/y/scale/rotation onto the node —
+					// the `NaN` warning burst. Konva's own zero-size guard only checks
+					// the NEW box, so it cannot catch this.
+					//
+					// With no fill this paints nothing (`fillProps` yields no fill,
+					// and there is no stroke) and is non-listening, so click-through
+					// on an unfilled frame is preserved — it contributes geometry only.
+					x={0}
+					y={0}
+					width={width}
+					height={height}
+					listening={fill !== undefined}
+					cornerRadius={
+						node.cornerRadii
+							? [
+									node.cornerRadii.topLeft,
+									node.cornerRadii.topRight,
+									node.cornerRadii.bottomRight,
+									node.cornerRadii.bottomLeft,
+								]
+							: node.radius
+					}
+					{...fillProps(fill, node.bounds, brandKit)}
+				/>
+			) : null}
 			{emptyWell && isInteractive ? (
 				<Group listening={false}>
 					<Rect
@@ -531,11 +539,29 @@ function CanvasPathNodeRenderer({ node }: { node: CanvasPathNode }) {
 	const brandKit = useCanvasBrandKit();
 	// Path data Konva cannot turn into points measures as an all-`NaN` rect,
 	// which poisons every ancestor's rect and the selection Transformer's matrix
-	// math (see `finite-geometry.ts`). There is nothing to draw either way, so
-	// render nothing — the same neutral degrade `fillProps` uses for an
-	// unresolvable brand token. Memoised: Konva re-parses on every call.
+	// math (see `finite-geometry.ts`). Memoised: Konva re-parses on every call.
 	const drawable = React.useMemo(() => hasDrawablePathData(node.d), [node.d]);
-	if (!drawable) return null;
+	if (!drawable) {
+		// Substitute a bounds-sized Rect rather than rendering nothing. `d: "Z"`,
+		// `"M"` and anything Konva's parser rejects are all VALID per
+		// `CanvasPathNodeSchema` (`d.length >= 1`) and arrive from SVG import, so
+		// this is reachable with a perfectly well-formed document. Returning null
+		// removes the node from the Konva tree entirely, and every lookup runs
+		// through `findNodeById(stage, id)` — selection box, `measureSelection`,
+		// `collectTransformEndCommands`, the Transformer — so the node becomes
+		// unselectable and untransformable, with no selection border or handles
+		// even when picked from the LayerPanel, and no diagnostic anywhere.
+		// Carrying `commonProps` keeps it addressable; `listening={false}` keeps
+		// an invisible shape from swallowing clicks meant for what is underneath.
+		return (
+			<Rect
+				{...commonProps(node)}
+				width={node.bounds.width}
+				height={node.bounds.height}
+				listening={false}
+			/>
+		);
+	}
 	return (
 		<Path
 			{...commonProps(node)}

@@ -35,19 +35,62 @@ export function finiteOr(value: number, fallback: number): number {
 /**
  * True when every number Konva reads off this box is finite. Konva requires
  * `boundBoxFunc` to return a box, so callers fall back to the previous one.
+ *
+ * `rotation` is optional because callers pass both shapes: Konva types the
+ * `boundBoxFunc` box as `IRect & { rotation: number }`, while plain rects
+ * (`getClientRect`) carry no rotation. It must be CHECKED wherever it is
+ * present — `Transformer._fitNodesInto` feeds it straight into
+ * `newTr.rotate(newAttrs.rotation)`, so a `NaN` there makes the whole matrix
+ * `NaN` and lands on every selected node exactly like a bad width would. A
+ * box-shaped guard that skipped it would let the headline symptom
+ * (`NaN is a not valid value for "rotation"`) through the one seam built to
+ * stop it.
  */
 export function isFiniteBox(box: {
 	x: number;
 	y: number;
 	width: number;
 	height: number;
+	rotation?: number;
 }): boolean {
 	return (
 		Number.isFinite(box.x) &&
 		Number.isFinite(box.y) &&
 		Number.isFinite(box.width) &&
-		Number.isFinite(box.height)
+		Number.isFinite(box.height) &&
+		(box.rotation === undefined || Number.isFinite(box.rotation))
 	);
+}
+
+/**
+ * A box with every non-finite number replaced, for the case where the box a
+ * caller wanted to FALL BACK to is itself corrupt.
+ *
+ * `boundBoxFunc`'s `oldBox` is Konva's own `_getNodeRect()` measurement, so
+ * when a node's rect has already gone `NaN` both boxes are bad and returning
+ * `oldBox` propagates the corruption it was meant to contain. Collapsing to
+ * `minDimension` keeps the Transformer's matrix invertible, which is the
+ * property every downstream guard depends on.
+ */
+export function sanitizeBox<
+	T extends {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+		rotation?: number;
+	},
+>(box: T, minDimension: number): T {
+	return {
+		...box,
+		x: finiteOr(box.x, 0),
+		y: finiteOr(box.y, 0),
+		width: finiteOr(box.width, minDimension),
+		height: finiteOr(box.height, minDimension),
+		...(box.rotation === undefined
+			? {}
+			: { rotation: finiteOr(box.rotation, 0) }),
+	};
 }
 
 /**
@@ -86,13 +129,39 @@ function isFiniteTransform(t: CanvasTransform): boolean {
 }
 
 /**
- * The node as Konva may safely measure it: non-finite transform/bounds numbers
- * replaced by their identity value.
+ * Non-finite entries in a `line`/`arrow` coordinate list.
+ *
+ * `Konva.Line.getSelfRect()` seeds `minX`/`minY` from `points[0]`/`points[1]`
+ * and folds the rest through `Math.min`/`Math.max`, so ONE bad entry returns an
+ * all-`NaN` self rect — the same ancestor-poisoning failure `d` has, reached by
+ * the same routes (SVG import, AI output, templates, collab peers). Guarded by
+ * `Array.isArray` because `points` is a COUNT on star nodes, not a list.
+ */
+function nonFinitePoints(node: CanvasNode): readonly number[] | undefined {
+	const points = (node as { points?: unknown }).points;
+	if (!Array.isArray(points)) return undefined;
+	const list = points as readonly number[];
+	return list.every((n) => Number.isFinite(n)) ? undefined : list;
+}
+
+/** A non-finite `strokeWidth`, which `getClientRect` folds into every rect. */
+function nonFiniteStrokeWidth(node: CanvasNode): boolean {
+	const strokeWidth = (node as { strokeWidth?: unknown }).strokeWidth;
+	return typeof strokeWidth === "number" && !Number.isFinite(strokeWidth);
+}
+
+/**
+ * The node as Konva may safely measure it: non-finite transform, bounds,
+ * coordinate-list and stroke-width numbers replaced by their identity value.
  *
  * Applied once per node at the top of `CanvasNodeRenderer`, so every kind's
  * props — and everything derived from them (`nodeRenderOffset`,
  * `aspectFitScaleY`, radii, clip rects, gradient stops) — are finite by
  * construction rather than at ~20 individual prop sites.
+ *
+ * `points` and `strokeWidth` are here rather than at their prop sites for the
+ * same reason: both feed `getSelfRect`/`getClientRect`, so sanitising them
+ * anywhere later would be after the measurement that matters.
  *
  * Returns the SAME node reference when nothing needs correcting (the
  * overwhelmingly common case), so the memoised render path allocates nothing
@@ -101,7 +170,16 @@ function isFiniteTransform(t: CanvasTransform): boolean {
 export function withFiniteGeometry<T extends CanvasNode>(node: T): T {
 	const boundsOk =
 		Number.isFinite(node.bounds.width) && Number.isFinite(node.bounds.height);
-	if (boundsOk && isFiniteTransform(node.transform)) return node;
+	const badPoints = nonFinitePoints(node);
+	const badStroke = nonFiniteStrokeWidth(node);
+	if (
+		boundsOk &&
+		!badPoints &&
+		!badStroke &&
+		isFiniteTransform(node.transform)
+	) {
+		return node;
+	}
 	const t = node.transform;
 	return {
 		...node,
@@ -120,5 +198,10 @@ export function withFiniteGeometry<T extends CanvasNode>(node: T): T {
 			width: finiteOr(node.bounds.width, 0),
 			height: finiteOr(node.bounds.height, 0),
 		},
+		// Collapse a bad coordinate to the origin rather than dropping it: the
+		// list's LENGTH is what decides whether Konva takes its safe
+		// `points.length < 4` branch, so removing entries would change the shape.
+		...(badPoints ? { points: badPoints.map((n) => finiteOr(n, 0)) } : {}),
+		...(badStroke ? { strokeWidth: 0 } : {}),
 	};
 }

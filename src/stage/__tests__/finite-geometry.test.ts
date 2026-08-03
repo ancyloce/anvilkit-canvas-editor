@@ -1,9 +1,15 @@
-import { createEllipse, createRect } from "@anvilkit/canvas-core";
+import {
+	createEllipse,
+	createLine,
+	createRect,
+	createStar,
+} from "@anvilkit/canvas-core";
 import { describe, expect, it } from "vitest";
 import {
 	finiteOr,
 	hasDrawablePathData,
 	isFiniteBox,
+	sanitizeBox,
 	withFiniteGeometry,
 } from "../finite-geometry.js";
 
@@ -39,6 +45,56 @@ describe("isFiniteBox", () => {
 			box[key] = Number.NaN;
 			expect(isFiniteBox(box)).toBe(false);
 		}
+	});
+
+	/**
+	 * Konva types the `boundBoxFunc` box as `IRect & { rotation: number }` and
+	 * `Transformer._fitNodesInto` feeds that field straight into
+	 * `newTr.rotate(newAttrs.rotation)`. A guard that only checked x/y/w/h let a
+	 * `NaN` rotation through untouched — making the whole matrix `NaN` and
+	 * producing the exact `NaN is a not valid value for "rotation"` burst this
+	 * module exists to stop, THROUGH the guard built to stop it.
+	 */
+	it("rejects a non-finite rotation on a box that carries one", () => {
+		const base = { x: 1, y: 2, width: 3, height: 4 };
+		expect(isFiniteBox({ ...base, rotation: 45 })).toBe(true);
+		expect(isFiniteBox({ ...base, rotation: Number.NaN })).toBe(false);
+		expect(isFiniteBox({ ...base, rotation: Number.POSITIVE_INFINITY })).toBe(
+			false,
+		);
+	});
+
+	it("still accepts a rotation-less rect (getClientRect's shape)", () => {
+		expect(isFiniteBox({ x: 1, y: 2, width: 3, height: 4 })).toBe(true);
+	});
+});
+
+describe("sanitizeBox", () => {
+	/**
+	 * `boundBoxFunc`'s `oldBox` comes from Konva's own `_getNodeRect()`, so once a
+	 * node's rect has gone non-finite BOTH boxes are corrupt and falling back to
+	 * `oldBox` propagates the corruption. Collapsing to `minDimension` keeps the
+	 * Transformer's matrix invertible.
+	 */
+	it("replaces every non-finite member, sizing to minDimension", () => {
+		expect(
+			sanitizeBox(
+				{
+					x: Number.NaN,
+					y: 5,
+					width: Number.NaN,
+					height: Number.NEGATIVE_INFINITY,
+					rotation: Number.NaN,
+				},
+				1,
+			),
+		).toEqual({ x: 0, y: 5, width: 1, height: 1, rotation: 0 });
+	});
+
+	it("leaves a rotation-less box rotation-less", () => {
+		const out = sanitizeBox({ x: 0, y: 0, width: Number.NaN, height: 2 }, 1);
+		expect(out).toEqual({ x: 0, y: 0, width: 1, height: 2 });
+		expect("rotation" in out).toBe(false);
 	});
 });
 
@@ -108,6 +164,58 @@ describe("withFiniteGeometry", () => {
 		const safe = withFiniteGeometry(node);
 		expect(safe.transform).toMatchObject({ x: 0, y: 0, scaleX: 1, scaleY: 1 });
 		expect(safe.bounds).toEqual({ width: 0, height: 20 });
+	});
+
+	/**
+	 * `Konva.Line.getSelfRect()` seeds min/max from `points[0]`/`points[1]` and
+	 * folds the rest through `Math.min`/`Math.max`, so ONE non-finite entry
+	 * returns an all-`NaN` self rect that poisons every ancestor container's
+	 * client rect — the same failure `d` has, and reachable by the same routes
+	 * (SVG import, AI output, templates, collab peers). Sanitising `points` at
+	 * any later prop site would be after the measurement that matters.
+	 */
+	it("collapses non-finite line points to the origin, preserving length", () => {
+		const node = createLine({
+			id: "l1",
+			points: [0, Number.NaN, 10, Number.POSITIVE_INFINITY],
+		});
+		const safe = withFiniteGeometry(node);
+		expect(safe.points).toEqual([0, 0, 10, 0]);
+		// Length drives Konva's safe `points.length < 4` branch — dropping entries
+		// instead of replacing them would change the shape.
+		expect(safe.points).toHaveLength(4);
+	});
+
+	it("leaves a finite line reference-identical", () => {
+		const node = createLine({ id: "l2", points: [0, 0, 10, 10] });
+		expect(withFiniteGeometry(node)).toBe(node);
+	});
+
+	/** `getClientRect` folds stroke width into every rect by default. */
+	it("replaces a non-finite strokeWidth with 0", () => {
+		const node = createLine({
+			id: "l3",
+			points: [0, 0, 10, 10],
+			strokeWidth: Number.NaN,
+		});
+		expect(withFiniteGeometry(node).strokeWidth).toBe(0);
+	});
+
+	/**
+	 * `points` is a COUNT on star nodes, not a coordinate list — the guard is
+	 * `Array.isArray`-gated so a star's point count is never rewritten to an
+	 * array.
+	 */
+	it("does not touch a star's numeric `points` count", () => {
+		const node = createStar({
+			id: "s1",
+			bounds: { width: 10, height: 10 },
+			points: 5,
+			transform: { rotation: Number.NaN },
+		});
+		const safe = withFiniteGeometry(node);
+		expect(safe.points).toBe(5);
+		expect(safe.transform.rotation).toBe(0);
 	});
 
 	it("corrects skew only when the node declares it (C-4 omission stays)", () => {
