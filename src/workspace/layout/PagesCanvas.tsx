@@ -191,7 +191,13 @@ export function PagesCanvas({
 			e.preventDefault();
 			const viewport = ctx.viewportStore.getState();
 			const next = computeWheelZoom(viewport.zoom, e.deltaY);
-			if (next === viewport.zoom) return;
+			// Bail on a non-finite zoom BEFORE deriving the scroll offsets from it.
+			// `setZoom` drops such a value (see `viewport-store`), but the
+			// `scrollLeft`/`scrollTop` below are computed from `next` and would
+			// still be assigned — and a browser coerces an assigned `NaN` scroll
+			// offset to `0`, snapping the canvas to the top-left. That partial apply
+			// is exactly the viewport jump the store's guard promises to avoid.
+			if (!Number.isFinite(next) || next === viewport.zoom) return;
 			const rect = el.getBoundingClientRect();
 			const cx = e.clientX - rect.left;
 			const cy = e.clientY - rect.top;

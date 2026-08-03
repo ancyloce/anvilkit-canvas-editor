@@ -24,6 +24,11 @@ import {
 	type CanvasStudioContextValue,
 } from "@/context/canvas-studio-context.js";
 import {
+	commitColor,
+	openColor,
+	setColor,
+} from "@/panels/__tests__/_color-test-helpers.js";
+import {
 	optionLabels,
 	selectedLabel,
 	selectOption,
@@ -32,11 +37,6 @@ import {
 	makeHarness,
 	type TestHarness,
 } from "@/tools/__tests__/_tool-test-helpers.js";
-import {
-	commitColor,
-	openColor,
-	setColor,
-} from "@/panels/__tests__/_color-test-helpers.js";
 import { CanvasToolbar } from "../CanvasToolbar.js";
 
 afterEach(cleanup);
@@ -232,7 +232,9 @@ describe("CanvasToolbar — text selection typography (FR-180)", () => {
 	it("commits a font-family pick to both nodes as one batch", async () => {
 		const { h } = setup(["t1", "t2"]);
 		await selectOption("toolbar-font-family", "Georgia");
-		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		// A select commits discretely (see `SelectControl`), so this lands on
+		// `commit` rather than the coalescing path the continuous fields use.
+		expect(h.studioCtx.commit).toHaveBeenCalledTimes(1);
 		const cmd = h.commits[0] as {
 			type: string;
 			commands: CanvasNodeUpdateCommand<"text">[];
@@ -342,7 +344,8 @@ describe("CanvasToolbar — single image (FR-180)", () => {
 		const { h } = setup(["i1"]);
 		expect(selectedLabel("toolbar-fit-mode")).toBe("Stretch");
 		await selectOption("toolbar-fit-mode", "Fill");
-		expect(h.studioCtx.commitCoalesced).toHaveBeenCalledTimes(1);
+		// Discrete pick — the contract's non-coalescing commit half.
+		expect(h.studioCtx.commit).toHaveBeenCalledTimes(1);
 		expect(h.commits).toEqual([
 			{
 				type: "node.update",

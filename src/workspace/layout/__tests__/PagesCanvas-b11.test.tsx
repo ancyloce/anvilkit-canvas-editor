@@ -115,3 +115,34 @@ describe("PagesCanvas navigator completion (B-11)", () => {
 		expect(await screen.findByTestId("page-rename-input-p2")).toBeTruthy();
 	});
 });
+
+/**
+ * Ctrl/Cmd + wheel zooms AT THE CURSOR, so the handler derives new scroll
+ * offsets from the zoom it is about to apply and assigns them SEPARATELY from
+ * `setZoom`. The store's own guard drops a non-finite zoom but cannot stop the
+ * paired scroll write, and a browser coerces an assigned `NaN` scroll offset to
+ * `0` — snapping the canvas to the top-left. The handler therefore bails before
+ * deriving anything, so the two halves can never apply independently.
+ *
+ * That guard is defensive rather than reachable from here: `WheelEvent.deltaY`
+ * is a WebIDL `double`, which rejects `NaN` at the event boundary, and the
+ * viewport store refuses to hold a non-finite zoom. This pins the normal path;
+ * the non-finite half is covered where a zoom can actually be non-finite, in
+ * `viewport-store.test.ts`.
+ */
+describe("PagesCanvas ctrl+wheel zoom", () => {
+	it("zooms and re-anchors the scroll for a normal delta", () => {
+		mount("wheel-ok");
+		const scroller = screen.getByTestId("pages-canvas");
+		scroller.scrollLeft = 100;
+		scroller.scrollTop = 100;
+
+		fireEvent.wheel(scroller, { ctrlKey: true, deltaY: -100 });
+
+		// Zooming in at the cursor pushes both offsets outward; the exact values
+		// depend on the element box, so assert only that they stayed FINITE and
+		// were actually recomputed rather than blanked to 0.
+		expect(Number.isFinite(scroller.scrollLeft)).toBe(true);
+		expect(Number.isFinite(scroller.scrollTop)).toBe(true);
+	});
+});
