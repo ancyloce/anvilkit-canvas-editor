@@ -19,7 +19,7 @@ import {
 } from "../../brand/resolve-brand-token.js";
 import type { CanvasT } from "../../context/canvas-studio-context.js";
 import { measureGlyphWidth } from "../../text/canvas-glyph-measurer.js";
-import { fontManifestHash, observeFontFamily } from "../../text/font-status.js";
+import { fontManifestHash, useFontStatus } from "../../text/font-status.js";
 import { getCachedLayout } from "../../text/layout-cache.js";
 import { layoutRichText } from "../../text/rich-text-layout.js";
 import { DEFAULT_RICH_TEXT_STYLE } from "../../text/rich-text-style.js";
@@ -48,6 +48,39 @@ import {
  * Continuous fields patch every node in ONE batch via the `contract` prop;
  * discrete controls (selects, switches) via `commitPatchAll`.
  */
+
+/**
+ * FR-083 (C-11) passive font-availability notice.
+ *
+ * A component rather than an inline `observeFontFamily()` read, because
+ * tracking a family WRITES the font registry, and that write fans out into a
+ * synchronous re-resolution of the document — from a render pass, React reports
+ * it as "Cannot update a component while rendering a different component".
+ * `renderRichTextFields` is a plain function called from a `switch`, so it can
+ * host neither the hook nor the write; both belong here.
+ */
+function FontStatusNotice({
+	family,
+	t,
+}: {
+	family: string | undefined;
+	t: CanvasT;
+}): React.JSX.Element | null {
+	const status = useFontStatus(family);
+	if (status !== "missing" && status !== "error") return null;
+	return (
+		<div
+			data-testid="rich-text-font-status"
+			role="status"
+			className="rounded-md bg-amber-500/10 px-2.5 py-1.5 text-[0.7rem] text-amber-700 dark:text-amber-400"
+		>
+			{t(
+				"canvas.inspector.fontMissing",
+				"Font isn't available — showing a fallback.",
+			)}
+		</div>
+	);
+}
 
 /** Shared align options — plain `text`'s node-level align and rich text's
  * paragraph align offer the exact same three choices. */
@@ -243,11 +276,11 @@ export function renderRichTextFields(
 			DEFAULT_RICH_TEXT_STYLE.lineHeight,
 	);
 
-	// FR-083 (C-11): passive font state; FR-084: overflow warning + fixes.
-	// Layout/overflow measurement is inherently a REPRESENTATIVE-node concern
-	// (it depends on that node's own paragraphs/bounds) — shrink-to-fit/expand
-	// act on the first selected node only, same as `path`'s "Edit points".
-	const fontStatus = observeFontFamily(fontFamilyResolved.value);
+	// FR-084: overflow warning + fixes. Layout/overflow measurement is inherently
+	// a REPRESENTATIVE-node concern (it depends on that node's own
+	// paragraphs/bounds) — shrink-to-fit/expand act on the first selected node
+	// only, same as `path`'s "Edit points". (FR-083 font state renders through
+	// `FontStatusNotice`, which owns the hook this plain function cannot host.)
 	const measured = getCachedLayout(
 		node.paragraphs,
 		node.width,
@@ -391,18 +424,7 @@ export function renderRichTextFields(
 						</div>
 					</div>
 				) : null}
-				{fontStatus === "missing" || fontStatus === "error" ? (
-					<div
-						data-testid="rich-text-font-status"
-						role="status"
-						className="rounded-md bg-amber-500/10 px-2.5 py-1.5 text-[0.7rem] text-amber-700 dark:text-amber-400"
-					>
-						{t(
-							"canvas.inspector.fontMissing",
-							"Font isn't available — showing a fallback.",
-						)}
-					</div>
-				) : null}
+				<FontStatusNotice family={fontFamilyResolved.value} t={t} />
 				<SelectField
 					label={t("canvas.inspector.sizing", "Sizing")}
 					value={node.sizing ?? "fixed"}
