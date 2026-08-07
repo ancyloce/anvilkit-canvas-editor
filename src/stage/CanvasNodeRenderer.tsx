@@ -28,8 +28,12 @@ import {
 	type CanvasTextNode,
 	type CanvasVideoNode,
 	computeAdjustmentColorMatrix,
+	computePolygonVertices,
+	computeStarVertices,
 	type FramePlaceholderKind,
 	firstDropShadow,
+	type PolygonVertex,
+	resolveFrameClipShape,
 	resolveNodeEffects,
 	resolveSpanStyle,
 	toResolvedNodeId,
@@ -237,42 +241,160 @@ function CanvasGroupNodeRenderer({ node }: { node: CanvasGroupNode }) {
 	);
 }
 
+/** The callback Konva hands its scene context to. Named so the helpers below can be typed from Konva's own contract. */
+type FrameClipFunc = NonNullable<Konva.ContainerConfig["clipFunc"]>;
+
 /**
- * Konva clip props for a frame. Konva applies the clip in the container's LOCAL
- * space (it runs `clipFunc` after the group's absolute transform is pushed), so
- * the clip box is simply `(0, 0, width, height)` regardless of the frame's own
- * position, rotation, or scale.
+ * Trace a closed polyline through `vertices`, in the frame's LOCAL space.
  *
- * A square clip rides the declarative `clipX/Y/Width/Height` props. A rounded one
- * has to go through `clipFunc` — Konva has no `clipRadius`. Konva calls
- * `beginPath()` before the callback and `clip()` after it, so the callback only
- * draws the path; it must not call `clip()` itself.
+ * The vertices come from core's `computePolygonVertices`/`computeStarVertices`
+ * — the exact functions the SVG serializer's `emitPolygon`/`emitStar` use — so
+ * a polygon/star clip is the same outline on the stage, in a raster/PDF export
+ * and in an SVG export. Re-deriving the maths here is precisely the drift
+ * `cp4-005`'s parity fixtures exist to catch.
+ */
+function polygonClipFunc(vertices: readonly PolygonVertex[]): FrameClipFunc {
+	return (ctx) => {
+		const first = vertices[0];
+		if (!first) return;
+		ctx.moveTo(first.x, first.y);
+		for (let i = 1; i < vertices.length; i += 1) {
+			const vertex = vertices[i];
+			if (vertex) ctx.lineTo(vertex.x, vertex.y);
+		}
+		ctx.closePath();
+	};
+}
+
+/**
+ * Konva clip props for a frame, resolved through core's ONE frame-clip resolver
+ * (ADR 0008 decision 2). `resolveFrameClipShape` owns every rule — `clip` is the
+ * only on/off switch, an absent `shape` inherits the rectangle, `radius`/
+ * `cornerRadii` apply to `kind: "rect"` alone, and an unhonourable shape degrades
+ * to the rectangle — so this function only turns a resolved shape into canvas
+ * drawing calls. The SVG serializer's `<clipPath>` reads the same resolver, which
+ * is what stops the two render paths disagreeing about what a frame clips to.
+ *
+ * Konva applies the clip in the container's LOCAL space (it runs `clipFunc` after
+ * the group's absolute transform is pushed), so every coordinate below is
+ * relative to the frame's top-left regardless of its own position, rotation, or
+ * scale — the same space the SVG `<clipPath>` contents live in.
+ *
+ * A square clip rides the declarative `clipX/Y/Width/Height` props. Everything
+ * else has to go through `clipFunc` — Konva has no `clipRadius` and no shape
+ * clip. Konva calls `beginPath()` before the callback and `clip()` after it, so
+ * the callback only draws the path; it must not call `clip()` itself. A callback
+ * may instead RETURN `[path2d]`, which Konva forwards straight to
+ * `context.clip(...)` (`ClipFuncOutput`) — that is how the `path` kind clips
+ * without re-implementing an SVG path parser.
+ *
+ * NO node is cached and no offscreen canvas is allocated: `clipFunc` is ordinary
+ * per-frame canvas state, so shape clipping costs a path trace per draw and
+ * nothing else (PLAN-0035 §9 R-3). The closure is rebuilt on every render from
+ * the current bounds and shape, so there is no memo to invalidate and no way for
+ * it to capture stale geometry.
+ *
+ * Composition with `blendMode` is Konva's own ordering, not something this
+ * function participates in: `Container._drawChildren` pushes the clip first
+ * (`save` → transform → `beginPath` → `clipFunc` → `clip`) and applies
+ * `globalCompositeOperation` after it, so a frame carrying both blends its
+ * children into the backdrop *and* restricts them to the clip region.
  */
 function frameClipProps(node: CanvasFrameNode): Konva.ContainerConfig {
-	if (!node.clip) return {};
+	const resolved = resolveFrameClipShape(node);
+	if (!resolved.clipped) return {};
 	const { width, height } = node.bounds;
-	const radius = node.radius ?? 0;
-	const radii = node.cornerRadii;
-	if (radii) {
-		return {
-			clipFunc: (ctx) => {
-				ctx.roundRect(0, 0, width, height, [
-					radii.topLeft,
-					radii.topRight,
-					radii.bottomRight,
-					radii.bottomLeft,
-				]);
-			},
-		};
+	const boxClip: Konva.ContainerConfig = {
+		clipX: 0,
+		clipY: 0,
+		clipWidth: width,
+		clipHeight: height,
+	};
+	const shape = resolved.shape;
+	switch (shape.kind) {
+		case "rect": {
+			const radii = resolved.cornerRadii;
+			if (radii) {
+				return {
+					clipFunc: (ctx) => {
+						ctx.roundRect(0, 0, width, height, [
+							radii.topLeft,
+							radii.topRight,
+							radii.bottomRight,
+							radii.bottomLeft,
+						]);
+					},
+				};
+			}
+			const radius = resolved.radius;
+			if (radius !== undefined) {
+				return {
+					clipFunc: (ctx) => {
+						ctx.roundRect(0, 0, width, height, radius);
+					},
+				};
+			}
+			return boxClip;
+		}
+		case "ellipse":
+			// Same centre and radii the SVG serializer's `emitEllipse` uses
+			// (`cx/cy = w/2, h/2`, `rx/ry = w/2, h/2`), so a square frame's ellipse
+			// clip is the circle ADR 0008 decision 1 says `radius = side / 2`
+			// already produces — by construction, not by coincidence.
+			return {
+				clipFunc: (ctx) => {
+					ctx.ellipse(
+						width / 2,
+						height / 2,
+						width / 2,
+						height / 2,
+						0,
+						0,
+						Math.PI * 2,
+					);
+				},
+			};
+		case "polygon":
+			return {
+				clipFunc: polygonClipFunc(
+					computePolygonVertices(node.bounds, shape.sides),
+				),
+			};
+		case "star":
+			return {
+				clipFunc: polygonClipFunc(
+					computeStarVertices(
+						node.bounds,
+						shape.points,
+						shape.innerRadiusRatio,
+					),
+				),
+			};
+		case "path": {
+			// `Path2D` is the platform's own SVG-path parser and Konva's sanctioned
+			// clip input, so `d` is never re-parsed here. It is built ONCE per render
+			// rather than inside the callback, which Konva invokes on every draw.
+			//
+			// Two guards, both degrading to the frame box rather than to nothing: a
+			// path Konva's parser yields no points for (`"Z"`, `"M"`, an SVG import's
+			// junk — all valid per the IR, which only requires a non-empty `d`) would
+			// clip the frame's entire content away, a silent wrong render, and this
+			// mirrors `CanvasPathNodeRenderer`'s "substitute a bounds-sized Rect
+			// rather than render nothing" precedent. `Path2D` itself is absent in a
+			// DOM without a canvas implementation (jsdom), where clipping cannot be
+			// expressed at all.
+			if (typeof Path2D !== "function") return boxClip;
+			if (!hasDrawablePathData(shape.d)) return boxClip;
+			const path = new Path2D(shape.d);
+			return { clipFunc: () => [path] };
+		}
+		default:
+			// Unreachable for TypeScript — `CanvasFrameShape` is closed and the
+			// resolver degrades anything else to `{ kind: "rect" }` — but the IR's
+			// loose schemas mean a newer peer's shape can exist at runtime, and a
+			// frame that clips to its box is the same fallback the resolver picks.
+			return boxClip;
 	}
-	if (radius > 0) {
-		return {
-			clipFunc: (ctx) => {
-				ctx.roundRect(0, 0, width, height, radius);
-			},
-		};
-	}
-	return { clipX: 0, clipY: 0, clipWidth: width, clipHeight: height };
 }
 
 /**
@@ -873,7 +995,7 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 	// FR-095: a missing asset or failed load must never disappear silently.
 	// The live editor shows selectable placeholder chrome; export/rasterize
 	// passes (isInteractive false) still emit nothing, matching core's SVG
-	// serializer (ASSET_UNRESOLVED warning + skip).
+	// serializer (MISSING_ASSET warning + skip).
 	if (!asset || status === "failed") {
 		if (!isInteractive) return null;
 		// Distinct "unsupported format" state (vs. the generic "load error"):
@@ -1256,7 +1378,7 @@ function useMissingAssetToast(
  * Selectable editor-chrome placeholder for an image/svg node whose asset is
  * missing, failed to load, or is still loading (FR-095). Rendered ONLY on the
  * live editor stage (`isInteractive`); export/rasterize passes emit nothing,
- * matching core's SVG serializer (`ASSET_UNRESOLVED` warning + skip). The
+ * matching core's SVG serializer (`MISSING_ASSET` warning + skip). The
  * invisible hit `Rect` keeps the node selectable while the chrome itself
  * stays `listening={false}`.
  */

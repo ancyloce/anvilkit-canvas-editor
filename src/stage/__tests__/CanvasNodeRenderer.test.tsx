@@ -1,5 +1,9 @@
 import {
+	type CanvasFrameNode,
+	type CanvasFrameShape,
 	type CanvasImageNode,
+	computePolygonVertices,
+	computeStarVertices,
 	createAudio,
 	createCanvasIR,
 	createEllipse,
@@ -988,6 +992,366 @@ describe("CanvasNodeRenderer — frame", () => {
 			x: 200,
 			y: 0,
 		});
+	});
+});
+
+/**
+ * cp4-003 — Konva shape clipping (ADR 0008 decision 2).
+ *
+ * Every case asserts the DRAWING CALLS the `clipFunc` makes, not the shape of
+ * the props object: the props are an implementation detail, the outline is the
+ * contract the SVG serializer has to match.
+ */
+type ClipContextCall = {
+	readonly op: string;
+	readonly args: readonly unknown[];
+};
+
+/** A stand-in for Konva's scene context that records the path it is asked to trace. */
+function recordingClipContext(): {
+	ops: ClipContextCall[];
+	ctx: Record<string, (...args: unknown[]) => void>;
+} {
+	const ops: ClipContextCall[] = [];
+	const record =
+		(op: string) =>
+		(...args: unknown[]) => {
+			ops.push({ op, args });
+		};
+	return {
+		ops,
+		ctx: {
+			moveTo: record("moveTo"),
+			lineTo: record("lineTo"),
+			closePath: record("closePath"),
+			ellipse: record("ellipse"),
+			roundRect: record("roundRect"),
+			rect: record("rect"),
+		},
+	};
+}
+
+/** The `[x, y]` pairs a traced polyline visited, in order. */
+function tracedPoints(ops: readonly ClipContextCall[]): unknown[][] {
+	return ops
+		.filter((o) => o.op === "moveTo" || o.op === "lineTo")
+		.map((o) => [...o.args]);
+}
+
+describe("CanvasNodeRenderer — frame shape clipping (cp4-003)", () => {
+	beforeEachReset();
+
+	const SQUARE = { width: 200, height: 200 };
+
+	/**
+	 * `createFrame` does not accept `shape` (it omits `cornerRadii`/`autoLayout`
+	 * too), so the field is attached to the built node — which is also how a
+	 * document carrying it arrives from a parse.
+	 */
+	const shaped = (
+		shape: CanvasFrameShape | undefined,
+		over: Partial<Parameters<typeof createFrame>[0]> = {},
+	): CanvasFrameNode => ({
+		...createFrame({
+			id: "f1",
+			bounds: { width: 200, height: 100 },
+			clip: true,
+			children: [createRect({ id: "r1", bounds: { width: 10, height: 10 } })],
+			...over,
+		}),
+		...(shape ? { shape } : {}),
+	});
+
+	const frameProps = () =>
+		callsOfType("Group").find((c) => c.props.id === "f1")?.props ?? {};
+
+	/** Run the emitted `clipFunc` against a recording context. */
+	function traceClip(props: Record<string, unknown>): ClipContextCall[] {
+		const clipFunc = props.clipFunc as ((ctx: unknown) => unknown) | undefined;
+		expect(clipFunc).toBeTypeOf("function");
+		const { ops, ctx } = recordingClipContext();
+		clipFunc?.(ctx);
+		return ops;
+	}
+
+	it("clips an ellipse frame to the same centre and radii core's emitEllipse uses", () => {
+		render(<CanvasNodeRenderer node={shaped({ kind: "ellipse" })} />);
+		const props = frameProps();
+		// A shape clip can never ride the declarative box props.
+		expect(props.clipWidth).toBeUndefined();
+		expect(traceClip(props)).toEqual([
+			{ op: "ellipse", args: [100, 50, 100, 50, 0, 0, Math.PI * 2] },
+		]);
+	});
+
+	// ADR 0008 decision 1 records that a square frame with `radius = side / 2`
+	// already clips to a circle, and flags the Konva half as derived from markup
+	// rather than executed. cp4-001 executed the SVG half; this is the Konva one.
+	it("agrees with the radius-half-the-side circle ADR 0008 decision 1 claims", () => {
+		render(
+			<CanvasNodeRenderer
+				node={shaped({ kind: "ellipse" }, { bounds: SQUARE })}
+			/>,
+		);
+		const viaShape = traceClip(frameProps());
+		calls.length = 0;
+		render(
+			<CanvasNodeRenderer
+				node={shaped(undefined, { bounds: SQUARE, radius: 100 })}
+			/>,
+		);
+		const viaRadius = traceClip(frameProps());
+		// Both describe the circle inscribed in a 200×200 box: the ellipse by its
+		// centre + equal radii, the rounded rect by a radius of half the side.
+		expect(viaShape).toEqual([
+			{ op: "ellipse", args: [100, 100, 100, 100, 0, 0, Math.PI * 2] },
+		]);
+		expect(viaRadius).toEqual([
+			{ op: "roundRect", args: [0, 0, 200, 200, 100] },
+		]);
+	});
+
+	it("traces a polygon clip through core's computePolygonVertices, vertex for vertex", () => {
+		const bounds = { width: 200, height: 100 };
+		render(<CanvasNodeRenderer node={shaped({ kind: "polygon", sides: 6 })} />);
+		const ops = traceClip(frameProps());
+		// The anti-drift assertion: the outline IS core's shared maths, not a
+		// Konva-side re-derivation. `emitPolygon` reads the same function.
+		expect(tracedPoints(ops)).toEqual(
+			computePolygonVertices(bounds, 6).map((v) => [v.x, v.y]),
+		);
+		expect(ops[0]?.op).toBe("moveTo");
+		expect(ops.at(-1)?.op).toBe("closePath");
+	});
+
+	it("traces a star clip through core's computeStarVertices, vertex for vertex", () => {
+		const bounds = { width: 200, height: 100 };
+		render(
+			<CanvasNodeRenderer
+				node={shaped({ kind: "star", points: 5, innerRadiusRatio: 0.4 })}
+			/>,
+		);
+		const ops = traceClip(frameProps());
+		expect(tracedPoints(ops)).toEqual(
+			computeStarVertices(bounds, 5, 0.4).map((v) => [v.x, v.y]),
+		);
+		// 5 points ⇒ 10 alternating vertices.
+		expect(tracedPoints(ops)).toHaveLength(10);
+	});
+
+	it("clips a path shape by returning a Path2D built from `d`, not by tracing it", () => {
+		const built: string[] = [];
+		class FakePath2D {
+			constructor(d: string) {
+				built.push(d);
+			}
+		}
+		vi.stubGlobal("Path2D", FakePath2D);
+		try {
+			render(
+				<CanvasNodeRenderer
+					node={shaped({ kind: "path", d: "M0 0 L10 10 Z" })}
+				/>,
+			);
+			const props = frameProps();
+			const clipFunc = props.clipFunc as (ctx: unknown) => unknown;
+			expect(clipFunc).toBeTypeOf("function");
+			// Konva forwards a returned array straight to `context.clip(...)`.
+			const returned = clipFunc({}) as unknown[];
+			expect(returned).toHaveLength(1);
+			expect(returned[0]).toBeInstanceOf(FakePath2D);
+			// Built ONCE per render, not once per draw: calling again reuses it.
+			clipFunc({});
+			expect(built).toEqual(["M0 0 L10 10 Z"]);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	// A `d` Konva's parser yields no points for is VALID per the IR (it only
+	// requires a non-empty string) and arrives from SVG import. Clipping to it
+	// would erase the frame's whole content — a silent wrong render.
+	it("degrades an undrawable path `d` to the frame box instead of clipping everything away", () => {
+		vi.stubGlobal("Path2D", class {});
+		try {
+			render(<CanvasNodeRenderer node={shaped({ kind: "path", d: "Z" })} />);
+			const props = frameProps();
+			expect(props.clipFunc).toBeUndefined();
+			expect(props.clipWidth).toBe(200);
+			expect(props.clipHeight).toBe(100);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	// jsdom has no `Path2D` at all, so this is also the environment this suite
+	// runs in by default — the guard is what keeps it from throwing here.
+	it("degrades a path shape to the frame box where the DOM has no Path2D", () => {
+		expect(typeof Path2D).toBe("undefined");
+		render(
+			<CanvasNodeRenderer
+				node={shaped({ kind: "path", d: "M0 0 L10 10 Z" })}
+			/>,
+		);
+		expect(frameProps().clipWidth).toBe(200);
+	});
+
+	// `clip` is the ONLY on/off switch (ADR 0008 decision 2). A `shape` on an
+	// unclipped frame is inert; reading it as a second trigger would be the
+	// parallel clipping model the ADR rules out.
+	it("emits no clip at all for a shaped frame whose `clip` is off", () => {
+		render(
+			<CanvasNodeRenderer
+				node={shaped({ kind: "ellipse" }, { clip: false })}
+			/>,
+		);
+		const props = frameProps();
+		expect(props.clipFunc).toBeUndefined();
+		expect(props.clipWidth).toBeUndefined();
+	});
+
+	it("degrades a shape the resolver cannot honour to the frame box", () => {
+		render(<CanvasNodeRenderer node={shaped({ kind: "polygon", sides: 2 })} />);
+		const props = frameProps();
+		expect(props.clipFunc).toBeUndefined();
+		expect(props.clipWidth).toBe(200);
+		expect(props.clipHeight).toBe(100);
+	});
+
+	// The resolver drops `radius`/`cornerRadii` for every non-rect kind, so the
+	// renderer must not re-introduce them from the raw node.
+	it("ignores `radius` on a non-rect shape rather than rounding it", () => {
+		render(
+			<CanvasNodeRenderer node={shaped({ kind: "ellipse" }, { radius: 24 })} />,
+		);
+		expect(traceClip(frameProps())[0]?.op).toBe("ellipse");
+	});
+
+	// Behaviour preservation for the rounding the resolver normalises: per-corner
+	// radii win outright over `radius`, and a zero radius is no radius. Both rules
+	// moved OUT of this renderer and into `resolveFrameClipShape`, so the emitted
+	// clip has to be unchanged for every pre-ADR-0008 document.
+	it("keeps per-corner radii winning over `radius`, as the pre-resolver clip did", () => {
+		const node: CanvasFrameNode = {
+			...shaped(undefined, { radius: 40 }),
+			cornerRadii: { topLeft: 1, topRight: 2, bottomRight: 3, bottomLeft: 4 },
+		};
+		render(<CanvasNodeRenderer node={node} />);
+		expect(traceClip(frameProps())).toEqual([
+			{ op: "roundRect", args: [0, 0, 200, 100, [1, 2, 3, 4]] },
+		]);
+	});
+
+	it("treats a zero radius as no radius and stays on the declarative box clip", () => {
+		render(<CanvasNodeRenderer node={shaped(undefined, { radius: 0 })} />);
+		const props = frameProps();
+		expect(props.clipFunc).toBeUndefined();
+		expect(props.clipWidth).toBe(200);
+	});
+
+	// An explicit `{ kind: "rect" }` means "deliberately no shape mask" and must
+	// stay behaviourally identical to an absent shape, rounding included.
+	it("keeps an explicitly rectangular shape byte-identical to today's rounded clip", () => {
+		render(
+			<CanvasNodeRenderer node={shaped({ kind: "rect" }, { radius: 12 })} />,
+		);
+		expect(traceClip(frameProps())).toEqual([
+			{ op: "roundRect", args: [0, 0, 200, 100, 12] },
+		]);
+	});
+
+	// The renderer already maps `blendMode` onto `globalCompositeOperation`
+	// (`commonProps`). Konva pushes the clip BEFORE the composite op in
+	// `Container._drawChildren`, so the two compose — but only if both actually
+	// reach the same Group.
+	it("carries a blend mode and a shape clip on the SAME Group so they compose", () => {
+		const node = shaped({ kind: "ellipse" });
+		render(
+			<CanvasNodeRenderer
+				node={{ ...node, blendMode: "multiply" } as CanvasFrameNode}
+			/>,
+		);
+		const props = frameProps();
+		expect(props.globalCompositeOperation).toBe("multiply");
+		expect(traceClip(props)[0]?.op).toBe("ellipse");
+	});
+
+	it("re-renders a new outline when the shape changes, with no manual refresh", () => {
+		const { rerender } = render(
+			<CanvasNodeRenderer node={shaped({ kind: "ellipse" })} />,
+		);
+		expect(traceClip(frameProps())[0]?.op).toBe("ellipse");
+		calls.length = 0;
+		rerender(
+			<CanvasNodeRenderer node={shaped({ kind: "polygon", sides: 3 })} />,
+		);
+		const ops = traceClip(frameProps());
+		expect(ops[0]?.op).toBe("moveTo");
+		expect(tracedPoints(ops)).toEqual(
+			computePolygonVertices({ width: 200, height: 100 }, 3).map((v) => [
+				v.x,
+				v.y,
+			]),
+		);
+	});
+
+	// Nothing is cached, so this is a dependency-correctness property rather than
+	// an invalidation one: the closure must never outlive the bounds it captured.
+	it("re-renders a new outline when the clipped geometry changes", () => {
+		const { rerender } = render(
+			<CanvasNodeRenderer node={shaped({ kind: "ellipse" })} />,
+		);
+		expect(traceClip(frameProps())).toEqual([
+			{ op: "ellipse", args: [100, 50, 100, 50, 0, 0, Math.PI * 2] },
+		]);
+		calls.length = 0;
+		rerender(
+			<CanvasNodeRenderer
+				node={shaped(
+					{ kind: "ellipse" },
+					{ bounds: { width: 60, height: 40 } },
+				)}
+			/>,
+		);
+		expect(traceClip(frameProps())).toEqual([
+			{ op: "ellipse", args: [30, 20, 30, 20, 0, 0, Math.PI * 2] },
+		]);
+	});
+
+	// The well interaction is the point of shape clipping: a photo dropped into a
+	// shaped frame has to come out shaped.
+	it("clips a filled image well to the shape", () => {
+		useImageMock.mockReturnValue([
+			{ src: "data:image/png;base64,AA=" } as HTMLImageElement,
+			"loaded",
+		]);
+		const well = shaped(
+			{ kind: "ellipse" },
+			{
+				placeholder: { kind: "image", assetId: "a1" },
+				children: [
+					createImage({
+						id: "img",
+						bounds: { width: 200, height: 100 },
+						assetId: "a1",
+					}),
+				],
+			},
+		);
+		render(
+			<CanvasAssetsContext.Provider
+				value={{ a1: { id: "a1", uri: "data:image/png;base64,AA=" } }}
+			>
+				<CanvasNodeRenderer node={well} />
+			</CanvasAssetsContext.Provider>,
+		);
+		// The image is a real child of the clipped Group — never flattened.
+		expect(callsOfType("Image").some((c) => c.props.id === "img")).toBe(true);
+		expect(traceClip(frameProps())[0]?.op).toBe("ellipse");
+	});
+
+	afterEach(() => {
+		cleanup();
 	});
 });
 
