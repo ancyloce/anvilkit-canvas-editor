@@ -10,6 +10,10 @@ import {
 	commandToChange,
 	isContainerNode,
 } from "@anvilkit/canvas-core";
+import type {
+	CanvasBrandPolicyContext,
+	CanvasGovernanceAuditSink,
+} from "@anvilkit/canvas-core/brand-governance";
 import type Konva from "konva";
 import * as React from "react";
 import {
@@ -33,6 +37,11 @@ import type {
 	CanvasAssetPicker,
 	CanvasAssetUploader,
 } from "./assets/adapter-types.js";
+import { useRehydratedLocalAssets } from "./assets/local-asset-rehydration.js";
+import {
+	createLocalAssetFallback,
+	type LocalAssetFallbackFailure,
+} from "./assets/local-fallback.js";
 import {
 	type CanvasLayoutEventHandler,
 	createLayoutDiagnosticEmitter,
@@ -43,6 +52,8 @@ import {
 	CanvasErrorBoundary,
 	type CanvasErrorDetailsInfo,
 } from "./CanvasErrorBoundary.js";
+import type { CanvasAnalyticsSink } from "./component-libraries/analytics.js";
+import type { CanvasComponentProvider } from "./component-libraries/component-provider.js";
 import {
 	type CanvasExportResult,
 	CanvasStudioContext,
@@ -52,6 +63,10 @@ import {
 	type CanvasT,
 } from "./context/canvas-studio-context.js";
 import type { CanvasComponentEventHandler } from "./context/component-events.js";
+import {
+	type CanvasToaster,
+	useCanvasToaster,
+} from "./context/toast-context.js";
 import type {
 	CanvasEditorExtension,
 	CanvasKindInspector,
@@ -129,12 +144,6 @@ import { createToolStore, type ToolId } from "./stores/tool-store.js";
 import { createUploadStore } from "./stores/upload-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
 import type { CanvasTemplateEntry } from "./templates/template-entry.js";
-import type {
-	CanvasBrandPolicyContext,
-	CanvasGovernanceAuditSink,
-} from "@anvilkit/canvas-core/brand-governance";
-import type { CanvasAnalyticsSink } from "./component-libraries/analytics.js";
-import type { CanvasComponentProvider } from "./component-libraries/component-provider.js";
 import type { CanvasTemplateProvider } from "./templates/template-provider.js";
 import type { AiToolIntent } from "./tools/ai-intent.js";
 import { DraftRenderer } from "./tools/DraftRenderer.js";
@@ -321,6 +330,30 @@ export interface CanvasStudioProps {
 	/** FR-091 upload adapter (B-10) — enables drag-and-drop + the Uploads panel. */
 	assetUploader?: CanvasAssetUploader;
 	/**
+	 * cp1-004 (PLAN-0035 §5 P1): opt OUT of the built-in local asset fallback.
+	 *
+	 * There are three states, not two:
+	 *
+	 * 1. **A host adapter is present** — any of {@link assetPicker},
+	 *    {@link assetUploader} or the legacy {@link onPickAsset}. The host's
+	 *    adapter is used and the fallback is never even constructed. This flag
+	 *    is irrelevant here; a host adapter already wins.
+	 * 2. **No host adapter, flag unset (the default)** — images are ingested
+	 *    into browser-local storage (IndexedDB, degrading to memory), so a bare
+	 *    `<CanvasStudio initialIR={…} />` can accept a drop and un-gate the
+	 *    Image tool with no wiring at all.
+	 * 3. **No host adapter, flag `true`** — images are genuinely unavailable:
+	 *    the Image tool stays disabled and a drop reports "no upload service
+	 *    configured", which is the pre-cp1-004 behaviour. Set this when local
+	 *    storage would be the wrong promise — a host whose documents must be
+	 *    portable across devices, or one under a policy that forbids writing
+	 *    user content to the browser.
+	 *
+	 * Never set this to suppress the fallback while ALSO passing an adapter:
+	 * state 1 already does that, and the flag would be misleading.
+	 */
+	disableLocalAssetFallback?: boolean;
+	/**
 	 * §11.1 clipboard adapter override. When present, `clipboard-actions.ts`
 	 * uses it instead of `system-clipboard.ts`'s `navigator.clipboard`
 	 * wrapper — e.g. for an Electron/native bridge where the Web Clipboard API
@@ -485,6 +518,46 @@ function useHostCallbackRef<T>(callback: T): React.RefObject<T> {
 		ref.current = callback;
 	}, [callback]);
 	return ref;
+}
+
+/**
+ * cp1-004: render a byte cap as something a person can act on.
+ *
+ * The caps are powers of two (25 MiB per asset, 200 MiB total), and "26.2 MB"
+ * would be a strictly worse answer than "25 MB" for a number whose only job is
+ * to be recognisable as the limit the user just hit. Whole megabytes above 10,
+ * one decimal below.
+ */
+function formatLimitBytes(bytes: number | undefined): string {
+	if (bytes === undefined || !Number.isFinite(bytes)) return "";
+	const mib = bytes / (1024 * 1024);
+	return `${mib >= 10 ? Math.round(mib) : Math.round(mib * 10) / 10} MB`;
+}
+
+/**
+ * cp1-004: publish the LIVE toaster up to the local asset fallback.
+ *
+ * The toast host is mounted BELOW `<CanvasStudio>` — `<CanvasWorkspace>` puts
+ * `<CanvasToastHost>` inside the `renderShell` callback — so the studio's own
+ * body can only ever read the no-op toaster. This rides with the stage for
+ * exactly the reason `<RecoverDraftPrompt>` does, and renders nothing.
+ *
+ * A bare `<CanvasStudio>` mounts no toast host at all, so fallback failures
+ * are silent there — the same deal every other editor toast already has.
+ */
+function CanvasToasterBridge({
+	sink,
+}: {
+	sink: React.RefObject<CanvasToaster | null>;
+}): null {
+	const toaster = useCanvasToaster();
+	useEffect(() => {
+		sink.current = toaster;
+		return () => {
+			sink.current = null;
+		};
+	}, [sink, toaster]);
+	return null;
 }
 
 /**
@@ -989,6 +1062,7 @@ export function CanvasStudio({
 	onExport,
 	assetPicker,
 	assetUploader,
+	disableLocalAssetFallback = false,
 	clipboard,
 	children,
 }: CanvasStudioProps): React.JSX.Element {
@@ -1124,7 +1198,26 @@ export function CanvasStudio({
 			uploadStore,
 		],
 	);
-	const replaceDocument = useReplaceDocument(documentStores);
+	const replaceDocumentIntoStores = useReplaceDocument(documentStores);
+	/**
+	 * cp1-005: `ir.assets` **as of the last document load**. Its object identity
+	 * is the rehydration epoch (see `useRehydratedLocalAssets`), which is why it
+	 * is state updated at the swap rather than a `useEffect` on `ir`: assets that
+	 * appear LATER — an upload in this session — already carry a live object URL
+	 * and must not be re-minted, and only the swap can tell the two apart.
+	 *
+	 * `replaceDocument` is the one document-swap choke point (`uploadStore.reset()`
+	 * already hangs off it), so wrapping it covers `initial-load`, `document-switch`,
+	 * `template-load`, `remote-update` and `recovery` in one place.
+	 */
+	const [loadedAssets, setLoadedAssets] = useState(() => initialIR.assets);
+	const replaceDocument = useCallback(
+		(next: CanvasIR, source: DocumentSnapshotSource) => {
+			replaceDocumentIntoStores(next, source);
+			setLoadedAssets(next.assets);
+		},
+		[replaceDocumentIntoStores],
+	);
 
 	// T-M0-04: host-driven load. `CanvasPersistenceAdapter.load` shipped as an
 	// optional method that nothing ever called — `<CanvasStudio>` mounted
@@ -1269,19 +1362,145 @@ export function CanvasStudio({
 	const onPickAssetRef = useHostCallbackRef(onPickAsset);
 	const onAiIntentRef = useHostCallbackRef(onAiIntent);
 
+	// P7 i18n resolver: host catalog (per-key) → inline English fallback → key.
+	const t = useMemo<CanvasT>(
+		() => (key, fallback) => messages?.[key] ?? fallback ?? key,
+		[messages],
+	);
+	// `t`'s identity changes with every fresh `messages` object — for an inline
+	// literal, that is every render. The local asset fallback below owns a DOM
+	// node and must NOT be rebuilt on that churn, so its callbacks read the
+	// latest `t` through a ref and stay stable themselves.
+	const tRef = useHostCallbackRef(t);
+
+	/**
+	 * cp1-004 (PLAN-0035 §5 P1): does the HOST own asset ingress? Any one of
+	 * the three adapters counts, and any one of them suppresses the local
+	 * fallback ENTIRELY — a host that wired uploads but not picking gets
+	 * exactly the editor it had before this task, with no second storage path
+	 * appearing underneath its own. See {@link CanvasStudioProps.disableLocalAssetFallback}
+	 * for the three states.
+	 */
+	const hostOwnsAssets =
+		Boolean(assetPicker) || Boolean(assetUploader) || Boolean(onPickAsset);
+	const localAssetFallbackEnabled =
+		!hostOwnsAssets && !disableLocalAssetFallback;
+
+	/**
+	 * cp1-005 (PLAN-0035 §5 P1): the asset table the STAGE renders against —
+	 * `ir.assets` with every locally-stored `blob:` entry remapped onto a fresh
+	 * object URL, because the one recorded in the document died with the page
+	 * that minted it. The document is never rewritten, so a rehydrated URI can
+	 * never reach `onChange`, the save pipeline or an export.
+	 *
+	 * Gated on the SAME flag as the fallback adapters, deliberately: when the
+	 * host owns asset ingress there is no local store in play, and this must not
+	 * construct one, scan one, or rewrite a URI the host produced. With the flag
+	 * false the hook short-circuits before importing the store module at all.
+	 */
+	const rehydratedAssets = useRehydratedLocalAssets({
+		assets: ir.assets,
+		loadedAssets,
+		enabled: localAssetFallbackEnabled,
+	});
+
+	// Published by <CanvasToasterBridge> from inside the shell — see it for why
+	// <CanvasStudio>'s own body can never see the real toaster.
+	const assetFallbackToasterRef = useRef<CanvasToaster | null>(null);
+	const getDocumentId = useCallback(() => getIR().id, [getIR]);
+	const describeAssetFallbackFailure = useCallback(
+		(failure: LocalAssetFallbackFailure): string => {
+			const translate = tRef.current;
+			const limit = formatLimitBytes(failure.limitBytes);
+			if (failure.code === "asset-too-large") {
+				return translate(
+					"canvas.upload.localAssetTooLarge",
+					"This file is too large to store in this browser (limit {limit}).",
+				).replace("{limit}", limit);
+			}
+			if (failure.code === "store-full") {
+				return translate(
+					"canvas.upload.localStoreFull",
+					"Local image storage is full (limit {limit}). Remove some images and try again.",
+				).replace("{limit}", limit);
+			}
+			return translate(
+				"canvas.upload.localIngestFailed",
+				"This file could not be added.",
+			);
+		},
+		[tRef],
+	);
+	const reportAssetFallbackFailure = useCallback(
+		(_failure: LocalAssetFallbackFailure, message: string): void => {
+			assetFallbackToasterRef.current?.add({
+				type: "error",
+				title: tRef.current("canvas.upload.failed", "Upload failed"),
+				description: message,
+			});
+		},
+		[tRef],
+	);
+
+	/**
+	 * The zero-config adapters, constructed ONCE and only when the host
+	 * supplied none. Every dependency here is render-stable by construction,
+	 * so a host re-rendering `<CanvasStudio>` — new inline `messages`, a new
+	 * `onChange`, anything — neither rebuilds the pair nor leaks a hidden
+	 * `<input>` per render. Nothing is fetched, no DOM node is created and no
+	 * IndexedDB connection is opened until the first upload or pick.
+	 */
+	const localAssetFallback = useMemo(
+		() =>
+			localAssetFallbackEnabled
+				? createLocalAssetFallback({
+						getDocumentId,
+						describeFailure: describeAssetFallbackFailure,
+						reportFailure: reportAssetFallbackFailure,
+					})
+				: undefined,
+		[
+			localAssetFallbackEnabled,
+			getDocumentId,
+			describeAssetFallbackFailure,
+			reportAssetFallbackFailure,
+		],
+	);
+	useEffect(() => {
+		if (!localAssetFallback) return;
+		// The picker owns a hidden <input> on document.body; unmounting without
+		// this leaves one behind per editor instance, and strands any pick left
+		// awaiting an open dialog.
+		return () => localAssetFallback.dispose();
+	}, [localAssetFallback]);
+
+	/**
+	 * The fallback is a FLOOR, never an override — `??` is the entire
+	 * precedence rule. A host adapter is used untouched, and because its mere
+	 * presence already set `localAssetFallbackEnabled` false, there is no
+	 * fallback in existence for it to have overridden.
+	 */
+	const effectiveAssetPicker = assetPicker ?? localAssetFallback?.picker;
+	const effectiveAssetUploader = assetUploader ?? localAssetFallback?.uploader;
+
 	/**
 	 * FR-011: whether the Image tool can actually pick an asset — either
 	 * wiring makes it usable. Drives the Tool Strip's disabled state for
 	 * "image" (`ToolStrip.tsx`) so a misconfigured host shows an inert
-	 * button instead of throwing on first click.
+	 * button instead of throwing on first click. cp1-004: the local fallback
+	 * satisfies it too, which is what un-gates the tool on a zero-config mount
+	 * — wiring only the uploader would have left the button greyed out.
 	 */
-	const hasImagePicker = Boolean(assetPicker) || Boolean(onPickAsset);
+	const hasImagePicker = Boolean(effectiveAssetPicker) || Boolean(onPickAsset);
 
 	const pickAsset = useCallback(async () => {
 		// FR-090 (B-10): a full assetPicker adapter supersedes the legacy
 		// single-uri callback; `onPickAsset` keeps working unchanged.
-		if (assetPicker) {
-			const picked = await assetPicker.pick({ multiple: false, kind: "image" });
+		if (effectiveAssetPicker) {
+			const picked = await effectiveAssetPicker.pick({
+				multiple: false,
+				kind: "image",
+			});
 			const first = picked[0];
 			if (!first) return "";
 			return first.id;
@@ -1293,19 +1512,20 @@ export function CanvasStudio({
 			);
 		}
 		return fn();
-	}, [onPickAssetRef, assetPicker]);
+	}, [onPickAssetRef, effectiveAssetPicker]);
 
 	/**
 	 * FR-090 (B-10) multi-select pick: only meaningful with a full assetPicker
 	 * adapter — the legacy `onPickAsset` single-uri callback has no
 	 * multi-select concept, so this is omitted from context entirely when
-	 * `assetPicker` is absent (see the `pickAssets` spread below).
+	 * neither a host picker nor the local fallback is in play (see the
+	 * `pickAssets` spread below).
 	 */
 	const pickAssets = useCallback(
 		() =>
-			assetPicker?.pick({ multiple: true, kind: "image" }) ??
+			effectiveAssetPicker?.pick({ multiple: true, kind: "image" }) ??
 			Promise.resolve([]),
-		[assetPicker],
+		[effectiveAssetPicker],
 	);
 
 	// Stable seam for the AI tools (I1-7). Always defined; a no-op when no host
@@ -1340,12 +1560,6 @@ export function CanvasStudio({
 	const draggedIds = useMemo(
 		() => new Set(draggedKey ? draggedKey.split(",") : []),
 		[draggedKey],
-	);
-
-	// P7 i18n resolver: host catalog (per-key) → inline English fallback → key.
-	const t = useMemo<CanvasT>(
-		() => (key, fallback) => messages?.[key] ?? fallback ?? key,
-		[messages],
 	);
 
 	// Area 1: index extension renderers/inspectors by node kind for
@@ -1446,8 +1660,14 @@ export function CanvasStudio({
 			save,
 			canLeave,
 			flush,
-			...(assetPicker ? { assetPicker, pickAssets } : {}),
-			...(assetUploader ? { assetUploader } : {}),
+			// cp1-004: the HOST adapter when there is one, otherwise the local
+			// fallback — never both, and never the fallback over a host's.
+			...(effectiveAssetPicker
+				? { assetPicker: effectiveAssetPicker, pickAssets }
+				: {}),
+			...(effectiveAssetUploader
+				? { assetUploader: effectiveAssetUploader }
+				: {}),
 			...(clipboard ? { clipboard } : {}),
 			uploadStore,
 		}),
@@ -1511,9 +1731,9 @@ export function CanvasStudio({
 			save,
 			canLeave,
 			flush,
-			assetPicker,
+			effectiveAssetPicker,
 			pickAssets,
-			assetUploader,
+			effectiveAssetUploader,
 			clipboard,
 			uploadStore,
 		],
@@ -1617,7 +1837,7 @@ export function CanvasStudio({
 			activePage={activePage}
 			activePageId={activePageId}
 			sourceRoot={sourceRoot}
-			assets={ir.assets}
+			assets={rehydratedAssets}
 			brandKit={brandKit}
 			width={width}
 			height={height}
@@ -1675,11 +1895,22 @@ export function CanvasStudio({
 	) : (
 		stageWithRecovery
 	);
+	// cp1-004: the toaster bridge rides with the stage so it lands INSIDE the
+	// shell's toast host. Nothing is added to the tree when the host owns asset
+	// ingress — that path stays byte-identical to the pre-cp1-004 render.
+	const stageContent = localAssetFallback ? (
+		<>
+			{stageWithChrome}
+			<CanvasToasterBridge sink={assetFallbackToasterRef} />
+		</>
+	) : (
+		stageWithChrome
+	);
 	return (
 		<CanvasStudioContext value={ctxValue}>
 			<CanvasStudioStableContext value={stableCtxValue}>
 				{renderShell ? (
-					renderShell(stageWithChrome)
+					renderShell(stageContent)
 				) : (
 					<div
 						data-testid="canvas-studio-root"
@@ -1689,7 +1920,7 @@ export function CanvasStudio({
 						<ZoomAnnouncer />
 						<LayoutAnnouncer />
 						{!hidePageNavigator && <PageNavigator />}
-						{stageWithChrome}
+						{stageContent}
 					</div>
 				)}
 				<CanvasKeyboardLayer />

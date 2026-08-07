@@ -75,6 +75,7 @@ export {
 	selectionTargetForResolvedId,
 } from "./selection/component-selection-policy.js";
 export {
+	type BeginCropContext,
 	beginCrop,
 	type CropDragMode,
 	cancelCrop,

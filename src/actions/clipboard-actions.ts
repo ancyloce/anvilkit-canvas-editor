@@ -110,6 +110,11 @@ function collectAssetRefs(
 	const refs: Record<string, CanvasAssetRef> = {};
 	const visit = (node: CanvasNode): void => {
 		const record = node as unknown as Record<string, unknown>;
+		// `maskAssetId` is deprecated (ADR 0008 decision 3, removal at
+		// `@anvilkit/canvas-core@1.0.0`) and is deliberately still collected: a
+		// copied image must carry its mask asset into the payload for as long as
+		// the field exists, or a cross-document paste lands a dangling reference.
+		// Mirrors `canvas-core`'s `ir/invariants.ts` / `clipboard/payload.ts`.
 		for (const field of ["assetId", "maskAssetId"] as const) {
 			const value = record[field];
 			if (typeof value === "string") {

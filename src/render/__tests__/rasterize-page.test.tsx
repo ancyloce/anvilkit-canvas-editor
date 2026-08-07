@@ -1,4 +1,5 @@
 import {
+	type CanvasFrameNode,
 	type CanvasGroupNode,
 	type CanvasImageNode,
 	type CanvasRectNode,
@@ -320,6 +321,37 @@ describe("rasterizePage", () => {
 		const ctx = { roundRect: vi.fn() };
 		clipFunc?.(ctx);
 		expect(ctx.roundRect).toHaveBeenCalledWith(0, 0, 120, 80, 10);
+	});
+
+	// cp4-003 (ADR 0008 decision 2): PNG/JPEG/WebP *and* PDF all rasterize
+	// through this function — `pdfExporter` calls `rasterizePage` per page and
+	// hands the data URLs to core's raster-embed `serializeDocumentToPdf` — so a
+	// shape clip reaching the Konva tree HERE is what gives raster and PDF export
+	// shape clipping. There is no second code path to keep in step: the clip is
+	// emitted by the same `CanvasNodeRenderer` the live stage uses.
+	it("emits a shape clipFunc for a shaped frame in the rasterized tree", async () => {
+		const frame: CanvasFrameNode = {
+			...createFrame({
+				id: "f1",
+				bounds: { width: 120, height: 80 },
+				clip: true,
+				children: [
+					createRect({ id: "clipped", bounds: { width: 999, height: 999 } }),
+				],
+			}),
+			shape: { kind: "ellipse" },
+		};
+		await rasterizePage({ page: buildPage([frame]) });
+		const frameGroup = groupCalls.find((p) => p.id === "f1");
+		// A shape clip can never ride the declarative box props.
+		expect(frameGroup?.clipWidth).toBeUndefined();
+		const clipFunc = frameGroup?.clipFunc as
+			| ((ctx: { ellipse: (...a: number[]) => void }) => void)
+			| undefined;
+		expect(clipFunc).toBeTypeOf("function");
+		const ctx = { ellipse: vi.fn() };
+		clipFunc?.(ctx);
+		expect(ctx.ellipse).toHaveBeenCalledWith(60, 40, 60, 40, 0, 0, Math.PI * 2);
 	});
 
 	// Regression: `collectImageAssetIds` used to recurse only into groups, so an

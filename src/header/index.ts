@@ -11,8 +11,11 @@ export {
 	useCanvasStudioActions,
 } from "./export-action.js";
 export { createCanvasExportPlugin } from "./export-plugin.js";
+export type { CanvasJsonExporterOptions } from "./exporters.js";
 export {
+	createJsonExporter,
 	DEFAULT_CANVAS_EXPORTERS,
+	DEFAULT_JSON_INLINE_ASSET_BYTES,
 	downloadCanvasArtifact,
 	jpegExporter,
 	jsonExporter,

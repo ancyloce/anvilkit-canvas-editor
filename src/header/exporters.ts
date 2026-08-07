@@ -2,10 +2,13 @@
 
 import type {
 	BrandTokenRef,
+	CanvasAssetRef,
 	CanvasExportWarning,
 	CanvasGradientFill,
 	CanvasIR,
 } from "@anvilkit/canvas-core";
+import { isLocalObjectUri } from "@anvilkit/canvas-core";
+import type { LocalAssetStore } from "../assets/local-asset-store.js";
 import { resolveBrandToken } from "../brand/resolve-brand-token.js";
 import { exportStageContentDataURL } from "../render/export-stage.js";
 import { createCanvasLayoutMeasurementProvider } from "../text/canvas-text-measurer.js";
@@ -117,64 +120,183 @@ export const webpExporter: CanvasExporter = rasterExporter(
 	"webp",
 );
 
-/** Built-in JSON exporter. Serializes the IR; round-trips back into the editor. */
-export const jsonExporter: CanvasExporter = ({ ir }) => ({
-	filename: exportFilename(ir, "json"),
-	data: JSON.stringify(ir, null, 2),
-	mimeType: "application/json",
-});
+/**
+ * Does this document reference bytes only this browser can resolve?
+ *
+ * The one piece of cp1-006 that stays in the eager chunk. Everything else —
+ * the store, the scan, the base64 — sits behind the `import()`s below, so a
+ * document with no browser-local assets pays nothing and its JSON export stays
+ * synchronous and byte-identical to the pre-cp1-006 output.
+ */
+function hasLocalAssets(assets: Record<string, CanvasAssetRef>): boolean {
+	for (const ref of Object.values(assets)) {
+		if (isLocalObjectUri(ref.uri)) return true;
+	}
+	return false;
+}
+
+/**
+ * Default ceiling on the browser-local bytes {@link createJsonExporter} will
+ * inline as `data:` URIs — **10 MiB of source bytes**, ~14 MB once base64
+ * inflates them by 4/3.
+ *
+ * The number is bounded from three directions and sits in the gap:
+ *
+ * - It must comfortably cover the ordinary case. PLAN-0035 §5 P1's own example
+ *   is a 4 MB photo becoming ~5.5 MB of base64; two of those still inline.
+ * - It must stay far below `cp1-001`'s 200 MiB store cap. That cap bounds
+ *   *disk*; this one bounds a JSON string materialised in memory and then
+ *   copied into a `Blob` for download, so the same figure would be a peak of
+ *   half a gigabyte for a file nobody can open.
+ * - It must leave the artifact something a host can actually move. A document
+ *   JSON is routinely POSTed to an API, and a ~14 MB body already exceeds
+ *   several common gateway limits; well past that the format stops being an
+ *   interchange format at all.
+ *
+ * Override it per host via `createCanvasExportPlugin({ exporters: { json:
+ * createJsonExporter({ maxInlineAssetBytes }) } })` — the existing exporter
+ * override IS the configuration channel; cp1-006 adds no second one.
+ */
+export const DEFAULT_JSON_INLINE_ASSET_BYTES = 10 * 1024 * 1024;
+
+/** Options for {@link createJsonExporter}. */
+export interface CanvasJsonExporterOptions {
+	/** Defaults to {@link DEFAULT_JSON_INLINE_ASSET_BYTES}. */
+	readonly maxInlineAssetBytes?: number;
+	/** Browser-local asset store. Defaults to the shared singleton. Test seam. */
+	readonly store?: LocalAssetStore;
+}
+
+/**
+ * Built-in JSON exporter (cp1-006). Serializes the IR and round-trips back
+ * into the editor.
+ *
+ * Browser-local assets (`blob:`) are inlined as `data:` URIs when their total
+ * fits under {@link CanvasJsonExporterOptions.maxInlineAssetBytes}; above it
+ * the document is emitted unchanged **plus one warning naming each image that
+ * will not travel**. It never silently emits an unresolvable URI, and it never
+ * rewrites the live document — the inlined map exists only inside the
+ * artifact.
+ */
+export function createJsonExporter(
+	options: CanvasJsonExporterOptions = {},
+): CanvasExporter {
+	return ({ ir }) => {
+		const filename = exportFilename(ir, "json");
+		const mimeType = "application/json";
+		if (!hasLocalAssets(ir.assets)) {
+			return { filename, data: JSON.stringify(ir, null, 2), mimeType };
+		}
+		return import("../assets/local-asset-export.js")
+			.then(({ inlineLocalAssetsForJson }) =>
+				inlineLocalAssetsForJson(ir.assets, {
+					maxInlineBytes:
+						options.maxInlineAssetBytes ?? DEFAULT_JSON_INLINE_ASSET_BYTES,
+					...(options.store ? { store: options.store } : {}),
+				}),
+			)
+			.then(({ assets, warnings }) => ({
+				filename,
+				data: JSON.stringify(
+					assets === ir.assets ? ir : { ...ir, assets },
+					null,
+					2,
+				),
+				mimeType,
+				...(warnings.length > 0 ? { warnings } : {}),
+			}));
+	};
+}
+
+/** Built-in JSON exporter with the default inline cap. */
+export const jsonExporter: CanvasExporter = createJsonExporter();
+
+/** Options for {@link createSvgExporter}. */
+export interface CanvasSvgExporterOptions {
+	/** Browser-local asset store. Defaults to the shared singleton. Test seam. */
+	readonly store?: LocalAssetStore;
+}
 
 /**
  * Built-in SVG exporter (FR-151, AC-010): core's `serializePageToSvg` on the
  * requested page, with brand tokens resolved against the editor's brand kit
  * (same resolution the stage uses). The serializer module is `import()`ed so
  * its weight stays out of the eager editor bundle.
+ *
+ * cp1-006: when the document holds browser-local (`blob:`) assets, the
+ * serializer is handed the `SvgFetchAsset` it has always accepted, backed by
+ * `cp1-001`'s store. Nothing about image emission is duplicated here — core
+ * still does the fetch-to-`data:`-URI conversion, and the fetcher exists only
+ * to turn an asset id back into bytes.
+ *
+ * `images` deliberately stays at its `"auto"` default rather than switching to
+ * `"embed"`. Embed mode would also fetch-and-inline every *remote* URI, which
+ * for existing documents means CORS-dependent network reads, a much larger
+ * file, and a `MISSING_ASSET` warning wherever a fetch fails — a regression
+ * cp1-006 is not asking for. The fetcher is consulted only for URIs that could
+ * not be referenced at all, which is precisely the browser-local set. A caller
+ * that *does* request `images: "embed"` gets local assets embedded through the
+ * same fetcher.
  */
-export const svgExporter: CanvasExporter = async ({
-	ir,
-	activePageId,
-	brandKit,
-}) => {
-	const {
-		layoutIssuesToExportWarnings,
-		resolveCanvasLayout,
-		serializePageToSvg,
-	} = await import("@anvilkit/canvas-core");
-	// T-M3-10: one resolution of the COMMITTED document per export operation —
-	// the serializer never resolves itself (TD §12.4), and resolving here
-	// (rather than reusing the live store) keeps previews out of exports.
-	const measurement = createCanvasLayoutMeasurementProvider();
-	const resolved = resolveCanvasLayout(ir, { measurement });
-	const { svg, warnings } = await serializePageToSvg(ir, activePageId, {
-		resolvedDocument: resolved,
-		// T-M5-01: the SAME measurer the resolver used also wraps rich text in
-		// the serializer — without it wrapped text exports one line per
-		// paragraph (RICH_TEXT_WRAP_APPROXIMATE) and SVG↔renderer parity
-		// breaks on any wrapping fixture.
-		textMeasurer: measurement.measureText,
-		...(brandKit
-			? {
-					resolveBrandToken: (
-						ref: BrandTokenRef,
-					): string | CanvasGradientFill | undefined =>
-						resolveBrandToken(ref, brandKit),
-				}
-			: {}),
-	});
-	return {
-		filename: exportFilename(ir, "svg"),
-		data: svg,
-		mimeType: "image/svg+xml",
-		// T-M3-03 (AL-INTEGRATE-003): layout diagnostics ride into the export
-		// result through the ONE shared map, alongside the serializer's own.
-		warnings: [
-			...toExportWarnings(warnings),
-			...layoutIssuesToExportWarnings(resolved.diagnostics, {
-				pageId: activePageId,
-			}),
-		],
+export function createSvgExporter(
+	options: CanvasSvgExporterOptions = {},
+): CanvasExporter {
+	return async ({ ir, activePageId, brandKit }) => {
+		const [
+			{ layoutIssuesToExportWarnings, resolveCanvasLayout, serializePageToSvg },
+			fetchAsset,
+		] = await Promise.all([
+			import("@anvilkit/canvas-core"),
+			hasLocalAssets(ir.assets)
+				? import("../assets/local-asset-export.js").then(
+						({ createLocalAssetSvgFetcher }) =>
+							createLocalAssetSvgFetcher(
+								ir.assets,
+								...(options.store ? ([options.store] as const) : []),
+							),
+					)
+				: undefined,
+		]);
+		// T-M3-10: one resolution of the COMMITTED document per export operation —
+		// the serializer never resolves itself (TD §12.4), and resolving here
+		// (rather than reusing the live store) keeps previews out of exports.
+		const measurement = createCanvasLayoutMeasurementProvider();
+		const resolved = resolveCanvasLayout(ir, { measurement });
+		const { svg, warnings } = await serializePageToSvg(ir, activePageId, {
+			resolvedDocument: resolved,
+			// T-M5-01: the SAME measurer the resolver used also wraps rich text in
+			// the serializer — without it wrapped text exports one line per
+			// paragraph (RICH_TEXT_WRAP_APPROXIMATE) and SVG↔renderer parity
+			// breaks on any wrapping fixture.
+			textMeasurer: measurement.measureText,
+			...(fetchAsset ? { fetchAsset } : {}),
+			...(brandKit
+				? {
+						resolveBrandToken: (
+							ref: BrandTokenRef,
+						): string | CanvasGradientFill | undefined =>
+							resolveBrandToken(ref, brandKit),
+					}
+				: {}),
+		});
+		return {
+			filename: exportFilename(ir, "svg"),
+			data: svg,
+			mimeType: "image/svg+xml",
+			// T-M3-03 (AL-INTEGRATE-003): layout diagnostics ride into the export
+			// result through the ONE shared map, alongside the serializer's own.
+			warnings: [
+				...toExportWarnings(warnings),
+				...layoutIssuesToExportWarnings(resolved.diagnostics, {
+					pageId: activePageId,
+				}),
+			],
+		};
 	};
-};
+}
+
+/** Built-in SVG exporter reading the shared browser-local asset store. */
+export const svgExporter: CanvasExporter = createSvgExporter();
 
 /**
  * Built-in PDF exporter (FR-151/FR-152, AC-010): every page of the given IR

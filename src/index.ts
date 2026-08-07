@@ -59,6 +59,29 @@ export {
 	useBrandRules,
 	useBrandTypography,
 } from "./brand/use-brand-kit.js";
+/* ── Brand governance (plan 0021 M4) ─────────────────────────────────────── */
+export {
+	type BlockedOperationCode,
+	blockedOperationCodeOf,
+	blockedOperationMessage,
+	isCapabilityAvailable,
+	isPropertyEditable,
+	policyDecisionOf,
+	resolveEffectivePolicyContext,
+	useEffectivePolicyContext,
+} from "./brand-governance/effective-policy-context.js";
+export {
+	type ComplianceNavigation,
+	type ComplianceNavigationTarget,
+	resolveComplianceTarget,
+	useComplianceNavigation,
+} from "./brand-governance/use-compliance-navigation.js";
+export {
+	buildComplianceLookup,
+	getComplianceLookup,
+	type InstanceComplianceLookup,
+	useInstanceCompliance,
+} from "./brand-governance/use-instance-compliance.js";
 export {
 	CanvasErrorBoundary,
 	type CanvasErrorBoundaryProps,
@@ -68,6 +91,66 @@ export {
 	CanvasStudio,
 	type CanvasStudioProps,
 } from "./CanvasStudio.js";
+/* ── Analytics (plan 0021 T-050) ─────────────────────────────────────────── */
+export {
+	analyticsEventName,
+	CANVAS_ANALYTICS_EVENTS,
+	CANVAS_ANALYTICS_PREFIX,
+	type CanvasAnalyticsEvent,
+	type CanvasAnalyticsEventKey,
+	type CanvasAnalyticsPayloads,
+	type CanvasAnalyticsSink,
+	type CanvasLatencyBucket,
+	canvasAnalyticsEvent,
+	emitCanvasAnalytics,
+	hashIdentifier,
+	latencyBucket,
+} from "./component-libraries/analytics.js";
+// ── Component Provider (plan 0021 T-018, TD 0016 §7.1) ──────────────────────
+// The host-injected catalog behind the Libraries source of the Components
+// panel. Same shape and same public surface as the template provider above —
+// a second, differently-shaped provider contract would be a coin flip for
+// every integrator.
+export type {
+	CanvasComponentCatalogEntry,
+	CanvasComponentCompatibilityQuery,
+	CanvasComponentProvider,
+	CanvasComponentSearchQuery,
+	CanvasComponentSearchResult,
+	CanvasComponentUpdate,
+	CanvasComponentVersionQuery,
+	CanvasComponentVersionResult,
+	CanvasProviderRequestContext,
+	CanvasStaticComponentEntry,
+} from "./component-libraries/component-provider.js";
+export { createStaticComponentProvider } from "./component-libraries/component-provider.js";
+/* ── Load pipeline (plan 0021 T-045) ─────────────────────────────────────── */
+export {
+	type CanvasDocumentOrigin,
+	type CanvasVerificationMode,
+	type LoadVerificationOptions,
+	type LoadVerificationResult,
+	resolveVerificationMode,
+	verifyDocumentSnapshots,
+} from "./component-libraries/load-verification.js";
+export type {
+	CanvasProviderFailureStatus,
+	CanvasProviderRequestStatus,
+} from "./component-libraries/provider-errors.js";
+export { collectRetainedSnapshotKeys } from "./component-libraries/retained-keys.js";
+export {
+	type ExternalComponentFailure,
+	type InsertExternalComponentResult,
+	insertExternalComponent,
+	recoverExternalSnapshot,
+	useExternalComponent,
+} from "./component-libraries/use-external-component.js";
+export {
+	type CanvasComponentUpdateInfo,
+	type CanvasUpdateCheckResult,
+	checkForComponentUpdates,
+	collectExternalRefUsage,
+} from "./component-libraries/use-update-check.js";
 // ── Context + hooks ──────────────────────────────────────────────────────────
 export {
 	type CanvasIRGetter,
@@ -97,6 +180,7 @@ export type {
 	CanvasExportResult,
 	CanvasExportResultArtifact,
 	CanvasHeaderPlugin,
+	CanvasJsonExporterOptions,
 	CanvasStudioActions,
 } from "./header/index.js";
 export {
@@ -104,7 +188,9 @@ export {
 	CanvasExportEmptyError,
 	createCanvasExportPlugin,
 	createCanvasStudioActions,
+	createJsonExporter,
 	DEFAULT_CANVAS_EXPORTERS,
+	DEFAULT_JSON_INLINE_ASSET_BYTES,
 	downloadCanvasArtifact,
 	ExportMenu,
 	jpegExporter,
@@ -157,7 +243,30 @@ export {
 	type TextFieldProps,
 	useCommitPatch,
 } from "./panels/fields.js";
+export {
+	BlockedOperationDialog,
+	type BlockedOperationDialogProps,
+} from "./panels/governance/BlockedOperationDialog.js";
+export {
+	ComplianceIssueRow,
+	type ComplianceIssueRowProps,
+	severityPresentation,
+} from "./panels/governance/ComplianceIssueRow.js";
+export {
+	CompliancePanel,
+	type CompliancePanelProps,
+} from "./panels/governance/CompliancePanel.js";
 export { LayerPanel, type LayerPanelProps } from "./panels/LayerPanel.js";
+export {
+	type ComponentChangeVerb,
+	SwapComponentDialog,
+	UpdateComponentDialog,
+	type UpdateComponentDialogProps,
+} from "./panels/library/UpdateComponentDialog.js";
+export {
+	VariantControls,
+	type VariantControlsProps,
+} from "./panels/library/VariantControls.js";
 export {
 	PropertyInspector,
 	type PropertyInspectorProps,
@@ -168,6 +277,15 @@ export {
 	insertTemplateAsNewPages,
 	loadTemplate,
 } from "./panels/template-actions.js";
+export {
+	type CanvasLoadDiagnostics,
+	type CanvasLoadResult,
+	type LoadCanvasDocumentOptions,
+	type LoadCanvasDocumentWithDiagnosticsOptions,
+	loadCanvasDocument,
+	loadCanvasDocumentWithDiagnostics,
+	unsupportedDeclaredCapabilities,
+} from "./persistence/load-pipeline.js";
 // ── Local recovery (C-10, FR-164) ────────────────────────────────────────────
 export type {
 	CanvasRecoveryAdapter,
@@ -197,121 +315,6 @@ export type {
 } from "./stores/save-status-store.js";
 // ── Tool id (host may set `initialTool` / drive tool selection) ──────────────
 export type { ToolId } from "./stores/tool-store.js";
-// ── Component Provider (plan 0021 T-018, TD 0016 §7.1) ──────────────────────
-// The host-injected catalog behind the Libraries source of the Components
-// panel. Same shape and same public surface as the template provider above —
-// a second, differently-shaped provider contract would be a coin flip for
-// every integrator.
-export type {
-	CanvasComponentCatalogEntry,
-	CanvasComponentCompatibilityQuery,
-	CanvasComponentProvider,
-	CanvasComponentSearchQuery,
-	CanvasComponentSearchResult,
-	CanvasComponentUpdate,
-	CanvasComponentVersionQuery,
-	CanvasComponentVersionResult,
-	CanvasProviderRequestContext,
-	CanvasStaticComponentEntry,
-} from "./component-libraries/component-provider.js";
-export { createStaticComponentProvider } from "./component-libraries/component-provider.js";
-export { collectRetainedSnapshotKeys } from "./component-libraries/retained-keys.js";
-export {
-	buildComplianceLookup,
-	getComplianceLookup,
-	type InstanceComplianceLookup,
-	useInstanceCompliance,
-} from "./brand-governance/use-instance-compliance.js";
-export {
-	type CanvasComponentUpdateInfo,
-	type CanvasUpdateCheckResult,
-	checkForComponentUpdates,
-	collectExternalRefUsage,
-} from "./component-libraries/use-update-check.js";
-export {
-	type ComponentChangeVerb,
-	SwapComponentDialog,
-	UpdateComponentDialog,
-	type UpdateComponentDialogProps,
-} from "./panels/library/UpdateComponentDialog.js";
-export {
-	VariantControls,
-	type VariantControlsProps,
-} from "./panels/library/VariantControls.js";
-/* ── Analytics (plan 0021 T-050) ─────────────────────────────────────────── */
-export {
-	analyticsEventName,
-	CANVAS_ANALYTICS_EVENTS,
-	CANVAS_ANALYTICS_PREFIX,
-	type CanvasAnalyticsEvent,
-	type CanvasAnalyticsEventKey,
-	type CanvasAnalyticsPayloads,
-	type CanvasAnalyticsSink,
-	canvasAnalyticsEvent,
-	type CanvasLatencyBucket,
-	emitCanvasAnalytics,
-	hashIdentifier,
-	latencyBucket,
-} from "./component-libraries/analytics.js";
-/* ── Load pipeline (plan 0021 T-045) ─────────────────────────────────────── */
-export {
-	type CanvasDocumentOrigin,
-	type CanvasVerificationMode,
-	type LoadVerificationOptions,
-	type LoadVerificationResult,
-	resolveVerificationMode,
-	verifyDocumentSnapshots,
-} from "./component-libraries/load-verification.js";
-export {
-	type CanvasLoadDiagnostics,
-	type CanvasLoadResult,
-	loadCanvasDocument,
-	type LoadCanvasDocumentOptions,
-	type LoadCanvasDocumentWithDiagnosticsOptions,
-	loadCanvasDocumentWithDiagnostics,
-	unsupportedDeclaredCapabilities,
-} from "./persistence/load-pipeline.js";
-/* ── Brand governance (plan 0021 M4) ─────────────────────────────────────── */
-export {
-	type BlockedOperationCode,
-	blockedOperationCodeOf,
-	blockedOperationMessage,
-	isCapabilityAvailable,
-	isPropertyEditable,
-	policyDecisionOf,
-	resolveEffectivePolicyContext,
-	useEffectivePolicyContext,
-} from "./brand-governance/effective-policy-context.js";
-export {
-	type ComplianceNavigation,
-	type ComplianceNavigationTarget,
-	resolveComplianceTarget,
-	useComplianceNavigation,
-} from "./brand-governance/use-compliance-navigation.js";
-export {
-	BlockedOperationDialog,
-	type BlockedOperationDialogProps,
-} from "./panels/governance/BlockedOperationDialog.js";
-export {
-	CompliancePanel,
-	type CompliancePanelProps,
-} from "./panels/governance/CompliancePanel.js";
-export {
-	ComplianceIssueRow,
-	type ComplianceIssueRowProps,
-	severityPresentation,
-} from "./panels/governance/ComplianceIssueRow.js";
-export type {
-	CanvasProviderFailureStatus,
-	CanvasProviderRequestStatus,
-} from "./component-libraries/provider-errors.js";
-export {
-	type ExternalComponentFailure,
-	type InsertExternalComponentResult,
-	insertExternalComponent,
-	recoverExternalSnapshot,
-	useExternalComponent,
-} from "./component-libraries/use-external-component.js";
 export type { CanvasTemplateEntry } from "./templates/template-entry.js";
 // ── Template provider (C-06, FR-131) ────────────────────────────────────────
 export type {
