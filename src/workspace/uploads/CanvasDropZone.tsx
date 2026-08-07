@@ -1,6 +1,10 @@
 "use client";
 
-import type { CanvasCommand } from "@anvilkit/canvas-core";
+import {
+	type CanvasCommand,
+	type CanvasFrameShape,
+	resolveFrameClipShape,
+} from "@anvilkit/canvas-core";
 import * as React from "react";
 import { type ReactNode, useRef, useState } from "react";
 import {
@@ -100,6 +104,22 @@ function buildDropReplaceCommands(
 		asset: ctx.getIR().assets[assetId],
 		pageId: ctx.pagesStore.getState().activePageId,
 	});
+}
+
+/**
+ * cp4-004: the NON-RECTANGULAR clip a hovered well would apply to the dropped
+ * photo, if any. Read from core's ONE resolver, so the affordance describes the
+ * geometry the renderer is actually about to use rather than a second reading
+ * of `clip`/`shape`. `undefined` for a plain rectangular well — the badge then
+ * keeps the shipped "Drop to replace" wording, which is still accurate.
+ */
+function hoveredClipShapeKind(
+	target: CanvasDropTarget | undefined,
+): CanvasFrameShape["kind"] | undefined {
+	if (target?.kind !== "well") return undefined;
+	const resolved = resolveFrameClipShape(target.frame);
+	if (!resolved.clipped || resolved.source !== "declared") return undefined;
+	return resolved.shape.kind === "rect" ? undefined : resolved.shape.kind;
 }
 
 /**
@@ -241,10 +261,13 @@ export function CanvasDropZone({
 		insertAssetsImpl(ctx, [asset], clientPointToPage(ctx, clientX, clientY));
 	};
 
+	const hoverShapeKind = hoveredClipShapeKind(hoverTarget);
 	const hoverLabel =
 		hoverTarget === undefined
 			? undefined
-			: t("canvas.upload.replaceTarget", "Drop to replace");
+			: hoverShapeKind !== undefined
+				? t("canvas.upload.replaceTargetShape", "Drop to fill shape")
+				: t("canvas.upload.replaceTarget", "Drop to replace");
 
 	return (
 		<div
@@ -258,6 +281,7 @@ export function CanvasDropZone({
 						? hoverTarget.node.id
 						: hoverTarget.frame.id
 			}
+			data-drop-target-shape={hoverShapeKind}
 			className="relative flex min-h-0 min-w-0 flex-1 flex-col"
 			onDragOver={(e) => {
 				if (!e.dataTransfer || !isAcceptedDrag(e.dataTransfer.types)) return;
