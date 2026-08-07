@@ -2,12 +2,17 @@
 
 import {
 	CANVAS_IMAGE_ADJUSTMENT_PRESETS,
+	type CanvasAudioNode,
 	type CanvasFrameNode,
+	type CanvasFrameShape,
 	type CanvasImageAdjustmentPresetId,
 	type CanvasImageAdjustments,
 	type CanvasImageFitMode,
 	type CanvasImageNode,
+	type CanvasVideoNode,
+	resolveFrameClipShape,
 } from "@anvilkit/canvas-core";
+import { Badge } from "@anvilkit/ui/badge";
 import { Button } from "@anvilkit/ui/button";
 import { Switch } from "@anvilkit/ui/components/animate-ui/components/base/switch";
 import {
@@ -17,6 +22,10 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@anvilkit/ui/select";
+// Required binding: every `.tsx` under this package carries it (see
+// `brand-warnings.tsx`) so a classic-JSX build cannot throw "React is not
+// defined" from `dist` — typecheck does not catch that.
+import * as React from "react";
 import type { BrandKit } from "../../brand/brand-kit.js";
 import type {
 	CanvasStudioContextValue,
@@ -31,6 +40,12 @@ import {
 	wellImage,
 } from "../../selection/frame-image-actions.js";
 import {
+	commitFrameShapeChoice,
+	FRAME_SHAPE_CHOICES,
+	type FrameShapeChoice,
+	frameShapeChoice,
+} from "../../selection/frame-shape-actions.js";
+import {
 	type CommitPatchAll,
 	FieldRow,
 	NumberField,
@@ -42,8 +57,8 @@ import { FillAndShadowFields } from "../fill-shadow-fields.js";
 import { CornerRadiiFields } from "./stroke-section.js";
 
 /**
- * Image / frame inspector sections (M0-07 split from `PropertyInspector.tsx`).
- * Dispatch lives in `./type-sections.tsx`.
+ * Image / frame / video / audio inspector sections (M0-07 split from
+ * `PropertyInspector.tsx`). Dispatch lives in `./type-sections.tsx`.
  *
  * FR-070 (B-12 multi-kind sections): `nodes` is the whole same-kind
  * selection. Continuous fields (crop rect, adjustments, radius) and discrete
@@ -457,8 +472,205 @@ export function renderAdjustmentFields(
 	);
 }
 
+/** cp4-004: the Shape picker's option labels. Translated, never the raw kind. */
+export const FRAME_SHAPE_LABELS: Record<FrameShapeChoice, [string, string]> = {
+	none: ["canvas.inspector.frameShapeNone", "None"],
+	rect: ["canvas.inspector.frameShapeRect", "Rectangle"],
+	ellipse: ["canvas.inspector.frameShapeEllipse", "Ellipse"],
+	polygon: ["canvas.inspector.frameShapePolygon", "Polygon"],
+	star: ["canvas.inspector.frameShapeStar", "Star"],
+	path: ["canvas.inspector.frameShapePath", "Custom path"],
+};
+
 /**
- * A frame's own controls: clip toggle, corner radius, and background fill.
+ * cp4-004 — the frame's clip GEOMETRY (ADR 0008 decision 2): pick one of the
+ * five `CanvasFrameShape` kinds, tune its parameters, or release it back to the
+ * rectangle every frame clipped to before shapes existed.
+ *
+ * Reads core's ONE resolver ({@link resolveFrameClipShape}) rather than
+ * re-deriving the rules, so this control, the Konva `clipFunc` (cp4-003) and the
+ * SVG `<clipPath>` (cp4-002) can never disagree. That is also why the status
+ * note exists: the resolver knows a shape is inert (`clip` off) or degraded
+ * (a kind this build cannot draw), and the only way a user finds out is if the
+ * inspector says so.
+ *
+ * Apply/release commit through {@link commitFrameShapeChoice} rather than
+ * `commitPatchAll`, because applying is more than one node.update — it turns
+ * `clip` on, and can restore a well image that would otherwise not be visible —
+ * and all of it must land as ONE undo step.
+ */
+function renderFrameShapeFields(
+	nodes: readonly CanvasFrameNode[],
+	ctx: CanvasStudioContextValue,
+	t: CanvasT,
+): React.JSX.Element {
+	const node = nodes[0] as CanvasFrameNode;
+	const resolved = resolveFrameClipShape(node);
+	const choice = frameShapeChoice(node);
+	const shape = node.shape;
+	const mixed = nodes.some((n) => frameShapeChoice(n) !== choice);
+	const note =
+		resolved.source === "degraded"
+			? t(
+					"canvas.inspector.frameShapeDegraded",
+					"This build cannot draw that shape, so the frame clips to its rectangle.",
+				)
+			: shape !== undefined && !resolved.clipped
+				? t(
+						"canvas.inspector.frameShapeInert",
+						"Turn Clip on for this shape to take effect.",
+					)
+				: undefined;
+	return (
+		<>
+			<FieldRow label={t("canvas.inspector.frameShape", "Shape")}>
+				<Select
+					items={FRAME_SHAPE_CHOICES.map((c) => ({
+						value: c,
+						label: t(...FRAME_SHAPE_LABELS[c]),
+					}))}
+					value={mixed || choice === undefined ? undefined : choice}
+					onValueChange={(next) => {
+						if (!next) return;
+						commitFrameShapeChoice(ctx, nodes, next as FrameShapeChoice);
+					}}
+				>
+					<SelectTrigger
+						data-testid="prop-frame-shape"
+						className="h-7.5 flex-1"
+					>
+						<SelectValue
+							placeholder={
+								mixed ? t("canvas.inspector.mixed", "Mixed") : undefined
+							}
+						/>
+					</SelectTrigger>
+					<SelectContent>
+						{FRAME_SHAPE_CHOICES.map((c) => (
+							<SelectItem key={c} value={c}>
+								{t(...FRAME_SHAPE_LABELS[c])}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</FieldRow>
+			{renderFrameShapeParams(nodes, shape, t)}
+			{shape !== undefined ? (
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					className="w-full"
+					data-testid="prop-frame-shape-release"
+					onClick={() => commitFrameShapeChoice(ctx, nodes, "none")}
+				>
+					{t("canvas.inspector.frameShapeRelease", "Release shape")}
+				</Button>
+			) : null}
+			{note ? (
+				<p
+					data-testid="prop-frame-shape-note"
+					role="note"
+					className="text-[0.7rem] leading-snug text-muted-foreground"
+				>
+					{note}
+				</p>
+			) : null}
+		</>
+	);
+}
+
+/**
+ * The parameter fields the SELECTED kind owns — nothing for `rect`/`ellipse`,
+ * which are fully described by the frame's box (and, for `rect`, by the Radius
+ * and per-corner fields already below).
+ *
+ * Each field patches the whole `shape` object rather than one property, because
+ * `CanvasFrameShape` is a closed discriminated union: a patch carrying only
+ * `sides` would not type-check and would not survive a schema parse.
+ */
+function renderFrameShapeParams(
+	nodes: readonly CanvasFrameNode[],
+	shape: CanvasFrameShape | undefined,
+	t: CanvasT,
+): React.JSX.Element | null {
+	if (shape?.kind === "polygon") {
+		return (
+			<NumberField
+				label={t("canvas.inspector.frameShapeSides", "Sides")}
+				value={shape.sides}
+				min={3}
+				step={1}
+				dataTestId="prop-frame-shape-sides"
+				contract={{
+					nodes,
+					buildPatch: (_n, v) => ({
+						shape: { kind: "polygon", sides: Math.max(3, Math.round(v)) },
+					}),
+				}}
+			/>
+		);
+	}
+	if (shape?.kind === "star") {
+		return (
+			<>
+				<NumberField
+					label={t("canvas.inspector.frameShapePoints", "Points")}
+					value={shape.points}
+					min={3}
+					step={1}
+					dataTestId="prop-frame-shape-points"
+					contract={{
+						nodes,
+						buildPatch: (_n, v) => ({
+							shape: {
+								kind: "star",
+								points: Math.max(3, Math.round(v)),
+								innerRadiusRatio: shape.innerRadiusRatio,
+							},
+						}),
+					}}
+				/>
+				<NumberField
+					label={t("canvas.inspector.frameShapeInnerRatio", "Inner radius")}
+					value={shape.innerRadiusRatio}
+					min={0}
+					max={1}
+					step={0.05}
+					dataTestId="prop-frame-shape-inner-ratio"
+					contract={{
+						nodes,
+						buildPatch: (_n, v) => ({
+							shape: {
+								kind: "star",
+								points: shape.points,
+								innerRadiusRatio: Math.min(1, Math.max(0, v)),
+							},
+						}),
+					}}
+				/>
+			</>
+		);
+	}
+	if (shape?.kind === "path") {
+		return (
+			<TextField
+				label={t("canvas.inspector.frameShapePathData", "Path data")}
+				value={shape.d}
+				dataTestId="prop-frame-shape-path"
+				contract={{
+					nodes,
+					buildPatch: (_n, v) => ({ shape: { kind: "path", d: v } }),
+				}}
+			/>
+		);
+	}
+	return null;
+}
+
+/**
+ * A frame's own controls: clip toggle, clip shape, corner radius, and
+ * background fill.
  *
  * The background reuses {@link FillAndShadowFields} through its `fillKey` seam —
  * a frame stores its fill under `background`, not `fill`, and has no `shadow`
@@ -522,6 +734,21 @@ export function renderFrameFields(
 							? t("canvas.inspector.replaceImage", "Replace image")
 							: t("canvas.inspector.addImage", "Add image")}
 					</Button>
+					{well ? (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="w-full"
+							data-testid="prop-frame-reposition"
+							// cp4-004: the discoverable twin of the double-click gesture.
+							// Both go through `beginCrop` — moving a photo inside its
+							// frame IS cropping, so there is one implementation.
+							onClick={() => beginCrop(ctx, well.id)}
+						>
+							{t("canvas.inspector.repositionImage", "Reposition image")}
+						</Button>
+					) : null}
 					{well?.crop ? (
 						<Button
 							type="button"
@@ -594,6 +821,7 @@ export function renderFrameFields(
 					data-testid="prop-frame-clip"
 				/>
 			</FieldRow>
+			{renderFrameShapeFields(nodes, ctx, t)}
 			<NumberField
 				label={t("canvas.inspector.radius", "Radius")}
 				value={radius.value}
@@ -623,6 +851,63 @@ export function renderFrameFields(
 						: children.value}
 				</span>
 			</FieldRow>
+		</Section>
+	);
+}
+
+/**
+ * cp0-002 — the honesty badge for `video` / `audio`, stated where a user meets
+ * it rather than only in the docs.
+ *
+ * Both are real built-in kinds, and neither renders what its name promises:
+ * `CanvasVideoNodeRenderer` paints the poster asset and nothing else,
+ * `CanvasAudioNodeRenderer` paints an editor-only placeholder and returns
+ * `null` outside the live editor, and core's emitters agree —
+ * `emitVideo` warns `VIDEO_UNSUPPORTED` and emits the poster at most,
+ * `emitAudio` warns `AUDIO_UNSUPPORTED` and emits nothing. `CanvasAnimation`
+ * is metadata-only by contract: nothing plays it and no exporter reads it.
+ *
+ * Until this section existed both kinds fell through the `type-sections.tsx`
+ * switch to the EXTENSION `kindInspectors` lookup and therefore rendered no
+ * kind-specific inspector at all, so the product said nothing about any of it.
+ *
+ * Deliberately STATIC: a badge and one sentence, no controls and no playback
+ * affordance — anything interactive belongs to the deferred motion programme.
+ * It renders in the inspector (plain DOM, `@anvilkit/ui` + Tailwind apply
+ * normally) rather than as stage chrome, which is Konva shapes and could only
+ * carry a hand-rolled badge.
+ */
+export function renderStaticMediaFields(
+	nodes: ReadonlyArray<CanvasVideoNode | CanvasAudioNode>,
+	t: CanvasT,
+): React.JSX.Element {
+	// `sharedKind` gates this branch, so the whole selection is one kind and the
+	// first node speaks for all of them — same "representative node" choice the
+	// other kind sections make.
+	const audio = nodes[0]?.type === "audio";
+	return (
+		<Section title={t("canvas.inspector.media", "Media")}>
+			<div
+				data-testid="prop-media-static-badge"
+				data-media-kind={audio ? "audio" : "video"}
+				role="note"
+				className="flex flex-col items-start gap-1.5 rounded-md bg-muted px-2.5 py-2"
+			>
+				<Badge variant="secondary">
+					{t("canvas.inspector.mediaStaticBadge", "Static preview")}
+				</Badge>
+				<p className="text-[0.7rem] leading-snug text-muted-foreground">
+					{audio
+						? t(
+								"canvas.inspector.mediaStaticAudio",
+								"This build renders nothing for audio: the canvas shows an editor-only placeholder and every export omits it. The layer only keeps the asset reference.",
+							)
+						: t(
+								"canvas.inspector.mediaStaticVideo",
+								"This build renders the poster image only, on the canvas and in every export. There is no playback, and animation metadata is never played or exported.",
+							)}
+				</p>
+			</div>
 		</Section>
 	);
 }

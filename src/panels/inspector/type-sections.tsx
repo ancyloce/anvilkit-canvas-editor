@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+	CanvasAudioNode,
 	CanvasEllipseNode,
 	CanvasFrameNode,
 	CanvasGroupNode,
@@ -13,6 +14,7 @@ import type {
 	CanvasRichTextNode,
 	CanvasStarNode,
 	CanvasTextNode,
+	CanvasVideoNode,
 } from "@anvilkit/canvas-core";
 import * as React from "react";
 import { EMPTY_BRAND_KIT } from "../../brand/brand-kit.js";
@@ -22,7 +24,11 @@ import type {
 } from "../../context/canvas-studio-context.js";
 import type { CommitPatchAll } from "../fields.js";
 import { ComponentOverrideSection } from "./component-sections.js";
-import { renderFrameFields, renderImageFields } from "./media-sections.js";
+import {
+	renderFrameFields,
+	renderImageFields,
+	renderStaticMediaFields,
+} from "./media-sections.js";
 import {
 	renderEllipseFields,
 	renderLineFields,
@@ -126,6 +132,17 @@ export function renderTypeSpecificFields(
 			);
 		case "ai-placeholder":
 			return null;
+		// cp0-002: built-in kinds, so they must branch HERE for the same reason
+		// `component-instance` does below — falling through to `default` would
+		// hand them to the EXTENSION `kindInspectors` lookup. Neither renders
+		// what its name promises (video = poster only, audio = nothing), and the
+		// static notice is the only place in the product that says so.
+		case "video":
+		case "audio":
+			return renderStaticMediaFields(
+				nodes as ReadonlyArray<CanvasVideoNode | CanvasAudioNode>,
+				t,
+			);
 		// Plan 0023 M4-02: a built-in kind, so it must branch HERE rather than
 		// fall through to `default`, which would hand it to the EXTENSION
 		// `kindInspectors` lookup and silently misclassify a built-in as a

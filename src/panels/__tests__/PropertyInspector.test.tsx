@@ -5,6 +5,7 @@ import {
 	type CanvasNodeCreateCommand,
 	type CanvasNodeKind,
 	type CanvasNodeUpdateCommand,
+	createAudio,
 	createCanvasIR,
 	createFrame,
 	createImage,
@@ -15,6 +16,7 @@ import {
 	createRichText,
 	createStar,
 	createText,
+	createVideo,
 } from "@anvilkit/canvas-core";
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -1329,5 +1331,99 @@ describe("PropertyInspector — image-well toggle", () => {
 		expect(
 			(last.patch as { placeholder?: unknown }).placeholder,
 		).toBeUndefined();
+	});
+});
+
+/**
+ * cp0-002. `video` renders its poster and nothing else; `audio` renders an
+ * editor-only placeholder and is omitted from every export. The inspector is
+ * the only surface that says so, so these assert both that it appears for the
+ * two media kinds and — the half that actually protects the user — that it
+ * does NOT leak onto any other kind.
+ */
+function withMediaIR(kind: "video" | "audio"): CanvasIR {
+	const ir = createCanvasIR({
+		id: "ir-1",
+		pages: [createPage({ id: "p1" })],
+		now: () => FIXED_TS,
+	});
+	const node =
+		kind === "video"
+			? createVideo({
+					id: "media-a",
+					bounds: { width: 320, height: 180 },
+					assetId: "asset-1",
+					poster: "asset-2",
+				})
+			: createAudio({
+					id: "media-a",
+					bounds: { width: 320, height: 64 },
+					assetId: "asset-1",
+				});
+	const firstPage = ir.pages[0];
+	if (!firstPage) throw new Error("expected at least one page");
+	firstPage.root.children = [node];
+	return ir;
+}
+
+describe("PropertyInspector — static media notice (cp0-002)", () => {
+	function mountKind(ir: CanvasIR, id: string) {
+		const h = makeHarness({ ir });
+		h.studioCtx.selectionStore.getState().setSelection([id]);
+		return { h, ...mount(h.studioCtx) };
+	}
+
+	it.each([
+		"video",
+		"audio",
+	] as const)("renders the static badge for a selected %s node", (kind) => {
+		const { container } = mountKind(withMediaIR(kind), "media-a");
+		const notice = container.querySelector(
+			"[data-testid='prop-media-static-badge']",
+		) as HTMLElement;
+		expect(notice).not.toBeNull();
+		expect(notice.getAttribute("data-media-kind")).toBe(kind);
+		expect(notice.getAttribute("role")).toBe("note");
+		expect(notice.textContent).toContain("Static preview");
+	});
+
+	it("states the poster-only truth for video and the nothing-renders truth for audio", () => {
+		const video = mountKind(withMediaIR("video"), "media-a");
+		expect(
+			video.container.querySelector("[data-testid='prop-media-static-badge']")
+				?.textContent,
+		).toContain("poster image only");
+
+		const audio = mountKind(withMediaIR("audio"), "media-a");
+		expect(
+			audio.container.querySelector("[data-testid='prop-media-static-badge']")
+				?.textContent,
+		).toContain("renders nothing for audio");
+	});
+
+	// AC: "All strings resolve through message keys; no literal user-facing text
+	// in the component." A host-injected `t` must be able to replace every one.
+	it("resolves every string through a message key, not a literal", () => {
+		const h = makeHarness({ ir: withMediaIR("video") });
+		h.studioCtx.t = (key) => `[${key}]`;
+		h.studioCtx.selectionStore.getState().setSelection(["media-a"]);
+		const { container } = mount(h.studioCtx);
+		const notice = container.querySelector(
+			"[data-testid='prop-media-static-badge']",
+		) as HTMLElement;
+		expect(notice.textContent).toBe(
+			"[canvas.inspector.mediaStaticBadge][canvas.inspector.mediaStaticVideo]",
+		);
+	});
+
+	it.each([
+		["rect", withRectIR, "rect-a"],
+		["text", withTextIR, "text-a"],
+		["image", withImageIR, "img-a"],
+	] as const)("shows no static media notice for a %s node", (_kind, ir, id) => {
+		const { container } = mountKind(ir(), id);
+		expect(
+			container.querySelector("[data-testid='prop-media-static-badge']"),
+		).toBeNull();
 	});
 });
