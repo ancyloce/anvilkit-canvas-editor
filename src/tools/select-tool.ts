@@ -19,6 +19,8 @@ import {
 	reorderCommandsTo,
 } from "../auto-layout/reorder.js";
 import { instanceScopeTargetAt } from "../selection/component-selection-policy.js";
+import { beginCrop } from "../selection/crop-actions.js";
+import { frameRepositionTarget } from "../selection/frame-shape-actions.js";
 import { isolationScopeChildren } from "../selection/isolation.js";
 import { getOtherNodeRects } from "../snap/get-node-rect.js";
 import { computeSnap } from "../snap/snap-engine.js";
@@ -399,6 +401,28 @@ export const selectTool: Tool = {
 					// No addressable virtual node (degraded placeholder, or no
 					// resolution in this context): fall through and treat it as an
 					// ordinary click on the instance root.
+				}
+				// cp4-004: double-clicking a photo that a clipping frame masks
+				// REPOSITIONS the photo inside the mask. Reuses `beginCrop` — moving
+				// an image within its frame is exactly cropping, and a second
+				// in-place transform would duplicate pointer maths that is easy to
+				// get subtly wrong (ADR 0008 decision 1).
+				//
+				// Ordered BEFORE isolation entry on purpose: for a filled, clipping
+				// image well "edit the photo" is what the gesture means, and entering
+				// the frame instead would bury it one scope deeper. Every other
+				// container — plain frames, groups, empty or unclipped wells — still
+				// enters isolation exactly as before.
+				const reposition = node
+					? frameRepositionTarget(ctx.getIR(), node)
+					: undefined;
+				// Selection is deliberately left where the first click of the
+				// double put it (the frame), so the inspector keeps showing the
+				// shape controls while the photo is being nudged. The crop editor
+				// tracks `cropStore.cropNodeId`, not the selection.
+				if (reposition && beginCrop(ctx, reposition.id)) {
+					ctx.draftStore.getState().clearDraft();
+					return;
 				}
 				if (
 					ctx.isolationStore &&

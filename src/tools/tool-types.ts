@@ -3,6 +3,7 @@ import type Konva from "konva";
 import type { LucideProps } from "lucide-react";
 import type { ComponentType } from "react";
 import type { CanvasPickedAsset } from "../assets/adapter-types.js";
+import type { CropStoreApi } from "../stores/crop-store.js";
 import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
 import type { CanvasFocusStoreApi } from "../stores/focus-store.js";
@@ -71,6 +72,17 @@ export interface ToolContext {
 	 * select tool then scopes to the page's top level.
 	 */
 	isolationStore?: IsolationStoreApi;
+	/**
+	 * Interactive crop editor (cp4-004). Always supplied by `<CanvasStudio>`;
+	 * optional so lightweight tool tests may omit it — the double-click
+	 * reposition gesture then degrades to the pre-existing handling (isolation
+	 * entry / plain selection) rather than failing.
+	 *
+	 * Present so the stage gesture can reuse `beginCrop` instead of growing a
+	 * second in-place transform: repositioning an image inside a clipping frame
+	 * IS cropping (ADR 0008 decision 1).
+	 */
+	cropStore?: CropStoreApi;
 }
 
 export interface ToolPointerEvent {

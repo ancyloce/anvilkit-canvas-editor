@@ -41,6 +41,7 @@ export function ToolInteractionLayer({
 		activePageId,
 		requestAiIntent,
 		isolationStore,
+		cropStore,
 		resolvedDocumentStore,
 	} = useCanvasStudio();
 
@@ -89,6 +90,7 @@ export function ToolInteractionLayer({
 			activePageId,
 			requestAiIntent,
 			...(isolationStore ? { isolationStore } : {}),
+			...(cropStore ? { cropStore } : {}),
 			...(pickAssets ? { pickAssets } : {}),
 			...(resolvedDocumentStore ? { resolvedDocumentStore } : {}),
 		};
@@ -108,6 +110,7 @@ export function ToolInteractionLayer({
 		activePageId,
 		requestAiIntent,
 		isolationStore,
+		cropStore,
 		resolvedDocumentStore,
 		continuousCreation,
 	]);
