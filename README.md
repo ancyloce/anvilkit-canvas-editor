@@ -51,6 +51,13 @@ as a published npm dependency (`pnpm add`, above) is unaffected.
 - **Mountable UI** — `<LayerPanel>`, `<PropertyInspector>`, `<ElementsPanel>`,
   `<BrandPanel>`, `<ExportMenu>`, and inspector field primitives you compose
   into your own chrome (or use the `<CanvasWorkspace>` shell).
+- **Zero-config images** — with no asset adapter wired, dropped and picked
+  files are stored in the browser (IndexedDB, 25 MiB per file / 200 MiB total,
+  degrading to memory where IndexedDB is unavailable) and re-shown across
+  reloads. `assetPicker` / `assetUploader` override it; `disableLocalAssetFallback`
+  turns images off. Such documents are browser-local until exported through a
+  format that carries the bytes — see
+  [docs/assets.md](./docs/assets.md#the-built-in-local-adapters-zero-config).
 - **Brand kit** — pass shared colors + fonts via `brandKit`, read them with
   `useBrandKit`.
 - **i18n seam** — host-injected `canvas.*` message catalog (`messages` prop);
@@ -88,7 +95,7 @@ as a published npm dependency (`pnpm add`, above) is unaffected.
 
 ## Built-in node kind capability matrix (P1-1)
 
-Every one of core's 15 built-in node kinds has an explicit rendering policy
+Every one of core's 16 built-in node kinds has an explicit rendering policy
 here — none is silently invisible. `group`/`frame` are containers (recurse
 into `children`); every other kind is a leaf. Walker/mutation/command support
 is uniform across all leaf kinds (the same generic `insertNode`/`removeNode`/
@@ -107,6 +114,7 @@ omitted as a column below.
 | `ai-placeholder` | ✅ (status chrome: pending/complete/error + Cancel) | skipped, `AI_PLACEHOLDER_SKIPPED` warning (no static representation) | n/a — always has a representation |
 | `video` | poster image if resolved, else an editor-chrome-only placeholder box (P1-1 fix — previously invisible) | poster image if resolved else nothing, `VIDEO_UNSUPPORTED` warning | no poster: chrome-only placeholder in the live editor; nothing in an export/rasterize pass, matching core's SVG policy |
 | `audio` | editor-chrome-only placeholder box (P1-1 fix — previously invisible) | nothing, `AUDIO_UNSUPPORTED` warning (no visual representation at all) | same placeholder-in-editor / nothing-in-export split as `video` |
+| `component-instance` | ✅ (expands to the composed source node, then dispatches normally — one renderer, no component-specific drawing code) | ✅ (same expansion) | unresolvable instance (missing Source, cycle, depth/budget exhausted): selectable placeholder with overrides retained (core INV-3); export warns `COMPONENT_INSTANCE_UNRESOLVED` |
 
 ¹ PDF is raster-embed over the SAME rendering path as `rasterizePage` (no
 studio context), so PDF fidelity mirrors the raster/Konva path — including
@@ -125,11 +133,13 @@ Integration guides live in [`docs/`](./docs):
 - [Workspace composition](./docs/workspace-composition.md) — shell anatomy,
   headless vs `<CanvasWorkspace>`, every composition seam and opt-out.
 - [Adapter integration](./docs/adapters.md) — persistence, asset picker,
-  uploader, template provider, recovery.
+  uploader, template provider, recovery. **All five are optional overrides**;
+  the asset pair has a built-in default.
 - [Persistence](./docs/persistence.md) — save states, checkpoint/revision
   semantics, auto-save tuning, leave protection, local recovery.
-- [Assets](./docs/assets.md) — asset model, entry paths, upload lifecycle,
-  fit modes and adjustments.
+- [Assets](./docs/assets.md) — asset model, the zero-config browser-local
+  default and its portability caveat, entry paths, upload lifecycle, fit modes
+  and adjustments.
 - [Export capability matrix](./docs/export-capability-matrix.md) —
   per-format fidelity, incl. the PDF raster-embed disclosure.
 - [Keyboard shortcut reference](./docs/shortcut-reference.md) — **generated
@@ -249,14 +259,20 @@ export function Editor() {
 			onChange={(ir, command) => {
 				// persist / mirror into a host store; `command` is the applied action
 			}}
-			onPickAsset={async () => {
-				// open your asset picker, return an asset id (needed for the image tool)
-				return "asset-id";
-			}}
 		/>
 	);
 }
 ```
+
+**No asset wiring is needed to add images.** With no `assetPicker` /
+`assetUploader` / `onPickAsset`, the editor stores dropped and picked files in
+the browser itself, so the Image tool, the Uploads panel and drag-and-drop all
+work out of the box. Passing an asset adapter overrides that default; passing
+`disableLocalAssetFallback` turns images off deliberately. The default's one
+real limitation is that such a document is **browser-local** unless exported
+through a format that carries the bytes — read
+[docs/assets.md](./docs/assets.md#the-built-in-local-adapters-zero-config)
+before shipping on it.
 
 The editor ships **no toolbar of its own** — tool selection is host-driven.
 Render your own chrome and panels in one of two ways, both of which run inside

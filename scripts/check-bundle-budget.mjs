@@ -121,9 +121,22 @@ async function bundle(packageName, peerDependencies, ignore) {
 	return result.metafile;
 }
 
-function findEntryChunk(metafile) {
+/**
+ * The chunk built from OUR entry file — matched by name, not by "the first
+ * output that has an `entryPoint`".
+ *
+ * With `splitting: true`, esbuild marks every dynamic-import boundary as an
+ * entry point too, so the naive first-match returns whichever code-split
+ * chunk happens to come first in the metafile's iteration order. On
+ * 2026-08-07 (cp1-004) that silently became `ErrorDetailsDialog-*.js` — 884
+ * gzipped bytes against a 409,600 byte budget — which is a gate that can
+ * never fail rather than a gate that passes. The same fix is already in
+ * `@anvilkit/core`'s copy of this script.
+ */
+function findEntryChunk(metafile, entryFile) {
+	const wanted = basename(entryFile);
 	for (const [outputPath, output] of Object.entries(metafile.outputs)) {
-		if (output.entryPoint) {
+		if (output.entryPoint !== undefined && basename(output.entryPoint) === wanted) {
 			return resolve(PACKAGE_ROOT, outputPath);
 		}
 	}
@@ -137,7 +150,7 @@ async function main() {
 	await prepareEntry(pkg.name);
 
 	const metafile = await bundle(pkg.name, pkg.peerDependencies ?? {}, ignore);
-	const entryChunkPath = findEntryChunk(metafile);
+	const entryChunkPath = findEntryChunk(metafile, ENTRY_FILE);
 	const raw = await readFile(entryChunkPath);
 	const gzipped = gzipSync(raw, { level: 9 });
 	const rawBytes = raw.length;

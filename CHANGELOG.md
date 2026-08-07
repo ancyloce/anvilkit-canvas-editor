@@ -3,8 +3,68 @@
 ## Unreleased
 
 The PRD 0012 delivery (Phases 1a "editing loop", 1b "product chrome", 2
-"professional editing"). Behavior changes and opt-outs are catalogued in
+"professional editing"), plus the PLAN-0035 work called out by its own
+sections. Behavior changes and opt-outs are catalogued in
 [docs/migration.md](./docs/migration.md); this is the feature summary.
+
+### Zero-config asset ingress (PLAN-0035 P1)
+
+- **Images work with no adapter wired.** Previously a `<CanvasStudio>` mounted
+  without `assetPicker` / `assetUploader` / `onPickAsset` could not get an
+  image onto the canvas by any route: the Image tool was gated off and a drop
+  showed *"This workspace has no upload service configured"*. The editor now
+  falls back to built-in local adapters that store the original bytes as a
+  `Blob` in the browser's own IndexedDB (database `anvilkit-canvas-assets`),
+  reference them from `ir.assets` by `blob:` URI, and read intrinsic
+  dimensions per file so inserted nodes are correctly sized. Caps are **25 MiB
+  per asset** and **200 MiB total**, both reported to the user through the
+  existing upload error toast (three new `canvas.upload.*` keys, all four
+  locales). Where IndexedDB is unavailable — private browsing, disabled site
+  storage, SSR — the store degrades to an in-memory `Map` with one console
+  warning and never throws.
+- **Adapters became overrides, not requirements.** Precedence is any-of, not
+  per-slot: a host passing **any** of `assetPicker`, `assetUploader`, or the
+  legacy `onPickAsset` keeps its own adapters and **the fallback is never
+  constructed** — behaviour is identical to the previous build, asserted by a
+  regression test that fails if the fallback is ever built under a host
+  adapter. Wiring only `assetUploader` therefore does not hand you a fallback
+  picker.
+- **New prop: `disableLocalAssetFallback?: boolean`** (`CanvasStudioProps`,
+  inherited by `CanvasWorkspaceProps`; optional, defaults to `false`). It is
+  the third state between "host adapter" and "default fallback": with no host
+  adapter and the flag set, images are genuinely unavailable and the
+  pre-PLAN-0035 hard stop returns, "no upload service configured" toast
+  included. Set it when browser-local storage would be the wrong promise —
+  documents that must move between devices, or a policy against writing user
+  content to the browser.
+- **Locally-stored images survive a reload.** Object URLs die with the page, so
+  on document load the editor re-mints a fresh `blob:` URL for every id the
+  local store still holds and publishes it to the stage through the assets
+  context. **The document is never rewritten** — the fresh URI cannot reach
+  `onChange`, a save, or an export — and revocation is balanced against
+  minting across mount, document swap, asset delete and unmount. An id the
+  store no longer holds degrades to the existing missing-asset placeholder.
+- **Export carries local bytes off the machine.** `svg` embeds them as real
+  base64 through core's existing `SvgFetchAsset` seam (the `blob:` URI never
+  reaches the output); `png`/`jpeg`/`webp`/`pdf`/`pdf-print` were never
+  affected, since they carry pixels. `json` inlines local assets as `data:`
+  URIs while their combined source size is at most the new
+  `DEFAULT_JSON_INLINE_ASSET_BYTES` (10 MiB) and, above that, emits one
+  `LOCAL_ASSET_NOT_PORTABLE` warning **per** image rather than a silently
+  unresolvable URI — plus `LOCAL_ASSET_VOLATILE_STORE` (`level: "error"`) when
+  the store had degraded to memory. New public exports: `createJsonExporter`,
+  `CanvasJsonExporterOptions`, `DEFAULT_JSON_INLINE_ASSET_BYTES`; override the
+  cap through the existing exporter channel,
+  `createCanvasExportPlugin({ exporters: { json: createJsonExporter({ maxInlineAssetBytes }) } })`.
+- **Known gaps, recorded not buried.** Page thumbnails and the offscreen
+  raster/PDF export path still read the raw `ir.assets` rather than the
+  rehydrated table, so after a reload each shows the missing-asset placeholder
+  for an image the stage paints correctly. Both are zero-config-only and both
+  need the same public-surface change to fix. See
+  [docs/assets.md → Known gaps](./docs/assets.md#known-gaps).
+- Full detail: [docs/assets.md](./docs/assets.md),
+  [docs/adapters.md](./docs/adapters.md), and
+  [docs/export-capability-matrix.md](./docs/export-capability-matrix.md).
 
 ### PRD 0012 completion pass
 
