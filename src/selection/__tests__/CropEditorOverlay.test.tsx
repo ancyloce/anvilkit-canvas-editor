@@ -2,6 +2,7 @@ import {
 	type CanvasIR,
 	type CanvasNodeUpdateCommand,
 	createCanvasIR,
+	createFrame,
 	createImage,
 	createPage,
 } from "@anvilkit/canvas-core";
@@ -142,6 +143,49 @@ describe("CropEditorOverlay", () => {
 		expect(
 			result?.container.querySelector("[data-testid='crop-editor-overlay']"),
 		).not.toBeNull();
+	});
+
+	it("anchors a NESTED image at its page-space position, not its parent-local one", () => {
+		// cp4-004 regression: every image filling a frame's well is nested, so the
+		// reposition gesture always hits this path. `node.transform.x/y` is
+		// relative to the FRAME; anchoring on it put the handles at (0,0) instead
+		// of at the frame's origin. Same E-10 fix TextEditorOverlay already has.
+		const page = createPage({ id: "p1" });
+		page.root.children = [
+			{
+				...createFrame({
+					id: "well",
+					bounds: { width: 200, height: 200 },
+					transform: { x: 300, y: 150 },
+					children: [
+						createImage({
+							id: "img-nested",
+							bounds: { width: 200, height: 100 },
+							transform: { x: 0, y: 0 },
+							assetId: "asset-1",
+						}),
+					],
+				}),
+				clip: true,
+				shape: { kind: "ellipse" as const },
+				placeholder: { kind: "image" as const, assetId: "asset-1" },
+			},
+		];
+		const ir = createCanvasIR({ id: "ir", pages: [page] });
+		ir.assets["asset-1"] = {
+			id: "asset-1",
+			uri: "data:image/png;base64,XXX",
+			width: 200,
+			height: 100,
+		};
+		const h = makeHarness({ ir });
+		h.studioCtx.cropStore?.getState().begin("img-nested");
+		const { container } = mount(h.studioCtx);
+		const overlay = container.querySelector(
+			"[data-testid='crop-editor-overlay']",
+		) as HTMLElement;
+		expect(overlay.style.left).toBe("300px");
+		expect(overlay.style.top).toBe("150px");
 	});
 
 	it("Escape cancels without committing", () => {

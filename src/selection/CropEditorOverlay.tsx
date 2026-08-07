@@ -1,6 +1,11 @@
 "use client";
 
 import { type CanvasImageNode, findNode } from "@anvilkit/canvas-core";
+// Required binding: this package builds CLASSIC JSX, so `dist` throws "React is
+// not defined" at runtime without it and typecheck does not catch that. Added
+// by cp4-004 when the repo's PreToolUse guard flagged the file (the omission
+// predates this task).
+import * as React from "react";
 import {
 	type CSSProperties,
 	useEffect,
@@ -10,7 +15,10 @@ import {
 import {
 	useCanvasStudio,
 	useCanvasT,
+	useResolvedDocument,
 } from "../context/canvas-studio-context.js";
+import { resolveNodeWorldPosition } from "../stage/node-world-position.js";
+import { resolvedNodeWorldPosition } from "../stage/resolved-page-space.js";
 import type { CropRect, CropStoreApi } from "../stores/crop-store.js";
 
 const overlayBase: CSSProperties = { position: "fixed", zIndex: 9999 };
@@ -59,6 +67,7 @@ function CropEditorOverlayInner({
 }): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
+	const resolvedDocument = useResolvedDocument();
 	const { stage, getIR, viewportStore } = ctx;
 	const cropNodeId = useSyncExternalStore(
 		cropStore.subscribe,
@@ -126,8 +135,22 @@ function CropEditorOverlayInner({
 	const container =
 		typeof stage.container === "function" ? stage.container() : null;
 	const cr = container?.getBoundingClientRect?.();
-	const boxLeft = (cr?.left ?? 0) + node.transform.x * vp.zoom + vp.panX;
-	const boxTop = (cr?.top ?? 0) + node.transform.y * vp.zoom + vp.panY;
+	// Ancestor-composed (E-10), the same anchoring `TextEditorOverlay` and
+	// `RichTextToolbar` already use: `node.transform.x/y` is relative to the
+	// IMMEDIATE PARENT, so an image nested inside a frame — which every image
+	// filling a well is, by construction — would place this overlay at the
+	// frame-local offset instead of its page-space position. That made the
+	// cp4-004 reposition gesture land its handles somewhere else entirely.
+	// Falls back to the node's own transform for a top-level image, where the
+	// two already agree.
+	const worldPosition =
+		(resolvedDocument
+			? resolvedNodeWorldPosition(resolvedDocument, node.id)
+			: null) ??
+		resolveNodeWorldPosition(ir, node.id) ??
+		node.transform;
+	const boxLeft = (cr?.left ?? 0) + worldPosition.x * vp.zoom + vp.panX;
+	const boxTop = (cr?.top ?? 0) + worldPosition.y * vp.zoom + vp.panY;
 	const boxW = node.bounds.width * vp.zoom;
 	const boxH = node.bounds.height * vp.zoom;
 	const sxPerNat = naturalW > 0 ? boxW / naturalW : 1;

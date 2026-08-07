@@ -1,6 +1,10 @@
-import { type CanvasNodeUpdateCommand, findNode } from "@anvilkit/canvas-core";
+import {
+	type CanvasIR,
+	type CanvasNodeUpdateCommand,
+	findNode,
+} from "@anvilkit/canvas-core";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
-import type { CropRect } from "../stores/crop-store.js";
+import type { CropRect, CropStoreApi } from "../stores/crop-store.js";
 
 /** Which crop handle is being dragged. `move` translates the whole rect. */
 export type CropDragMode = "move" | "nw" | "ne" | "sw" | "se";
@@ -70,13 +74,26 @@ export function computeCropDrag(
 }
 
 /**
+ * The slice of the studio context {@link beginCrop} actually reads.
+ *
+ * Declared structurally (the same posture as core's `resolveFrameClipShape`,
+ * which takes a frame's clip fields rather than a whole node) so a `ToolContext`
+ * — which carries these two members but is NOT a `CanvasStudioContextValue` —
+ * can open the crop editor through this function instead of growing a second
+ * in-place transform gesture. cp4-004: repositioning an image inside a clipping
+ * frame IS cropping, and duplicating the pointer maths is the failure mode ADR
+ * 0008 decision 1 exists to prevent.
+ */
+export interface BeginCropContext {
+	getIR: () => CanvasIR;
+	cropStore?: CropStoreApi;
+}
+
+/**
  * Open the interactive crop editor for an image node. Returns false (no-op)
  * when the crop store is unavailable or the target is not an image node.
  */
-export function beginCrop(
-	ctx: CanvasStudioContextValue,
-	nodeId: string,
-): boolean {
+export function beginCrop(ctx: BeginCropContext, nodeId: string): boolean {
 	if (!ctx.cropStore) return false;
 	const found = findNode(ctx.getIR(), nodeId);
 	if (!found || found.node.type !== "image") return false;
