@@ -3,14 +3,22 @@
 `@anvilkit/canvas-editor` keeps hosts in charge of storage, transport, and
 catalogs through five small adapter contracts (PRD 0012 §11.1, §23). The
 editor owns *when* things happen (debounce, retry, progress, undo semantics);
-the adapter owns *where* data lives. All five are optional `CanvasStudioProps`
-— omit one and its feature degrades gracefully (documented per adapter).
+the adapter owns *where* data lives.
+
+**All five are optional `CanvasStudioProps`, and none of them is required.**
+Three degrade by switching a feature off. The two **asset** adapters degrade
+differently: since PLAN-0035 P1 the editor falls back to a built-in
+browser-local picker and uploader, so a bare
+`<CanvasStudio initialIR={…} />` accepts an image drop and un-gates the Image
+tool with no wiring at all. Passing an asset adapter is therefore an
+**override**, not an obligation — see
+[Asset adapter precedence](#asset-adapter-precedence).
 
 | Adapter | Prop | Feature it unlocks | Without it |
 | --- | --- | --- | --- |
 | `CanvasPersistenceAdapter` | `persistenceAdapter` | Save status, manual + auto save, dirty tracking, leave protection | No save UI, no dirty tracking |
-| `CanvasAssetPicker` | `assetPicker` | "Browse" flows in image wells / uploads panel | Picker entries hidden |
-| `CanvasAssetUploader` | `assetUploader` | File upload + drag-and-drop onto workspace/canvas/panel | Drop shows an info toast, no mutation |
+| `CanvasAssetPicker` | `assetPicker` | "Browse" flows in image wells / uploads panel | **Built-in fallback**: a hidden-file-input picker over browser-local storage |
+| `CanvasAssetUploader` | `assetUploader` | File upload + drag-and-drop onto workspace/canvas/panel | **Built-in fallback**: files are stored in this browser (IndexedDB) |
 | `CanvasTemplateProvider` | `templateProvider` | Remote template catalog (search, pagination, recents) | Static `templates` array (auto-wrapped in the same protocol) |
 | `CanvasRecoveryAdapter` | `recoveryAdapter` | Crash-recovery snapshots + recover-draft dialog | No local recovery |
 
@@ -53,6 +61,45 @@ interface CanvasAssetUploader {
 A returned asset's `id` becomes the `ir.assets` key and the node's `assetId`;
 `uri` is what renders and exports. The legacy `onPickAsset` prop keeps working
 through a compat shim.
+
+### Asset adapter precedence
+
+Both asset adapters are **optional overrides**. `<CanvasStudio>` resolves them
+in one place, and there are three states rather than two:
+
+1. **A host adapter is present** — any of `assetPicker`, `assetUploader`, or the
+   legacy `onPickAsset`. Your adapters are used and **the local fallback is
+   never constructed at all**. Behaviour is identical to the pre-PLAN-0035
+   build, including the module the fallback lives in never being loaded.
+2. **No host adapter, `disableLocalAssetFallback` unset — the default.** The
+   editor wires its own picker and uploader over browser-local storage: the
+   Image tool un-gates, drops insert, and the Uploads panel works.
+3. **No host adapter, `disableLocalAssetFallback: true`.** No asset adapters at
+   all. The Image tool stays disabled and a drop reports *"This workspace has
+   no upload service configured"* — the pre-PLAN-0035 hard stop, restored on
+   purpose.
+
+```tsx
+<CanvasStudio initialIR={ir} />                            {/* 2 — zero config */}
+<CanvasStudio initialIR={ir} assetUploader={myUploader} /> {/* 1 — host owns assets */}
+<CanvasStudio initialIR={ir} disableLocalAssetFallback />  {/* 3 — images genuinely off */}
+```
+
+**Host ownership is any-of, not per-slot.** Wiring only `assetUploader` does
+**not** leave you with a fallback *picker*. All-or-nothing keeps a second,
+host-invisible storage decision out of an editor the host believes it controls,
+and it keeps the internal `hasImagePicker` gate from flipping `false` → `true`
+under an existing integration. Wire both, or neither.
+
+Reach for `disableLocalAssetFallback` when browser-local storage would be the
+wrong promise: documents that must be portable across devices, or a policy that
+forbids writing user content to the browser. Do not set it *and* pass an
+adapter — state 1 already suppresses the fallback, so the flag would only
+mislead the next reader.
+
+What the default stores, where, its size caps, and **the portability caveat to
+read before relying on it** are in
+[assets.md → The built-in local adapters](./assets.md#the-built-in-local-adapters-zero-config).
 
 **Legacy-uploader compatibility (FR-091/092):** both `signal` and
 `onProgress` are additive and optional. An adapter written against the
@@ -119,4 +166,8 @@ Adapter failures are best-effort and never break editing.
   panel error+retry states). Never `throw` synchronously.
 - Adapters are identified by prop identity: pass a stable instance
   (module-level or memoized), not a fresh object per render.
-- The editor never persists anything itself; no adapter, no I/O.
+- **The editor never performs host I/O of its own**: no persistence, recovery,
+  or template adapter means no request to anything you own. The single
+  exception is the asset fallback above, which writes to the *browser's* own
+  IndexedDB, only when you wired no asset adapter, and only for files a user
+  actually added. `disableLocalAssetFallback` removes even that.

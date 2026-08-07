@@ -19,7 +19,8 @@ no-op feedback seams) unless a row says otherwise.
 | **Open as new document** (FR-132): the Templates panel offers "Open as new document" and warns before a destructive replace when the document is dirty. | "Open as new" shown only with `onCreateDocument` | Omit `onCreateDocument` → choice hidden; replace still guarded by unsaved warning. |
 | **Toast + dialog hosts** (FR-170/171): destructive actions confirm via dialog; feedback lands as toasts. | On in shell | Headless keeps auto-confirm/no-op seams. |
 | **Context menus** (FR-030..032): canvas/node/page right-click menus replace the browser menu; all entries route through the action layer. | On | No opt-out (shell UI). |
-| **Uploads panel + drop zone** (FR-091/092). | Visible; uploads need `assetUploader` | No adapter → info toast, no mutation. |
+| **Uploads panel + drop zone** (FR-091/092). | Visible; uploads work with **no adapter** — see the PLAN-0035 row below | Pass `assetUploader` to own storage yourself. |
+| **Zero-config asset ingress** (PLAN-0035 P1): with no `assetPicker`/`assetUploader`/`onPickAsset`, images are stored in the browser (IndexedDB, 25 MiB per file / 200 MiB total) instead of hard-failing. The Image tool un-gates and drops insert. | On when no asset adapter is wired | `disableLocalAssetFallback` restores the previous hard stop (Image tool disabled, "no upload service configured" toast). Any asset adapter also suppresses it — see [assets.md](./assets.md#the-built-in-local-adapters-zero-config). |
 | **Inspector completion** (FR-070..077): page properties when nothing selected, multi-select with Mixed values, appearance/stroke/radii/fit-mode sections, field contract (live preview, coalesced undo, Escape revert). | On | No opt-out (inspector semantics). |
 | **Save status + auto-save** (FR-160..163). | Only with `persistenceAdapter` | Omit the adapter → no change. See [persistence.md](./persistence.md). |
 | **Rulers and guides** (FR-110/111, Phase 2) | **Off** | Enable via the canvas context menu. Default-on is a host decision still open for Beta. |
@@ -38,6 +39,9 @@ align, distribute, duplicate, paste, tidy-up: ONE undo entry each.
   `recoveryAdapter`, `assetPicker`, `assetUploader`, `templateProvider`,
   `continuousCreation`, `onError`.
 - `CanvasWorkspaceProps`: `shortcuts`, `toolStrip`.
+- `CanvasStudioProps.disableLocalAssetFallback` (PLAN-0035 P1) — opt out of the
+  built-in browser-local asset adapters. Optional, defaults to `false`, and
+  inherited by `CanvasWorkspaceProps`.
 - Legacy `onPickAsset` keeps working (compat shim).
 
 ## E2E-visible changes for host suites
