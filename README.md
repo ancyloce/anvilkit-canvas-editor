@@ -140,6 +140,9 @@ Integration guides live in [`docs/`](./docs):
 - [Assets](./docs/assets.md) — asset model, the zero-config browser-local
   default and its portability caveat, entry paths, upload lifecycle, fit modes
   and adjustments.
+- [Typography](./docs/typography.md) — the font catalog, the `fontCatalog`
+  prop, brand > host > default merge semantics, **the metadata-only default and
+  its offline/export caveat**, and how to supply bundled font bytes.
 - [Export capability matrix](./docs/export-capability-matrix.md) —
   per-format fidelity, incl. the PDF raster-embed disclosure.
 - [Keyboard shortcut reference](./docs/shortcut-reference.md) — **generated
@@ -273,6 +276,18 @@ real limitation is that such a document is **browser-local** unless exported
 through a format that carries the bytes — read
 [docs/assets.md](./docs/assets.md#the-built-in-local-adapters-zero-config)
 before shipping on it.
+
+**No font wiring is needed either — but the default ships metadata, not
+bytes.** The picker offers 37 open-licensed families out of the box, and
+`fontCatalog` (a `createFontCatalog(...)` result, merged over the default at
+precedence **brand > host > default**) extends it for both the picker and
+export. The catch is that every default entry is a Google Fonts *stylesheet
+URL* with no bundled font files, so those families need network access to
+render and an SVG export emits **no `@font-face`** for them — it falls back to
+system metrics with a `FONT_NOT_IN_MANIFEST` warning. To embed a family, give
+its entry a `source.files` pointing at real font files. Read
+[docs/typography.md](./docs/typography.md#metadata-only-and-what-it-costs)
+before shipping on the default.
 
 The editor ships **no toolbar of its own** — tool selection is host-driven.
 Render your own chrome and panels in one of two ways, both of which run inside
