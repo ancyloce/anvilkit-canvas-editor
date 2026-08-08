@@ -156,6 +156,7 @@ async function exportImpl(
 			docIr: resolved.ir,
 			stage: ctx.stage,
 			...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
+			...(ctx.fontCatalog ? { fontCatalog: ctx.fontCatalog } : {}),
 			request: exportRequest,
 			pixelRatio,
 			includeBackground,
@@ -176,6 +177,7 @@ async function exportImpl(
 			activePageId: ctx.activePageId,
 			stage: ctx.stage,
 			...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
+			...(ctx.fontCatalog ? { fontCatalog: ctx.fontCatalog } : {}),
 			request: exportRequest,
 		});
 		collect(artifact);
@@ -190,6 +192,7 @@ async function exportImpl(
 			docIr: ir,
 			stage: ctx.stage,
 			...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
+			...(ctx.fontCatalog ? { fontCatalog: ctx.fontCatalog } : {}),
 			request: exportRequest,
 			pixelRatio,
 			includeBackground,

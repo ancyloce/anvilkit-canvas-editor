@@ -11,6 +11,7 @@ import type { BrandKit } from "../brand/brand-kit.js";
 import { rasterizePage } from "../render/rasterize-page.js";
 import { buildSelectionExportPage } from "../render/selection-export.js";
 import { createCanvasLayoutMeasurementProvider } from "../text/canvas-text-measurer.js";
+import type { CanvasFontCatalog } from "../text/font-catalog.js";
 import type {
 	CanvasExportArtifact,
 	CanvasExporter,
@@ -129,6 +130,15 @@ export interface RenderPageArtifactInput {
 	readonly docIr: CanvasIR;
 	readonly stage: Konva.Stage | null;
 	readonly brandKit?: BrandKit;
+	/**
+	 * cp2-007: the editor's resolved font catalog, forwarded onto the
+	 * `CanvasExportContext` the exporter receives. Carried here for the
+	 * same reason `brandKit` is — the runner is the ONE place both UI entry
+	 * points (`ExportDialog`) and the headless action (`export-action.ts`) build
+	 * an export context, so threading it here is what stops the two from
+	 * drifting on what an exporter can see.
+	 */
+	readonly fontCatalog?: CanvasFontCatalog;
 	readonly request: CanvasExportRequest;
 	/** Defaults to `2` (retina). An `{x, y}` pair stretches non-proportionally
 	 * (FR-153 custom width × height, Bug 1) via Konva's own axis scale. */
@@ -203,6 +213,7 @@ export async function renderPageArtifact(
 			activePageId: page.id,
 			stage: input.stage,
 			...(input.brandKit ? { brandKit: input.brandKit } : {}),
+			...(input.fontCatalog ? { fontCatalog: input.fontCatalog } : {}),
 		},
 		request,
 	);
@@ -215,6 +226,8 @@ export interface RenderWholeDocArtifactInput {
 	readonly activePageId: string;
 	readonly stage: Konva.Stage | null;
 	readonly brandKit?: BrandKit;
+	/** cp2-007 — see {@link RenderPageArtifactInput.fontCatalog}. */
+	readonly fontCatalog?: CanvasFontCatalog;
 	readonly request: CanvasExportRequest;
 }
 
@@ -234,6 +247,7 @@ export async function renderWholeDocArtifact(
 			activePageId: input.pages[0]?.id ?? input.activePageId,
 			stage: input.stage,
 			...(input.brandKit ? { brandKit: input.brandKit } : {}),
+			...(input.fontCatalog ? { fontCatalog: input.fontCatalog } : {}),
 		},
 		input.request,
 	);

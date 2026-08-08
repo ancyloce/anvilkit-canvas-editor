@@ -157,6 +157,7 @@ export function ExportMenu({
 					activePageId: ctx.activePageId,
 					stage: ctx.stage,
 					...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
+					...(ctx.fontCatalog ? { fontCatalog: ctx.fontCatalog } : {}),
 				},
 				{
 					// The slider is 0-100; exporters (Konva's toDataURL) expect 0-1 —

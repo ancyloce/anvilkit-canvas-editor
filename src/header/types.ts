@@ -2,6 +2,7 @@ import type { CanvasExportWarning, CanvasIR } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { ReactNode } from "react";
 import type { BrandKit } from "../brand/brand-kit.js";
+import type { CanvasFontCatalog } from "../text/font-catalog.js";
 
 /**
  * A pluggable action mounted in the {@link WorkspaceHeader}'s right cluster
@@ -40,6 +41,20 @@ export interface CanvasExportContext {
 	 * ignore it).
 	 */
 	readonly brandKit?: BrandKit;
+	/**
+	 * The editor's RESOLVED font catalog (`cp2-007`) —
+	 * `DEFAULT_FONT_CATALOG` extended by `<CanvasStudio fontCatalog>`. The
+	 * built-in SVG exporter derives its `@font-face` manifest from it, so a
+	 * family the picker offered is the same family the export can embed.
+	 * Additive and optional (older host exporters ignore it); a host-built
+	 * context that omits it gets exactly the pre-`cp2-007` behaviour.
+	 *
+	 * **Only entries carrying `source.files` can be embedded.** Every default
+	 * entry is a stylesheet URL with no files, so the default catalog alone
+	 * derives an EMPTY manifest — byte-identical output to passing nothing, with
+	 * core's existing `FONT_NOT_IN_MANIFEST` warning per painted family.
+	 */
+	readonly fontCatalog?: CanvasFontCatalog;
 }
 
 /**

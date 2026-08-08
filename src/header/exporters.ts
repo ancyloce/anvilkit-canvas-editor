@@ -6,12 +6,15 @@ import type {
 	CanvasExportWarning,
 	CanvasGradientFill,
 	CanvasIR,
+	SvgFontFaceDef,
+	SvgResolveBrandToken,
 } from "@anvilkit/canvas-core";
 import { isLocalObjectUri } from "@anvilkit/canvas-core";
 import type { LocalAssetStore } from "../assets/local-asset-store.js";
 import { resolveBrandToken } from "../brand/resolve-brand-token.js";
 import { exportStageContentDataURL } from "../render/export-stage.js";
 import { createCanvasLayoutMeasurementProvider } from "../text/canvas-text-measurer.js";
+import type { CanvasFontCatalog } from "../text/font-catalog.js";
 import type {
 	CanvasExportArtifact,
 	CanvasExporter,
@@ -215,6 +218,64 @@ export const jsonExporter: CanvasExporter = createJsonExporter();
 export interface CanvasSvgExporterOptions {
 	/** Browser-local asset store. Defaults to the shared singleton. Test seam. */
 	readonly store?: LocalAssetStore;
+	/**
+	 * An explicit `@font-face` manifest (cp2-006). **Wins outright** over
+	 * {@link fontCatalog}: a host that already builds its own manifest keeps
+	 * byte-identical output, because the array is handed to core untouched and
+	 * nothing else about the serializer call changes.
+	 */
+	readonly fonts?: readonly SvgFontFaceDef[];
+	/**
+	 * Derive the manifest from a font catalog instead of hand-building it
+	 * (cp2-006). Only families the exported page actually paints are mapped,
+	 * and only entries carrying an embeddable `source.files` face — so
+	 * `DEFAULT_FONT_CATALOG` on its own emits nothing, by design (see
+	 * `text/export-font-manifest.ts`).
+	 *
+	 * cp2-007: omitting this no longer means "no catalog". The exporter falls
+	 * back to {@link CanvasExportContext.fontCatalog} — the editor's resolved
+	 * catalog, which `<CanvasStudio fontCatalog>` feeds — so a host wires the
+	 * catalog ONCE, on the studio, and both the picker and the export see it.
+	 * Setting it here overrides that for this exporter instance; with neither,
+	 * the serializer is called exactly as it was before cp2-006.
+	 */
+	readonly fontCatalog?: CanvasFontCatalog;
+}
+
+/**
+ * The `fonts` manifest for one SVG export, or `undefined` to call the
+ * serializer exactly as it was called before cp2-006.
+ *
+ * The catalog path is behind an `import()` so the mapping never lands in the
+ * eager editor chunk — the catalog is an export-time concern and this whole
+ * module already loads `@anvilkit/canvas-core` the same way.
+ */
+function svgFontManifest(
+	ir: CanvasIR,
+	activePageId: string,
+	options: CanvasSvgExporterOptions,
+	contextCatalog: CanvasFontCatalog | undefined,
+	resolveFontToken: SvgResolveBrandToken | undefined,
+): SvgFontFaceDef[] | Promise<SvgFontFaceDef[]> | undefined {
+	if (options.fonts) return [...options.fonts];
+	// cp2-007: the exporter's own option wins, then the editor's resolved
+	// catalog off the export context. This one `??` is what makes
+	// `<CanvasStudio fontCatalog>` reach the built-in `svgExporter` — without it
+	// the feature is reachable only by constructing a bespoke exporter.
+	const catalog = options.fontCatalog ?? contextCatalog;
+	if (!catalog) return undefined;
+	const page = ir.pages.find((candidate) => candidate.id === activePageId);
+	// No such page: `serializePageToSvg` throws for it anyway — deriving a
+	// manifest for a page that will not be serialized would only hide that.
+	if (!page) return undefined;
+	return import("../text/export-font-manifest.js").then(
+		({ deriveSvgFontManifest }) =>
+			deriveSvgFontManifest(
+				page,
+				catalog,
+				resolveFontToken ? { resolveBrandToken: resolveFontToken } : {},
+			),
+	);
 }
 
 /**
@@ -237,14 +298,36 @@ export interface CanvasSvgExporterOptions {
  * not be referenced at all, which is precisely the browser-local set. A caller
  * that *does* request `images: "embed"` gets local assets embedded through the
  * same fetcher.
+ *
+ * cp2-006: fonts follow the same shape. Given a
+ * {@link CanvasSvgExporterOptions.fontCatalog}, the `@font-face` manifest core
+ * has always accepted is DERIVED from the catalog rather than left to the
+ * host — intersected with the families the page actually paints, and skipping
+ * any entry with no embeddable file so no rule is emitted with an unresolvable
+ * `src`. {@link CanvasSvgExporterOptions.fonts} overrides the derivation
+ * outright, and with neither option the serializer call is unchanged.
+ *
+ * cp2-007: the catalog no longer has to be baked into the exporter. When the
+ * options carry none, the built-in `svgExporter` reads
+ * {@link CanvasExportContext.fontCatalog} — the catalog `<CanvasStudio
+ * fontCatalog>` resolved — so the host prop reaches the DEFAULT exporter and
+ * not just a hand-constructed one.
  */
 export function createSvgExporter(
 	options: CanvasSvgExporterOptions = {},
 ): CanvasExporter {
-	return async ({ ir, activePageId, brandKit }) => {
+	return async ({ ir, activePageId, brandKit, fontCatalog }) => {
+		// Hoisted (cp2-006) so the font-manifest scan resolves a `BrandTokenRef`
+		// font with the SAME function the serializer will — a brand font must not
+		// be one family in the manifest and another in the `<text>` element.
+		const resolveToken: SvgResolveBrandToken | undefined = brandKit
+			? (ref: BrandTokenRef): string | CanvasGradientFill | undefined =>
+					resolveBrandToken(ref, brandKit)
+			: undefined;
 		const [
 			{ layoutIssuesToExportWarnings, resolveCanvasLayout, serializePageToSvg },
 			fetchAsset,
+			fonts,
 		] = await Promise.all([
 			import("@anvilkit/canvas-core"),
 			hasLocalAssets(ir.assets)
@@ -256,6 +339,7 @@ export function createSvgExporter(
 							),
 					)
 				: undefined,
+			svgFontManifest(ir, activePageId, options, fontCatalog, resolveToken),
 		]);
 		// T-M3-10: one resolution of the COMMITTED document per export operation —
 		// the serializer never resolves itself (TD §12.4), and resolving here
@@ -270,14 +354,10 @@ export function createSvgExporter(
 			// breaks on any wrapping fixture.
 			textMeasurer: measurement.measureText,
 			...(fetchAsset ? { fetchAsset } : {}),
-			...(brandKit
-				? {
-						resolveBrandToken: (
-							ref: BrandTokenRef,
-						): string | CanvasGradientFill | undefined =>
-							resolveBrandToken(ref, brandKit),
-					}
-				: {}),
+			// cp2-006: omitted entirely when nothing derived a manifest, so an
+			// export with no catalog is byte-identical to the pre-cp2-006 call.
+			...(fonts && fonts.length > 0 ? { fonts } : {}),
+			...(resolveToken ? { resolveBrandToken: resolveToken } : {}),
 		});
 		return {
 			filename: exportFilename(ir, "svg"),

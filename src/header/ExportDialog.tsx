@@ -287,6 +287,7 @@ export default function ExportDialog({
 					docIr: resolved.ir,
 					stage: ctx.stage,
 					...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
+					...(ctx.fontCatalog ? { fontCatalog: ctx.fontCatalog } : {}),
 					request,
 					pixelRatio: pixelRatioFor(resolved.page),
 					includeBackground,
@@ -337,6 +338,7 @@ export default function ExportDialog({
 						activePageId: ctx.activePageId,
 						stage: ctx.stage,
 						...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
+						...(ctx.fontCatalog ? { fontCatalog: ctx.fontCatalog } : {}),
 						request,
 					});
 				} catch (err) {
@@ -437,6 +439,7 @@ export default function ExportDialog({
 			docIr: ir,
 			stage: ctx.stage,
 			...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),
+			...(ctx.fontCatalog ? { fontCatalog: ctx.fontCatalog } : {}),
 			request,
 			pixelRatio: pixelRatioFor(page),
 			includeBackground,
