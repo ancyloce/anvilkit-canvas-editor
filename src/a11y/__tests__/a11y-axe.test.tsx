@@ -14,7 +14,7 @@ import {
 	createPage,
 	createRect,
 } from "@anvilkit/canvas-core";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { axe } from "vitest-axe";
 import {
@@ -131,6 +131,61 @@ describe("a11y — axe scans (canvas-m0-012)", () => {
 				<PropertyInspector />
 			</CanvasStudioContext.Provider>,
 		);
+		await expectNoViolations(container);
+	});
+
+	// cp3-003 (PLAN-0035 §5 P3): the Elements panel is now a content browser —
+	// a category tablist plus a roving-tabindex listbox of thumbnail options.
+	// Both are composite widgets built from `role` attributes rather than from
+	// native elements, so `aria-required-children` / `aria-required-parent` /
+	// `aria-allowed-attr` are exactly the rules that catch a mis-wired grid, and
+	// nothing else in the suite can. Scanned with results present AND with the
+	// empty state showing, because the empty branch removes the listbox while
+	// leaving the tablist — a tab pointing at a gone container would be a
+	// dangling IDREF.
+	it("ElementsPanel's category tabs and result grid have no axe violations", async () => {
+		const { ElementsPanel } = await import("@/panels/ElementsPanel.js");
+		const { createStaticElementProvider } = await import(
+			"@/elements/element-provider.js"
+		);
+		const entries = Array.from({ length: 5 }, (_, i) => ({
+			id: `axe-${i}`,
+			name: `Axe element ${i}`,
+			category: "shape" as const,
+			tags: ["axe"],
+			preview: {
+				kind: "path" as const,
+				d: "M0 0H24V24H0Z",
+				viewBox: "0 0 24 24",
+			},
+			defaultSize: { width: 100, height: 100 },
+			license: "MIT",
+			recolor: (i % 2 === 0 ? "fill" : "stroke") as "fill" | "stroke",
+			build: () =>
+				createRect({ id: `axe-n-${i}`, bounds: { width: 10, height: 10 } }),
+		}));
+		const h = makeHarness();
+		const { container } = render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<ElementsPanel elementProvider={createStaticElementProvider(entries)} />
+			</CanvasStudioContext.Provider>,
+		);
+		await screen.findByTestId("elements-grid");
+		await expectNoViolations(container);
+	});
+
+	it("ElementsPanel's empty state has no axe violations", async () => {
+		const { ElementsPanel } = await import("@/panels/ElementsPanel.js");
+		const { createStaticElementProvider } = await import(
+			"@/elements/element-provider.js"
+		);
+		const h = makeHarness();
+		const { container } = render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<ElementsPanel elementProvider={createStaticElementProvider([])} />
+			</CanvasStudioContext.Provider>,
+		);
+		await screen.findByTestId("elements-panel-no-results");
 		await expectNoViolations(container);
 	});
 });

@@ -67,6 +67,7 @@ import {
 	type CanvasToaster,
 	useCanvasToaster,
 } from "./context/toast-context.js";
+import { resolveFontCatalog } from "./context/use-font-catalog.js";
 import type {
 	CanvasEditorExtension,
 	CanvasKindInspector,
@@ -145,6 +146,7 @@ import { createUploadStore } from "./stores/upload-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
 import type { CanvasTemplateEntry } from "./templates/template-entry.js";
 import type { CanvasTemplateProvider } from "./templates/template-provider.js";
+import type { CanvasFontCatalog } from "./text/font-catalog.js";
 import type { AiToolIntent } from "./tools/ai-intent.js";
 import { DraftRenderer } from "./tools/DraftRenderer.js";
 import { PenPreview } from "./tools/PenPreview.js";
@@ -367,6 +369,31 @@ export interface CanvasStudioProps {
 	 * {@link useBrandKit}. Omit to run with no brand kit.
 	 */
 	brandKit?: BrandKit;
+	/**
+	 * Extra font families the picker offers and the SVG exporter may embed
+	 * (`cp2-007`). Build one with `createFontCatalog(entries)`; omit it to run on
+	 * the built-in `DEFAULT_FONT_CATALOG` alone.
+	 *
+	 * **Merged, not replaced.** The editor resolves
+	 * `mergeCatalogs(DEFAULT_FONT_CATALOG, fontCatalog)` once and hands the
+	 * result to BOTH the font picker and the export `@font-face` manifest.
+	 * Precedence is **brand > host > default** and rides on each record's
+	 * `origin` — `createFontCatalog` stamps `"host"` by default, and
+	 * `createFontCatalog(entries, { origin: "brand" })` outranks that — so
+	 * argument order at any call site is irrelevant across tiers. A same-named
+	 * family is replaced WHOLE-ENTRY (never field-merged, so a licence is never
+	 * inherited); a family the default catalog does not know is added. This prop
+	 * cannot *remove* a default family.
+	 *
+	 * **The default catalog ships metadata, not bytes.** All 37 default entries
+	 * carry a Google Fonts stylesheet URL and no `source.files`, so they need
+	 * network access to render and an SVG export emits **no** `@font-face` rule
+	 * for them — those families fall back to system metrics with core's existing
+	 * `FONT_NOT_IN_MANIFEST` warning. To get a family EMBEDDED in an SVG export,
+	 * pass an entry whose `source.files` point at real font files. See
+	 * `docs/typography.md`.
+	 */
+	fontCatalog?: CanvasFontCatalog;
 	/**
 	 * Host brand-policy context (plan 0021 T-040): capability snapshot,
 	 * enforcement mode, opaque policy revision. Omit to run ungoverned — every
@@ -1034,6 +1061,7 @@ export function CanvasStudio({
 	toolRegistry,
 	hidePageNavigator,
 	brandKit,
+	fontCatalog,
 	brandGovernance,
 	quarantinedSnapshotKeys,
 	onAnalyticsEvent,
@@ -1626,6 +1654,11 @@ export function CanvasStudio({
 			hasImagePicker,
 			requestAiIntent,
 			brandKit,
+			// cp2-007: the merge happens HERE and only here — one resolved catalog
+			// for the picker and the export manifest both. `resolveFontCatalog`
+			// returns `DEFAULT_FONT_CATALOG` itself when the host passed nothing,
+			// so this is a constant in the common case, not a per-mount allocation.
+			fontCatalog: resolveFontCatalog(fontCatalog),
 			...(brandGovernance ? { brandGovernance } : {}),
 			...(quarantinedSnapshotKeys ? { quarantinedSnapshotKeys } : {}),
 			...(onAnalyticsEvent ? { onAnalyticsEvent } : {}),
@@ -1704,6 +1737,7 @@ export function CanvasStudio({
 			hasImagePicker,
 			requestAiIntent,
 			brandKit,
+			fontCatalog,
 			brandGovernance,
 			quarantinedSnapshotKeys,
 			onAnalyticsEvent,

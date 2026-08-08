@@ -163,6 +163,46 @@ export {
 	useCanvasStudio,
 	useCanvasT,
 } from "./context/canvas-studio-context.js";
+// ── Typography: the font catalog (PLAN-0035 P2) ─────────────────────────────
+// `<CanvasStudio fontCatalog>` is the seam. Build a catalog with
+// `createFontCatalog(entries)` and pass it; the editor merges it over
+// `DEFAULT_FONT_CATALOG` (precedence **brand > host > default**, carried by
+// each record's `origin`, so argument order never decides it) and hands the ONE
+// result to both the font picker and the SVG export `@font-face` manifest.
+//
+// The default catalog ships METADATA, NOT BYTES: all 37 entries are Google
+// Fonts stylesheet URLs with no `source.files`, so they need network access to
+// render and an SVG export emits no `@font-face` for them. Supply entries whose
+// `source.files` point at real font files to get embedded fonts. See
+// `docs/typography.md`.
+export {
+	resolveFontCatalog,
+	useCanvasFontCatalog,
+} from "./context/use-font-catalog.js";
+// ── Element catalog (PLAN-0035 P3, cp3-001..cp3-003) ─────────────────────────
+// `<ElementsPanel elementProvider>` is the seam. The DEFAULT catalog is behind
+// a dynamic `import()` and is fetched on the panel's first query, never at
+// editor mount — importing `createDefaultElementProvider` costs the seam, not
+// the 189 KB of geometry. Host catalogs go through
+// `createStaticElementProvider(entries)`, or `createLazyElementProvider(load)`
+// to keep a large one out of the eager graph the same way.
+export { createDefaultElementProvider } from "./elements/default-element-provider.js";
+export {
+	CANVAS_ELEMENT_CATEGORIES,
+	type CanvasElementBuildContext,
+	type CanvasElementCategory,
+	type CanvasElementEntry,
+	type CanvasElementNode,
+	type CanvasElementPreview,
+	type CanvasElementRecolor,
+} from "./elements/element-entry.js";
+export {
+	type CanvasElementProvider,
+	type CanvasElementSearchQuery,
+	type CanvasElementSearchResult,
+	createLazyElementProvider,
+	createStaticElementProvider,
+} from "./elements/element-provider.js";
 export type {
 	CanvasEditorExtension,
 	CanvasKindInspector,
@@ -322,10 +362,36 @@ export type {
 	CanvasTemplateSearchQuery,
 	CanvasTemplateSearchResult,
 } from "./templates/template-provider.js";
-export { createStaticTemplateProvider } from "./templates/template-provider.js";
+export {
+	createStaticTemplateProvider,
+	// Exported so a HOSTED provider can match the static provider's tag
+	// semantics exactly (cp3-006) — the panel sends whatever the user clicked,
+	// and a provider that compares raw strings would miss `"Print"` vs `"print"`.
+	normalizeTemplateTag,
+} from "./templates/template-provider.js";
 // The stage's `CanvasTextMeasurer` — pass to core's `serializePageToSvg` (or
 // `@anvilkit/plugin-export-canvas`'s `canvasToSvg`) so a rich-text export
 // wraps at the same points the stage does.
 export { createCanvasTextMeasurer } from "./text/canvas-text-measurer.js";
+export { DEFAULT_FONT_CATALOG } from "./text/default-font-catalog.js";
+export type {
+	CanvasFontCatalog,
+	CanvasFontCatalogEntry,
+	CanvasFontCatalogRecord,
+	CanvasFontCategory,
+	CanvasFontFile,
+	CanvasFontFileFormat,
+	CanvasFontOrigin,
+	CanvasFontSource,
+	CanvasFontStyle,
+	CanvasFontWeight,
+	CanvasFontWeightRange,
+	CreateFontCatalogOptions,
+} from "./text/font-catalog.js";
+export {
+	CANVAS_FONT_CATEGORIES,
+	createFontCatalog,
+	mergeCatalogs,
+} from "./text/font-catalog.js";
 // `<CanvasWorkspace>`, the panel registry, dock config, and workspace UI hooks.
 export * from "./workspace/index.js";
