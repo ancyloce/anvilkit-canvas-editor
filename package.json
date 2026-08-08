@@ -74,7 +74,7 @@
 		"react-dom": ">=19.0.0",
 		"react-konva": "^19.2.5",
 		"y-protocols": "^1.0.7",
-		"yjs": "^13.6.31"
+		"yjs": "^13.6.32"
 	},
 	"peerDependenciesMeta": {
 		"konva": {
@@ -99,7 +99,7 @@
 	"dependencies": {
 		"@anvilkit/canvas-core": "workspace:*",
 		"@anvilkit/ui": "workspace:*",
-		"lucide-react": "^1.28.0",
+		"lucide-react": "^1.30.0",
 		"use-image": "^1.1.4",
 		"zustand": "^5.0.14"
 	},
@@ -136,15 +136,15 @@
 		"@tailwindcss/cli": "^4.3.3",
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/react": "^16.3.2",
-		"@types/node": "^26.1.1",
-		"@types/react": "^19.2.17",
-		"@types/react-dom": "19.2.3",
+		"@types/node": "^26.2.0",
+		"@types/react": "^19.2.18",
+		"@types/react-dom": "19.2.4",
 		"axe-core": "4.11.3",
 		"esbuild": "^0.28.1",
-		"jsdom": "^29.1.1",
+		"jsdom": "^30.0.1",
 		"konva": "^10.3.0",
 		"madge": "^8.0.0",
-		"publint": "^0.3.22",
+		"publint": "^0.3.23",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
 		"react-konva": "^19.2.5",
@@ -156,6 +156,6 @@
 		"vitest": "^4.1.10",
 		"vitest-axe": "^0.1.0",
 		"y-protocols": "^1.0.7",
-		"yjs": "^13.6.31"
+		"yjs": "^13.6.32"
 	}
 }
