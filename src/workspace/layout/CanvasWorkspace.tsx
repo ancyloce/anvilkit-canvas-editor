@@ -21,8 +21,8 @@ import { CanvasStudio, type CanvasStudioProps } from "../../CanvasStudio.js";
 // Relative (not @/): this type also surfaces in the emitted .d.ts.
 import type { CanvasHeaderPlugin } from "../../header/types.js";
 import { CanvasDialogHost } from "../dialogs/CanvasDialogHost.js";
-import { CanvasAreaContextMenu } from "../menus/CanvasAreaContextMenu.js";
 import { HIDDEN_DOCK_IDS } from "../dock-ids.js";
+import { CanvasAreaContextMenu } from "../menus/CanvasAreaContextMenu.js";
 import {
 	type CanvasPanelRegistry,
 	createCanvasPanelRegistry,
@@ -41,6 +41,7 @@ import {
 	useMediaQuery,
 } from "../state/use-media-query.js";
 import {
+	RecentFontsBridge,
 	RecentTemplatesBridge,
 	WorkspaceUiStoreProvider,
 } from "../state/WorkspaceUiStoreProvider.js";
@@ -192,43 +193,45 @@ export function CanvasWorkspace({
 					initialWorkspaceState={initialWorkspaceState}
 				>
 					<RecentTemplatesBridge>
-						<CanvasToastHost>
-							<CanvasDialogHost>
-								<div
-									ref={rootRef}
-									data-ak-canvas-editor=""
-									data-testid="canvas-workspace-root"
-									className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background text-foreground"
-								>
-									{shortcuts !== false ? (
-										<WorkspaceShortcutLayer
-											rootRef={rootRef}
-											options={shortcuts === true ? undefined : shortcuts}
+						<RecentFontsBridge>
+							<CanvasToastHost>
+								<CanvasDialogHost>
+									<div
+										ref={rootRef}
+										data-ak-canvas-editor=""
+										data-testid="canvas-workspace-root"
+										className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background text-foreground"
+									>
+										{shortcuts !== false ? (
+											<WorkspaceShortcutLayer
+												rootRef={rootRef}
+												options={shortcuts === true ? undefined : shortcuts}
+											/>
+										) : null}
+										<ToolAnnouncer />
+										<ZoomAnnouncer />
+										<LayoutAnnouncer />
+										<WorkspaceHeader
+											onBack={onBack}
+											title={title}
+											onTitleChange={onTitleChange}
+											avatarsSlot={avatarsSlot}
+											shortcuts={shortcuts}
+											plugins={headerPlugins}
+											shareSlot={shareSlot}
 										/>
-									) : null}
-									<ToolAnnouncer />
-									<ZoomAnnouncer />
-									<LayoutAnnouncer />
-									<WorkspaceHeader
-										onBack={onBack}
-										title={title}
-										onTitleChange={onTitleChange}
-										avatarsSlot={avatarsSlot}
-										shortcuts={shortcuts}
-										plugins={headerPlugins}
-										shareSlot={shareSlot}
-									/>
-									<WorkspaceBody
-										stage={stage}
-										dockItems={dockItems}
-										registry={registry}
-										inspector={inspector}
-										toolStrip={toolStrip}
-										elementActions={elementActions}
-									/>
-								</div>
-							</CanvasDialogHost>
-						</CanvasToastHost>
+										<WorkspaceBody
+											stage={stage}
+											dockItems={dockItems}
+											registry={registry}
+											inspector={inspector}
+											toolStrip={toolStrip}
+											elementActions={elementActions}
+										/>
+									</div>
+								</CanvasDialogHost>
+							</CanvasToastHost>
+						</RecentFontsBridge>
 					</RecentTemplatesBridge>
 				</WorkspaceUiStoreProvider>
 			)}

@@ -5,6 +5,8 @@ import {
 	createWorkspaceUiStore,
 	PANEL_WIDTH_DEFAULT,
 	PANEL_WIDTH_MAX,
+	RECENT_FONTS_MAX,
+	RECENT_TEMPLATES_MAX,
 	WORKSPACE_UI_STORE_PERSIST_VERSION,
 } from "../workspace-ui-store.js";
 
@@ -182,6 +184,154 @@ describe("components dock id (M5-01)", () => {
 	});
 
 	it("declares the version the migration was written for", () => {
-		expect(WORKSPACE_UI_STORE_PERSIST_VERSION).toBe(4);
+		expect(WORKSPACE_UI_STORE_PERSIST_VERSION).toBe(5);
+	});
+});
+
+/**
+ * `cp2-005` recent fonts. The slice is a deliberate MIRROR of C-06's
+ * `recentTemplateIds` — same cap, same move-to-front, same oldest-first
+ * eviction, same persistence, same reset behaviour — so these assertions are
+ * written to fail if the two ever drift apart.
+ */
+describe("recent fonts (cp2-005)", () => {
+	const write = (storeId: string, state: unknown, version: number): void => {
+		localStorage.setItem(
+			`anvilkit-canvas-workspace-${storeId}`,
+			JSON.stringify({ state, version }),
+		);
+	};
+
+	it("starts empty and records a pick most-recent-first", () => {
+		const store = createWorkspaceUiStore({ storeId: "rf-add" });
+		expect(store.getState().recentFontFamilies).toEqual([]);
+		store.getState().addRecentFont("Lora");
+		store.getState().addRecentFont("Inter");
+		expect(store.getState().recentFontFamilies).toEqual(["Inter", "Lora"]);
+	});
+
+	it("re-picking an existing family moves it to the front without duplicating", () => {
+		const store = createWorkspaceUiStore({ storeId: "rf-reorder" });
+		for (const family of ["Lora", "Inter", "Lato"]) {
+			store.getState().addRecentFont(family);
+		}
+		expect(store.getState().recentFontFamilies).toEqual([
+			"Lato",
+			"Inter",
+			"Lora",
+		]);
+		store.getState().addRecentFont("Lora");
+		expect(store.getState().recentFontFamilies).toEqual([
+			"Lora",
+			"Lato",
+			"Inter",
+		]);
+		expect(
+			store.getState().recentFontFamilies.filter((f) => f === "Lora"),
+		).toHaveLength(1);
+	});
+
+	it("treats a family case-insensitively, keeping the newest spelling", () => {
+		// A family name is user-facing text and reaches this store from
+		// `cp2-004`'s free-text "Custom" row, so `fontFamilyKey` is the identity
+		// rather than raw string equality.
+		const store = createWorkspaceUiStore({ storeId: "rf-case" });
+		store.getState().addRecentFont("Comic Neue");
+		store.getState().addRecentFont("Lora");
+		store.getState().addRecentFont("  comic neue ");
+		expect(store.getState().recentFontFamilies).toEqual([
+			"  comic neue ",
+			"Lora",
+		]);
+	});
+
+	it("caps the list and evicts oldest-first", () => {
+		const store = createWorkspaceUiStore({ storeId: "rf-cap" });
+		const picks = Array.from(
+			{ length: RECENT_FONTS_MAX + 2 },
+			(_unused, i) => `Family ${i}`,
+		);
+		for (const family of picks) store.getState().addRecentFont(family);
+		const recents = store.getState().recentFontFamilies;
+		expect(recents).toHaveLength(RECENT_FONTS_MAX);
+		// Newest first, and the two OLDEST picks are the ones that fell off.
+		expect(recents[0]).toBe(`Family ${RECENT_FONTS_MAX + 1}`);
+		expect(recents.at(-1)).toBe("Family 2");
+		expect(recents).not.toContain("Family 0");
+		expect(recents).not.toContain("Family 1");
+	});
+
+	it("uses the same cap as the templates recents it mirrors", () => {
+		expect(RECENT_FONTS_MAX).toBe(RECENT_TEMPLATES_MAX);
+	});
+
+	it("persists across a fresh store with the same storeId", () => {
+		const a = createWorkspaceUiStore({ storeId: "rf-persist" });
+		a.getState().addRecentFont("Lora");
+		a.getState().addRecentFont("Inter");
+		const b = createWorkspaceUiStore({ storeId: "rf-persist" });
+		expect(b.getState().recentFontFamilies).toEqual(["Inter", "Lora"]);
+	});
+
+	it("reset() clears it but restoreLayout() leaves it alone", () => {
+		// Exactly the templates slice's behaviour: "restore default LAYOUT" is
+		// about the dock/inspector/width, not about forgetting what you used.
+		const store = createWorkspaceUiStore({ storeId: "rf-reset" });
+		store.getState().addRecentFont("Lora");
+		store.getState().restoreLayout();
+		expect(store.getState().recentFontFamilies).toEqual(["Lora"]);
+		store.getState().reset();
+		expect(store.getState().recentFontFamilies).toEqual([]);
+	});
+
+	it("migrates a v4 payload with an empty list, keeping its other fields", () => {
+		write(
+			"rf-v4",
+			{
+				activeDockId: "layers",
+				inspectorCollapsed: true,
+				panelWidth: 300,
+				recentTemplateIds: ["tpl-1"],
+			},
+			4,
+		);
+		const store = createWorkspaceUiStore({ storeId: "rf-v4" });
+		expect(store.getState().recentFontFamilies).toEqual([]);
+		expect(store.getState().recentTemplateIds).toEqual(["tpl-1"]);
+		expect(store.getState().activeDockId).toBe("layers");
+		expect(store.getState().panelWidth).toBe(300);
+	});
+
+	it("coerces a corrupt or over-long persisted list instead of trusting it", () => {
+		write(
+			"rf-corrupt",
+			{
+				recentFontFamilies: [
+					"Lora",
+					42,
+					null,
+					...Array.from({ length: RECENT_FONTS_MAX }, (_u, i) => `F${i}`),
+				],
+			},
+			5,
+		);
+		const store = createWorkspaceUiStore({ storeId: "rf-corrupt" });
+		const recents = store.getState().recentFontFamilies;
+		expect(recents).toHaveLength(RECENT_FONTS_MAX);
+		expect(recents[0]).toBe("Lora");
+		expect(recents.every((f) => typeof f === "string")).toBe(true);
+	});
+
+	it("accepts a host seed, sanitized like a persisted payload (PRD §11.1)", () => {
+		const store = createWorkspaceUiStore({
+			storeId: "rf-seed",
+			initialWorkspaceState: {
+				recentFontFamilies: Array.from(
+					{ length: RECENT_FONTS_MAX + 3 },
+					(_u, i) => `Seed ${i}`,
+				),
+			},
+		});
+		expect(store.getState().recentFontFamilies).toHaveLength(RECENT_FONTS_MAX);
 	});
 });

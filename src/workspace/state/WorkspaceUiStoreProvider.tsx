@@ -19,6 +19,10 @@ import {
 	useSyncExternalStore,
 } from "react";
 import {
+	type RecentFonts,
+	RecentFontsContext,
+} from "../../context/recent-fonts-context.js";
+import {
 	type RecentTemplates,
 	RecentTemplatesContext,
 } from "../../context/recent-templates-context.js";
@@ -95,4 +99,36 @@ export function RecentTemplatesBridge({
 	return (
 		<RecentTemplatesContext value={value}>{children}</RecentTemplatesContext>
 	);
+}
+
+/**
+ * The font counterpart of {@link RecentTemplatesBridge} (`cp2-005`): bridges
+ * the persisted UI store's `recentFontFamilies` slice into
+ * {@link RecentFontsContext} so `panels/` never imports `workspace/`. Mounted
+ * by `<CanvasWorkspace>` inside this provider, beside the templates bridge.
+ *
+ * A SEPARATE bridge rather than one that provides both contexts: the two
+ * recents lists are independent slices with independent consumers, and folding
+ * them into a single provider would re-render the templates consumer on every
+ * font pick (and vice versa) for no benefit.
+ */
+export function RecentFontsBridge({
+	children,
+}: {
+	children: ReactNode;
+}): React.JSX.Element {
+	const store = useWorkspaceUiStoreApi();
+	const families = useSyncExternalStore(
+		store.subscribe,
+		() => store.getState().recentFontFamilies,
+		() => store.getState().recentFontFamilies,
+	);
+	const value = useMemo<RecentFonts>(
+		() => ({
+			families,
+			add: (family) => store.getState().addRecentFont(family),
+		}),
+		[families, store],
+	);
+	return <RecentFontsContext value={value}>{children}</RecentFontsContext>;
 }

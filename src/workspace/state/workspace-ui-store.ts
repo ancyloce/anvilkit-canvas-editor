@@ -18,6 +18,7 @@
 
 import { persist } from "zustand/middleware";
 import { createStore, type StoreApi } from "zustand/vanilla";
+import { fontFamilyKey } from "../../text/font-catalog.js";
 import { DOCK_IDS, type DockId, HIDDEN_DOCK_IDS } from "../dock-ids.js";
 
 export interface WorkspaceUiState {
@@ -33,9 +34,17 @@ export interface WorkspaceUiState {
 	readonly panelSearch: string;
 	/** FR-130 recently-used templates (C-06), most recent first, capped. Persisted. */
 	readonly recentTemplateIds: readonly string[];
+	/**
+	 * `cp2-005` recently-used font families, most recent first, capped.
+	 * Persisted. Deliberately the same shape as {@link recentTemplateIds} — see
+	 * `context/recent-fonts-context.ts`.
+	 */
+	readonly recentFontFamilies: readonly string[];
 	setActiveDockId(id: DockId): void;
 	/** Record a template application; moves an existing id to the front. */
 	addRecentTemplate(id: string): void;
+	/** Record a font pick; moves an existing family to the front. */
+	addRecentFont(family: string): void;
 	setPanelOpen(open: boolean): void;
 	setInspectorCollapsed(collapsed: boolean): void;
 	/** Clamped to [{@link PANEL_WIDTH_MIN}, {@link PANEL_WIDTH_MAX}] (B-14). */
@@ -57,6 +66,7 @@ export type CanvasWorkspaceState = Omit<
 	WorkspaceUiState,
 	| "setActiveDockId"
 	| "addRecentTemplate"
+	| "addRecentFont"
 	| "setPanelOpen"
 	| "setInspectorCollapsed"
 	| "setPanelWidth"
@@ -75,6 +85,17 @@ const clampPanelWidth = (w: number): number =>
 /** Cap for {@link WorkspaceUiState.recentTemplateIds}. */
 export const RECENT_TEMPLATES_MAX = 8;
 
+/**
+ * Cap for {@link WorkspaceUiState.recentFontFamilies}.
+ *
+ * The SAME value as {@link RECENT_TEMPLATES_MAX}, on purpose: `cp2-005` mirrors
+ * C-06's recents shape and there is no reason for the two lists to age
+ * differently. It is a separate constant rather than an alias only so the two
+ * slices can be re-tuned independently later without one silently dragging the
+ * other with it.
+ */
+export const RECENT_FONTS_MAX = 8;
+
 const INITIAL_STATE = {
 	activeDockId: "templates" as DockId,
 	inspectorCollapsed: false,
@@ -82,6 +103,7 @@ const INITIAL_STATE = {
 	panelOpen: true,
 	panelSearch: "",
 	recentTemplateIds: [] as readonly string[],
+	recentFontFamilies: [] as readonly string[],
 } as const;
 
 /**
@@ -94,6 +116,7 @@ interface WorkspaceUiPersistedSlice {
 	readonly inspectorCollapsed: boolean;
 	readonly panelWidth: number;
 	readonly recentTemplateIds: readonly string[];
+	readonly recentFontFamilies: readonly string[];
 }
 
 /**
@@ -105,8 +128,10 @@ interface WorkspaceUiPersistedSlice {
  *   moved. Bumping re-runs `migrate` over every stored payload rather than
  *   letting `merge` alone sanitize it, which keeps the "stale selection lands on
  *   a valid tab" guarantee explicit at the version boundary instead of implicit.
+ * v5 (`cp2-005`): adds `recentFontFamilies`; older payloads migrate with `[]`,
+ *   exactly as v3 did for `recentTemplateIds`.
  */
-export const WORKSPACE_UI_STORE_PERSIST_VERSION = 4;
+export const WORKSPACE_UI_STORE_PERSIST_VERSION = 5;
 
 // Hidden docks are excluded so a persisted selection of a hidden tab falls back
 // to the default instead of activating an invisible panel. Covers BOTH reasons a
@@ -147,15 +172,20 @@ function migratePersistedState(persisted: unknown): unknown {
 					.filter((id): id is string => typeof id === "string")
 					.slice(0, RECENT_TEMPLATES_MAX)
 			: INITIAL_STATE.recentTemplateIds,
+		recentFontFamilies: Array.isArray(source.recentFontFamilies)
+			? source.recentFontFamilies
+					.filter((family): family is string => typeof family === "string")
+					.slice(0, RECENT_FONTS_MAX)
+			: INITIAL_STATE.recentFontFamilies,
 	} satisfies WorkspaceUiPersistedSlice;
 }
 
 /**
  * Resolve a host-supplied {@link CanvasWorkspaceState} seed into a full data
  * slice, sanitized the same way a persisted `localStorage` payload is
- * (reuses {@link migratePersistedState} for the 4 PERSISTED fields — clamped
- * `panelWidth`, capped `recentTemplateIds`, validated `activeDockId` — rather
- * than duplicating that coercion). The 2 transient fields
+ * (reuses {@link migratePersistedState} for the 5 PERSISTED fields — clamped
+ * `panelWidth`, capped `recentTemplateIds`/`recentFontFamilies`, validated
+ * `activeDockId` — rather than duplicating that coercion). The 2 transient fields
  * (`panelOpen`/`panelSearch`) aren't covered by `migratePersistedState`
  * (never persisted), so they're merged in directly.
  */
@@ -181,8 +211,9 @@ export interface CreateWorkspaceUiStoreOptions {
 	 *
 	 * Precedence: this seed is the store's baseline; persist's own rehydrate
 	 * `merge` (below) always lets an EXISTING persisted value win over it for
-	 * the 4 persisted fields (`activeDockId`/`inspectorCollapsed`/
-	 * `panelWidth`/`recentTemplateIds`) — so a returning user's saved layout
+	 * the 5 persisted fields (`activeDockId`/`inspectorCollapsed`/
+	 * `panelWidth`/`recentTemplateIds`/`recentFontFamilies`) — so a returning
+	 * user's saved layout
 	 * is never clobbered by a host's seed. The 2 transient fields
 	 * (`panelOpen`/`panelSearch`) are never persisted, so this seed (or the
 	 * hardcoded default) always applies for them. This is an ADDITIONAL seam:
@@ -237,6 +268,25 @@ export function createWorkspaceUiStore(
 						].slice(0, RECENT_TEMPLATES_MAX),
 					}));
 				},
+				// Same move-to-front + cap as `addRecentTemplate`, with ONE
+				// difference: identity is `fontFamilyKey` (trimmed, lowercased),
+				// the catalog's own family identity, not raw string equality. A
+				// template id is opaque and exact; a family name is user-facing
+				// text that reaches this store from an off-catalog free-text pick
+				// (`cp2-004`'s "Custom" row), so `"Comic Neue"` and `"comic neue"`
+				// must occupy ONE slot and reorder rather than both eat the cap.
+				// The DISPLAY form written is the one just picked, so the list
+				// always reads back as the user last spelled it.
+				addRecentFont(family) {
+					set((state) => ({
+						recentFontFamilies: [
+							family,
+							...state.recentFontFamilies.filter(
+								(f) => fontFamilyKey(f) !== fontFamilyKey(family),
+							),
+						].slice(0, RECENT_FONTS_MAX),
+					}));
+				},
 				reset() {
 					set({ ...INITIAL_STATE });
 				},
@@ -249,6 +299,7 @@ export function createWorkspaceUiStore(
 					inspectorCollapsed: state.inspectorCollapsed,
 					panelWidth: state.panelWidth,
 					recentTemplateIds: state.recentTemplateIds,
+					recentFontFamilies: state.recentFontFamilies,
 				}),
 				migrate: migratePersistedState,
 				// `migrate` only runs for OLD versions; `merge` sanitizes every
