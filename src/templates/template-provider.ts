@@ -12,6 +12,18 @@ export interface CanvasTemplateSearchQuery {
 	readonly text?: string;
 	/** Exact category, or absent for all. */
 	readonly category?: string;
+	/**
+	 * Tag facet (cp3-006). An entry matches only if it carries EVERY tag listed
+	 * — AND, not OR, because narrowing is what a facet is for: `["print",
+	 * "portrait"]` should mean "portrait print templates", not "anything print
+	 * or portrait", which is what free text already does. Comparison is
+	 * case-insensitive and trims surrounding whitespace, so a facet value taken
+	 * from a URL or a user-typed chip matches an authored tag.
+	 *
+	 * Absent or empty means unfiltered. Composes with `category` and `text`
+	 * rather than replacing either.
+	 */
+	readonly tags?: readonly string[];
 	/** FR-130 size filter: first-page dimensions, in page units. */
 	readonly size?: { readonly width: number; readonly height: number };
 	/** Opaque cursor from a previous result's `nextCursor`. */
@@ -38,12 +50,31 @@ const DEFAULT_PAGE_SIZE = 20;
 /** Size-filter tolerance, in page units (covers rounding in mm/in catalogs). */
 const SIZE_TOLERANCE = 1;
 
+/**
+ * The one place a tag is turned into its comparable form. Authored tags,
+ * facet values from the panel, and values a host round-trips through a URL all
+ * pass through here, so `"Print"`, `" print"`, and `"print"` are one tag.
+ */
+export function normalizeTemplateTag(tag: string): string {
+	return tag.trim().toLowerCase();
+}
+
 function matchesText(entry: CanvasTemplateEntry, text: string): boolean {
 	if (!text) return true;
-	const haystack = [entry.title, entry.description ?? "", ...entry.tags]
+	// `entry.tags` is optional at this host boundary — see CanvasTemplateEntry.
+	const haystack = [entry.title, entry.description ?? "", ...(entry.tags ?? [])]
 		.join(" ")
 		.toLowerCase();
 	return haystack.includes(text);
+}
+
+function matchesTags(
+	entry: CanvasTemplateEntry,
+	tags: readonly string[],
+): boolean {
+	if (tags.length === 0) return true;
+	const owned = new Set((entry.tags ?? []).map(normalizeTemplateTag));
+	return tags.every((tag) => owned.has(normalizeTemplateTag(tag)));
 }
 
 function matchesSize(
@@ -71,10 +102,12 @@ export function createStaticTemplateProvider(
 	return {
 		search(query) {
 			const text = (query.text ?? "").trim().toLowerCase();
+			const tags = query.tags ?? [];
 			const matches = templates.filter(
 				(entry) =>
 					(query.category === undefined || entry.category === query.category) &&
 					(query.size === undefined || matchesSize(entry, query.size)) &&
+					matchesTags(entry, tags) &&
 					matchesText(entry, text),
 			);
 			const offset = Number.parseInt(query.cursor ?? "0", 10) || 0;
