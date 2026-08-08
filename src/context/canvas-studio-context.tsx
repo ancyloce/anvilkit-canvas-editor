@@ -58,6 +58,7 @@ import type { UploadStoreApi } from "../stores/upload-store.js";
 import type { ViewportStoreApi } from "../stores/viewport-store.js";
 import type { CanvasTemplateEntry } from "../templates/template-entry.js";
 import type { CanvasTemplateProvider } from "../templates/template-provider.js";
+import type { CanvasFontCatalog } from "../text/font-catalog.js";
 import type { AiToolIntent } from "../tools/ai-intent.js";
 import type { ToolRegistry } from "../tools/tool-types.js";
 import type { CanvasComponentEventHandler } from "./component-events.js";
@@ -229,6 +230,21 @@ export interface CanvasStudioContextValue {
 	 * absent case to an empty kit.
 	 */
 	brandKit?: BrandKit;
+	/**
+	 * The RESOLVED font catalog (`cp2-007`): `DEFAULT_FONT_CATALOG` extended by
+	 * the host's `<CanvasStudio fontCatalog>`, merged ONCE by the studio.
+	 *
+	 * Note the asymmetry with the prop of the same name: the PROP carries only
+	 * the host's own entries, this field carries the merge. Both the font picker
+	 * and the SVG export manifest read this one value, which is what keeps "the
+	 * picker offered it" and "the export embedded it" from diverging.
+	 *
+	 * Optional because a partial test context may omit it. Prefer
+	 * {@link useCanvasFontCatalog}, which normalizes the absent case to
+	 * `DEFAULT_FONT_CATALOG` — exactly as {@link useBrandKit} normalizes an
+	 * absent kit.
+	 */
+	fontCatalog?: CanvasFontCatalog;
 	/**
 	 * Host brand-policy context (plan 0021 T-040) — the capability snapshot,
 	 * the enforcement mode and the opaque policy revision.
