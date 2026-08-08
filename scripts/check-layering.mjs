@@ -46,6 +46,12 @@ const LAYERS = [
 			p.startsWith("auto-layout/") ||
 			p.startsWith("text/") ||
 			p.startsWith("templates/") ||
+			// The element catalog contract (`cp3-001`) — deliberately placed
+			// beside `templates/`, whose provider pattern it mirrors, and for
+			// the same reason: it is pure data + factories over `canvas-core`,
+			// imports nothing from `src/`, and is consumed BY `panels/`
+			// (rank 3) rather than the reverse.
+			p.startsWith("elements/") ||
 			p === "CanvasErrorBoundary.tsx",
 	},
 	// See the module doc comment above: a verified, file-cycle-free but
