@@ -145,6 +145,15 @@ export function renderTextFields(
 		node.fontFamily,
 		brandKit,
 	);
+	// Mixed is decided on the RESOLVED family (`cp2-004`), not on the raw field:
+	// two nodes carrying equal-but-distinct `BrandTokenRef` objects show the same
+	// family and must not read "Mixed", and `sharedFieldValue` compares by `!==`.
+	const fontFamilyShared = sharedFieldValue(
+		nodes,
+		(n) =>
+			resolveFontFamilyForDisplay((n as CanvasTextNode).fontFamily, brandKit)
+				.value ?? "",
+	);
 	const fillResolved = resolveFillForDisplay(node.fill, brandKit);
 	const text = sharedFieldValue(nodes, (n) => (n as CanvasTextNode).text);
 	const fontSize = sharedFieldValue(
@@ -169,6 +178,7 @@ export function renderTextFields(
 				rawValue={node.fontFamily}
 				resolvedValue={fontFamilyResolved.value}
 				unresolved={fontFamilyResolved.unresolved}
+				mixed={fontFamilyShared.mixed}
 				fonts={brandKit.fonts}
 				dataTestId="prop-font-family"
 				onCommit={(v) => commitPatchAll(nodes, () => ({ fontFamily: v }))}
@@ -268,6 +278,19 @@ export function renderRichTextFields(
 	const letterSpacingShared = sharedFieldValue(
 		nodes,
 		(n) => spanStyleOf(n as CanvasRichTextNode).letterSpacing,
+	);
+	// Per-span `fontFamily` (`core/src/ir/types.ts` `RichTextSpan`) makes the
+	// mixed path matter MORE here than for plain text: the representative read is
+	// the first span of the first paragraph, so a differing selection must say so
+	// rather than silently show one node's family. Resolved, for the reason given
+	// in `renderTextFields`.
+	const fontFamilyShared = sharedFieldValue(
+		nodes,
+		(n) =>
+			resolveFontFamilyForDisplay(
+				spanStyleOf(n as CanvasRichTextNode).fontFamily,
+				brandKit,
+			).value ?? "",
 	);
 	const lineHeightShared = sharedFieldValue(
 		nodes,
@@ -503,6 +526,7 @@ export function renderRichTextFields(
 					rawValue={style.fontFamily}
 					resolvedValue={fontFamily}
 					unresolved={fontFamilyResolved.unresolved}
+					mixed={fontFamilyShared.mixed}
 					fonts={brandKit.fonts}
 					dataTestId="prop-rich-text-font-family"
 					onCommit={(v) =>

@@ -1,0 +1,495 @@
+/**
+ * @file `cp3-003` — the Elements panel as a content browser.
+ *
+ * Every test here drives an EXPLICIT provider, so nothing in this file can
+ * reach the 425-entry default catalog. The assertion that the default catalog
+ * stays behind its dynamic `import()` lives in
+ * `ElementsPanel.lazy-catalog.test.tsx`, which needs a module mock and would
+ * leak into these tests if it shared a file.
+ */
+
+import { createRect } from "@anvilkit/canvas-core";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/react";
+import * as React from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
+import type { CanvasElementEntry } from "@/elements/element-entry.js";
+import {
+	type CanvasElementProvider,
+	createStaticElementProvider,
+} from "@/elements/element-provider.js";
+import {
+	ElementsPanel,
+	type ElementsPanelProps,
+} from "@/panels/ElementsPanel.js";
+import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
+
+// react-library vitest preset has globals:false — RTL auto-cleanup is OFF.
+afterEach(cleanup);
+
+function entry(
+	over: Partial<CanvasElementEntry> & { readonly id: string },
+): CanvasElementEntry {
+	return {
+		name: over.id,
+		category: "shape",
+		tags: [],
+		preview: { kind: "path", d: "M0 0H24V24H0Z", viewBox: "0 0 24 24" },
+		defaultSize: { width: 100, height: 100 },
+		license: "MIT",
+		recolor: "fill",
+		build: () => createRect({ id: "n", bounds: { width: 10, height: 10 } }),
+		...over,
+	};
+}
+
+/** One entry per category, plus the two preview variants and a keyword-only hit. */
+const CATALOG: readonly CanvasElementEntry[] = [
+	entry({
+		id: "square",
+		name: "Square",
+		category: "shape",
+		tags: ["basic"],
+		keywords: ["quad", "box"],
+	}),
+	entry({
+		id: "arrow-right",
+		name: "Arrow right",
+		category: "icon",
+		tags: ["navigation"],
+		keywords: ["chevron"],
+		recolor: "stroke",
+		preview: { kind: "path", d: "M4 12h16", viewBox: "0 0 24 24" },
+	}),
+	entry({
+		id: "rule-plain",
+		name: "Horizontal rule",
+		category: "line",
+		tags: ["divider"],
+		recolor: "stroke",
+		preview: { kind: "path", d: "M0 24L240 24", viewBox: "0 0 240 48" },
+		defaultSize: { width: 240, height: 48 },
+	}),
+	entry({
+		id: "photo-frame",
+		name: "Photo frame",
+		category: "frame",
+		tags: ["photo"],
+	}),
+	entry({
+		id: "star-sticker",
+		name: "Star sticker",
+		category: "sticker",
+		tags: ["fun"],
+		recolor: "multi",
+	}),
+	entry({
+		id: "logo-badge",
+		name: "Logo badge",
+		category: "sticker",
+		tags: ["brand"],
+		preview: { kind: "image", src: "data:image/png;base64,AAAA" },
+		defaultSize: { width: 200, height: 100 },
+	}),
+];
+
+function renderPanel(
+	provider: CanvasElementProvider,
+	props: Omit<ElementsPanelProps, "elementProvider"> = {},
+): ReturnType<typeof render> {
+	const harness = makeHarness();
+	return render(
+		<CanvasStudioContext.Provider value={harness.studioCtx}>
+			<ElementsPanel elementProvider={provider} {...props} />
+		</CanvasStudioContext.Provider>,
+	);
+}
+
+function grid(): HTMLElement {
+	return screen.getByTestId("elements-grid");
+}
+
+function options(): HTMLElement[] {
+	return within(grid()).getAllByRole("option");
+}
+
+describe("ElementsPanel — content browser (cp3-003)", () => {
+	it("renders a tab per category plus All, from CANVAS_ELEMENT_CATEGORIES", async () => {
+		renderPanel(createStaticElementProvider(CATALOG));
+		await screen.findByTestId("elements-grid");
+
+		const tabs = within(screen.getByTestId("elements-categories")).getAllByRole(
+			"tab",
+		);
+		expect(tabs.map((tab) => tab.getAttribute("data-testid"))).toEqual([
+			"elements-category-all",
+			"elements-category-shape",
+			"elements-category-icon",
+			"elements-category-line",
+			"elements-category-frame",
+			"elements-category-sticker",
+		]);
+		expect(screen.getByTestId("elements-category-all")).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+	});
+
+	it("shows skeletons while the first page is in flight, then the grid", async () => {
+		let release: ((value: CanvasElementProvider) => void) | undefined;
+		const gate = new Promise<CanvasElementProvider>((resolve) => {
+			release = resolve;
+		});
+		const provider: CanvasElementProvider = {
+			search: (query) => gate.then((p) => p.search(query)),
+			getById: (id) => gate.then((p) => p.getById(id)),
+		};
+
+		renderPanel(provider);
+		expect(screen.getByTestId("elements-loading")).toBeTruthy();
+		expect(screen.getByTestId("elements-skeleton-0")).toBeTruthy();
+		expect(screen.queryByTestId("elements-grid")).toBeNull();
+
+		release?.(createStaticElementProvider(CATALOG));
+		await screen.findByTestId("elements-grid");
+		expect(screen.queryByTestId("elements-loading")).toBeNull();
+	});
+
+	it("searches by NAME", async () => {
+		renderPanel(createStaticElementProvider(CATALOG), { search: "Photo" });
+		await screen.findByTestId("elements-item-photo-frame");
+		expect(options()).toHaveLength(1);
+	});
+
+	it("searches by TAG", async () => {
+		renderPanel(createStaticElementProvider(CATALOG), { search: "navigation" });
+		await screen.findByTestId("elements-item-arrow-right");
+		expect(options()).toHaveLength(1);
+	});
+
+	it("searches by KEYWORD — a synonym that is in neither the name nor the tags", async () => {
+		renderPanel(createStaticElementProvider(CATALOG), { search: "quad" });
+		await screen.findByTestId("elements-item-square");
+		expect(options()).toHaveLength(1);
+		// The word really is absent from every other field, so this can only
+		// have matched `keywords`.
+		expect(CATALOG[0]?.name.toLowerCase()).not.toContain("quad");
+		expect(CATALOG[0]?.tags.join(" ")).not.toContain("quad");
+	});
+
+	it("re-queries when the search prop changes (debounced)", async () => {
+		const provider = createStaticElementProvider(CATALOG);
+		const search = vi.spyOn(provider, "search");
+		const harness = makeHarness();
+		const view = render(
+			<CanvasStudioContext.Provider value={harness.studioCtx}>
+				<ElementsPanel elementProvider={provider} />
+			</CanvasStudioContext.Provider>,
+		);
+		await screen.findByTestId("elements-grid");
+		expect(options()).toHaveLength(CATALOG.length);
+
+		view.rerender(
+			<CanvasStudioContext.Provider value={harness.studioCtx}>
+				<ElementsPanel elementProvider={provider} search="chevron" />
+			</CanvasStudioContext.Provider>,
+		);
+		await waitFor(() => expect(options()).toHaveLength(1));
+		expect(screen.getByTestId("elements-item-arrow-right")).toBeTruthy();
+		expect(search).toHaveBeenCalledWith({ text: "chevron" });
+	});
+
+	it("filters by category tab, and combines the facet with the text query", async () => {
+		const provider = createStaticElementProvider(CATALOG);
+		const search = vi.spyOn(provider, "search");
+		renderPanel(provider);
+		await screen.findByTestId("elements-grid");
+
+		fireEvent.click(screen.getByTestId("elements-category-sticker"));
+		await waitFor(() => expect(options()).toHaveLength(2));
+		expect(
+			options().map((option) => option.getAttribute("data-category")),
+		).toEqual(["sticker", "sticker"]);
+		expect(screen.getByTestId("elements-category-sticker")).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+		expect(search).toHaveBeenLastCalledWith({ category: "sticker" });
+	});
+
+	it("renders the empty state when nothing matches", async () => {
+		renderPanel(createStaticElementProvider(CATALOG), {
+			search: "no-such-element",
+		});
+		await screen.findByTestId("elements-panel-no-results");
+		expect(screen.queryByTestId("elements-grid")).toBeNull();
+	});
+
+	it("renders the error state and Retry re-runs the query", async () => {
+		let attempts = 0;
+		const provider: CanvasElementProvider = {
+			search: (query) => {
+				attempts += 1;
+				return attempts === 1
+					? Promise.reject(new Error("chunk fetch failed"))
+					: createStaticElementProvider(CATALOG).search(query);
+			},
+			getById: () => Promise.resolve(null),
+		};
+
+		renderPanel(provider);
+		await screen.findByTestId("elements-panel-error");
+		expect(screen.queryByTestId("elements-grid")).toBeNull();
+
+		fireEvent.click(screen.getByTestId("elements-retry"));
+		await screen.findByTestId("elements-grid");
+		expect(attempts).toBe(2);
+	});
+
+	it("paginates through the provider cursor with Load more", async () => {
+		const many = Array.from({ length: 7 }, (_, i) =>
+			entry({ id: `e${i}`, name: `Element ${i}` }),
+		);
+		renderPanel(createStaticElementProvider(many, { pageSize: 4 }));
+		await screen.findByTestId("elements-grid");
+		expect(options()).toHaveLength(4);
+
+		fireEvent.click(screen.getByTestId("elements-load-more"));
+		await waitFor(() => expect(options()).toHaveLength(7));
+		// The last page has no cursor, so the affordance goes away rather than
+		// re-fetching the same tail.
+		expect(screen.queryByTestId("elements-load-more")).toBeNull();
+	});
+
+	it("calls onSelect with the entry when a cell is activated", async () => {
+		const onSelect = vi.fn();
+		renderPanel(createStaticElementProvider(CATALOG), { onSelect });
+		await screen.findByTestId("elements-grid");
+
+		fireEvent.click(screen.getByTestId("elements-item-square"));
+		expect(onSelect).toHaveBeenCalledTimes(1);
+		expect(onSelect.mock.calls[0]?.[0]).toMatchObject({ id: "square" });
+	});
+});
+
+describe("ElementsPanel — preview painting (the 181-blob branch)", () => {
+	it("paints a recolor:'stroke' entry as an OUTLINE, never a filled blob", async () => {
+		renderPanel(createStaticElementProvider(CATALOG));
+		const preview = await screen.findByTestId("elements-preview-arrow-right");
+
+		const path = preview.querySelector("path");
+		expect(path).not.toBeNull();
+		// The whole point: a stroke entry rendered `fill="currentColor"` is a
+		// black blob. 181 of the 425 default entries are stroke entries.
+		expect(path?.getAttribute("fill")).toBe("none");
+		expect(path?.getAttribute("stroke")).toBe("currentColor");
+		expect(path?.getAttribute("stroke-linecap")).toBe("round");
+		expect(path?.getAttribute("stroke-linejoin")).toBe("round");
+	});
+
+	it("derives the preview stroke width from the viewBox at 6.25%", async () => {
+		renderPanel(createStaticElementProvider(CATALOG));
+		// 24-unit box → 1.5, which is exactly how the outline icon sets are
+		// authored. The contract carries no stroke width, so this ratio IS the
+		// convention (see PREVIEW_STROKE_RATIO).
+		const icon = await screen.findByTestId("elements-preview-arrow-right");
+		expect(icon.querySelector("path")?.getAttribute("stroke-width")).toBe(
+			"1.5",
+		);
+		// 240-unit box → 15. Scales with the box rather than being a constant.
+		const rule = screen.getByTestId("elements-preview-rule-plain");
+		expect(rule.querySelector("path")?.getAttribute("stroke-width")).toBe("15");
+	});
+
+	it("paints fill and multi entries as filled paths with no stroke", async () => {
+		renderPanel(createStaticElementProvider(CATALOG));
+		await screen.findByTestId("elements-grid");
+
+		for (const id of ["square", "photo-frame", "star-sticker"]) {
+			const path = screen
+				.getByTestId(`elements-preview-${id}`)
+				.querySelector("path");
+			expect(path?.getAttribute("fill"), id).toBe("currentColor");
+			expect(path?.getAttribute("stroke"), id).toBeNull();
+		}
+	});
+
+	it("renders an <img> for an image preview and an <svg> for a path preview", async () => {
+		renderPanel(createStaticElementProvider(CATALOG));
+		await screen.findByTestId("elements-grid");
+
+		expect(
+			screen.getByTestId("elements-preview-logo-badge").tagName.toLowerCase(),
+		).toBe("img");
+		expect(
+			screen.getByTestId("elements-preview-square").tagName.toLowerCase(),
+		).toBe("svg");
+	});
+});
+
+describe("ElementsPanel — keyboard grid (a11y)", () => {
+	const seven = Array.from({ length: 7 }, (_, i) =>
+		entry({ id: `k${i}`, name: `Cell ${i}` }),
+	);
+
+	async function renderGrid(): Promise<HTMLElement[]> {
+		renderPanel(createStaticElementProvider(seven));
+		await screen.findByTestId("elements-grid");
+		return options();
+	}
+
+	it("exposes one listbox with a label and one labelled option per entry", async () => {
+		const cells = await renderGrid();
+		expect(grid()).toHaveAttribute("aria-label", "Elements");
+		expect(cells).toHaveLength(7);
+		expect(cells[3]).toHaveAttribute("aria-label", "Cell 3");
+	});
+
+	it("uses a roving tabindex — exactly one option is tabbable", async () => {
+		const cells = await renderGrid();
+		expect(
+			cells.filter((c) => c.getAttribute("tabindex") === "0"),
+		).toHaveLength(1);
+		expect(cells[0]).toHaveAttribute("tabindex", "0");
+		expect(cells[1]).toHaveAttribute("tabindex", "-1");
+	});
+
+	it("ArrowRight/ArrowLeft move by one cell and clamp at the ends", async () => {
+		const cells = await renderGrid();
+		cells[0]?.focus();
+
+		fireEvent.keyDown(grid(), { key: "ArrowRight" });
+		expect(document.activeElement).toBe(options()[1]);
+
+		fireEvent.keyDown(grid(), { key: "ArrowLeft" });
+		expect(document.activeElement).toBe(options()[0]);
+
+		// Already at index 0 — clamped, not wrapped, so focus never escapes.
+		fireEvent.keyDown(grid(), { key: "ArrowLeft" });
+		expect(document.activeElement).toBe(options()[0]);
+	});
+
+	it("ArrowDown/ArrowUp move by a row of three", async () => {
+		const cells = await renderGrid();
+		cells[0]?.focus();
+
+		fireEvent.keyDown(grid(), { key: "ArrowDown" });
+		expect(document.activeElement).toBe(options()[3]);
+
+		fireEvent.keyDown(grid(), { key: "ArrowDown" });
+		expect(document.activeElement).toBe(options()[6]);
+
+		// 6 + 3 = 9 is past the end of a 7-cell grid: clamp to the last cell
+		// rather than dropping focus on nothing.
+		fireEvent.keyDown(grid(), { key: "ArrowDown" });
+		expect(document.activeElement).toBe(options()[6]);
+
+		fireEvent.keyDown(grid(), { key: "ArrowUp" });
+		expect(document.activeElement).toBe(options()[3]);
+	});
+
+	it("Home and End jump to the first and last cell", async () => {
+		const cells = await renderGrid();
+		cells[0]?.focus();
+
+		fireEvent.keyDown(grid(), { key: "End" });
+		expect(document.activeElement).toBe(options()[6]);
+		expect(options()[6]).toHaveAttribute("tabindex", "0");
+		expect(options()[0]).toHaveAttribute("tabindex", "-1");
+
+		fireEvent.keyDown(grid(), { key: "Home" });
+		expect(document.activeElement).toBe(options()[0]);
+	});
+
+	it("keeps the roving tabindex in range when the result set shrinks", async () => {
+		const provider = createStaticElementProvider([
+			...seven,
+			entry({ id: "needle", name: "Needle", keywords: ["findme"] }),
+		]);
+		const harness = makeHarness();
+		const view = render(
+			<CanvasStudioContext.Provider value={harness.studioCtx}>
+				<ElementsPanel elementProvider={provider} />
+			</CanvasStudioContext.Provider>,
+		);
+		await screen.findByTestId("elements-grid");
+		fireEvent.keyDown(grid(), { key: "End" });
+		expect(options()[7]).toHaveAttribute("tabindex", "0");
+
+		view.rerender(
+			<CanvasStudioContext.Provider value={harness.studioCtx}>
+				<ElementsPanel elementProvider={provider} search="findme" />
+			</CanvasStudioContext.Provider>,
+		);
+		await waitFor(() => expect(options()).toHaveLength(1));
+		// Index 7 no longer exists. A stale roving index would leave the listbox
+		// with zero tabbable options — unreachable by keyboard entirely.
+		expect(options()[0]).toHaveAttribute("tabindex", "0");
+	});
+
+	it("activation is a real button, so Enter and Space work with no key handler", async () => {
+		const onSelect = vi.fn();
+		renderPanel(createStaticElementProvider(seven), { onSelect });
+		await screen.findByTestId("elements-grid");
+		const cell = screen.getByTestId("elements-item-k2");
+		expect(cell.tagName.toLowerCase()).toBe("button");
+		expect(cell.getAttribute("type")).toBe("button");
+		fireEvent.click(cell);
+		expect(onSelect).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("ElementsPanel — deprecated drawing-tool section (cp3-009 deletes it)", () => {
+	it("still renders elements-tool-<id> and still activates the tool", async () => {
+		const harness = makeHarness();
+		render(
+			<CanvasStudioContext.Provider value={harness.studioCtx}>
+				<ElementsPanel elementProvider={createStaticElementProvider(CATALOG)} />
+			</CanvasStudioContext.Provider>,
+		);
+		await screen.findByTestId("elements-grid");
+
+		// Nine E2E specs outside this package drive tool activation through these
+		// testids. They stay green until cp3-009 swaps them for tool-strip-<id>
+		// in the same change that deletes this section.
+		const rect = screen.getByTestId("elements-tool-rect");
+		fireEvent.click(rect);
+		expect(harness.studioCtx.toolStore.getState().activeTool).toBe("rect");
+		expect(screen.getByTestId("elements-tool-rect")).toHaveAttribute(
+			"data-active",
+			"true",
+		);
+	});
+
+	it("the `tools` prop still overrides the tool list and nothing else", async () => {
+		const harness = makeHarness();
+		render(
+			<CanvasStudioContext.Provider value={harness.studioCtx}>
+				<ElementsPanel
+					elementProvider={createStaticElementProvider(CATALOG)}
+					tools={[
+						{
+							id: "rect",
+							labelKey: "canvas.tool.rect",
+							label: "Rectangle",
+							icon: () => <svg aria-hidden />,
+						},
+					]}
+				/>
+			</CanvasStudioContext.Provider>,
+		);
+		await screen.findByTestId("elements-grid");
+
+		expect(screen.getByTestId("elements-tool-rect")).toBeTruthy();
+		expect(screen.queryByTestId("elements-tool-ellipse")).toBeNull();
+		// It governs the tool grid only — the element content is untouched.
+		expect(options()).toHaveLength(CATALOG.length);
+	});
+});

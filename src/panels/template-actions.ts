@@ -30,7 +30,11 @@ function runInstantiation(
 	entry: CanvasTemplateEntry,
 ): Instantiated | { message: string } {
 	try {
-		return instantiateTemplate(entry);
+		// `CanvasTemplateEntry.tags` is optional at the host boundary while the
+		// core `CanvasTemplateDefinition` requires it (cp3-006). Instantiation
+		// never reads tags, so the default is a formality — but it is the one
+		// place the two shapes meet, so it is normalised once, here.
+		return instantiateTemplate({ ...entry, tags: [...(entry.tags ?? [])] });
 	} catch (error) {
 		return {
 			message: error instanceof Error ? error.message : String(error),

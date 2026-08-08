@@ -33,6 +33,7 @@ import {
 	openColor,
 	setColor,
 } from "./_color-test-helpers.js";
+import { fontTriggerText, pickFont } from "./_font-picker-test-helpers.js";
 import { selectedLabel, selectOption } from "./_select-test-helpers.js";
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
@@ -771,10 +772,12 @@ describe("PropertyInspector — rich-text selected", () => {
 			"[data-testid='prop-rich-text-line-height']",
 		) as HTMLInputElement;
 		expect(lineHeight.defaultValue).toBe("1.5");
-		const fontFamily = container.querySelector(
-			"[data-testid='prop-rich-text-font-family']",
-		) as HTMLInputElement;
-		expect(fontFamily.defaultValue).toBe("Georgia");
+		// `cp2-004`: the Font row is the catalog picker, so the current family is
+		// the trigger's text. "Georgia" is NOT in the 37-family default catalog —
+		// an off-catalog document value must still be shown, never reset.
+		expect(fontTriggerText("prop-rich-text-font-family", container)).toBe(
+			"Georgia",
+		);
 		const fontSize = container.querySelector(
 			"[data-testid='prop-rich-text-font-size']",
 		) as HTMLInputElement;
@@ -810,15 +813,14 @@ describe("PropertyInspector — rich-text selected", () => {
 		).toBe("Second");
 	});
 
-	it("changing the font family commits onto every span across every paragraph", () => {
+	it("changing the font family commits onto every span across every paragraph", async () => {
 		const h = makeHarness({ ir: withRichTextIR() });
 		h.studioCtx.selectionStore.getState().setSelection(["rt-a"]);
 		const { container } = mount(h.studioCtx);
-		const fontFamily = container.querySelector(
-			"[data-testid='prop-rich-text-font-family']",
-		) as HTMLInputElement;
-		fireEvent.input(fontFamily, { target: { value: "Courier" } });
-		fireEvent.blur(fontFamily);
+		// `cp2-004`: picked through the catalog picker's free-text row — "Courier"
+		// is not a catalog family, so this also covers the escape hatch surviving
+		// the swap away from the `TextField`.
+		await pickFont("prop-rich-text-font-family", "Courier", container);
 		const last = h.commits.at(-1) as CanvasNodeUpdateCommand<"rich-text">;
 		const paragraphs = (
 			last.patch as {

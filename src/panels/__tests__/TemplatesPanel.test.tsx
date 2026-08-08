@@ -24,6 +24,7 @@ import {
 	insertTemplateAsNewPages,
 	loadTemplate,
 } from "../template-actions.js";
+import { selectOption } from "./_select-test-helpers.js";
 
 const FIXED_TS = "2026-07-09T00:00:00.000Z";
 
@@ -337,6 +338,189 @@ describe("createDocumentFromTemplate (FR-132)", () => {
 		const h = makeHarness();
 		const result = createDocumentFromTemplate(h.studioCtx, entry());
 		expect(result.ok).toBe(false);
+	});
+});
+
+describe("TemplatesPanel — tag facet (cp3-006)", () => {
+	const poster = entry({
+		id: "poster",
+		title: "Event Poster",
+		category: "social",
+		tags: ["poster", "portrait", "event"],
+	});
+	const flyer = entry({
+		id: "flyer",
+		title: "A4 Flyer",
+		description: "A print flyer.",
+		category: "print",
+		tags: ["flyer", "portrait", "marketing"],
+	});
+	const card = entry({
+		id: "card",
+		title: "Business Card",
+		description: "Contact details.",
+		category: "print",
+		tags: ["business-card", "landscape", "networking"],
+	});
+
+	it("renders a chip per tag and clicking one filters to that tag", async () => {
+		const { view } = renderPanel([poster, flyer, card]);
+		await view.findByTestId("template-item-poster");
+		expect(view.getByTestId("template-tags-poster")).toBeDefined();
+
+		fireEvent.click(view.getByTestId("template-tag-poster-portrait"));
+		await waitFor(() =>
+			expect(view.queryByTestId("template-item-card")).toBeNull(),
+		);
+		expect(view.getByTestId("template-item-poster")).toBeDefined();
+		expect(view.getByTestId("template-item-flyer")).toBeDefined();
+	});
+
+	it("clicking the active chip again clears the facet", async () => {
+		const { view } = renderPanel([poster, flyer, card]);
+		await view.findByTestId("template-item-poster");
+		fireEvent.click(view.getByTestId("template-tag-poster-portrait"));
+		await waitFor(() =>
+			expect(view.queryByTestId("template-item-card")).toBeNull(),
+		);
+		fireEvent.click(view.getByTestId("template-tag-poster-portrait"));
+		await view.findByTestId("template-item-card");
+	});
+
+	it("marks the active chip pressed and echoes it in a clearable filter row", async () => {
+		const { view } = renderPanel([poster, flyer, card]);
+		await view.findByTestId("template-item-poster");
+		expect(view.queryByTestId("templates-active-tag")).toBeNull();
+
+		fireEvent.click(view.getByTestId("template-tag-poster-portrait"));
+		await view.findByTestId("templates-active-tag");
+		expect(
+			view
+				.getByTestId("template-tag-poster-portrait")
+				.getAttribute("aria-pressed"),
+		).toBe("true");
+		expect(
+			view
+				.getByTestId("template-tag-poster-event")
+				.getAttribute("aria-pressed"),
+		).toBe("false");
+
+		fireEvent.click(view.getByTestId("templates-active-tag-clear"));
+		await waitFor(() =>
+			expect(view.queryByTestId("templates-active-tag")).toBeNull(),
+		);
+		await view.findByTestId("template-item-card");
+	});
+
+	// The escape hatch the filter row exists for: a facet that matches nothing
+	// renders no cards, so without the row there is no chip left to click.
+	it("stays clearable when the tag facet plus a search matches nothing", async () => {
+		const { view } = renderPanel([poster, flyer, card]);
+		await view.findByTestId("template-item-poster");
+		fireEvent.click(view.getByTestId("template-tag-poster-portrait"));
+		fireEvent.change(view.getByTestId("templates-search"), {
+			target: { value: "business" },
+		});
+		await view.findByTestId("templates-panel-no-results");
+
+		fireEvent.click(view.getByTestId("templates-active-tag-clear"));
+		await view.findByTestId("template-item-card");
+	});
+
+	it("narrows together with the category facet, not instead of it", async () => {
+		const { view } = renderPanel([poster, flyer, card]);
+		await view.findByTestId("template-item-poster");
+
+		// Tag alone: both portrait templates, across both categories.
+		fireEvent.click(view.getByTestId("template-tag-poster-portrait"));
+		await waitFor(() =>
+			expect(view.queryByTestId("template-item-card")).toBeNull(),
+		);
+		expect(view.getByTestId("template-item-poster")).toBeDefined();
+		expect(view.getByTestId("template-item-flyer")).toBeDefined();
+
+		// Add the category facet: only the print portrait survives.
+		await selectOption("templates-category-filter", "print");
+		await waitFor(() =>
+			expect(view.queryByTestId("template-item-poster")).toBeNull(),
+		);
+		expect(view.getByTestId("template-item-flyer")).toBeDefined();
+		expect(view.queryByTestId("template-item-card")).toBeNull();
+	});
+
+	it("passes the tag to a host provider as a `tags` query field", async () => {
+		const search = vi.fn(() => Promise.resolve({ entries: [poster] }));
+		const provider: CanvasTemplateProvider = {
+			search,
+			getById: () => Promise.resolve(null),
+		};
+		const { view } = renderPanel(undefined, provider);
+		await view.findByTestId("template-item-poster");
+		expect(search).toHaveBeenLastCalledWith(
+			expect.not.objectContaining({ tags: expect.anything() }),
+		);
+
+		fireEvent.click(view.getByTestId("template-tag-poster-portrait"));
+		await waitFor(() =>
+			expect(search).toHaveBeenLastCalledWith(
+				expect.objectContaining({ tags: ["portrait"] }),
+			),
+		);
+	});
+
+	it("free-text search reaches a tag that appears in no title or description", async () => {
+		const { view } = renderPanel([poster, flyer, card]);
+		await view.findByTestId("template-item-poster");
+		fireEvent.change(view.getByTestId("templates-search"), {
+			target: { value: "networking" },
+		});
+		await waitFor(() =>
+			expect(view.queryByTestId("template-item-poster")).toBeNull(),
+		);
+		expect(view.getByTestId("template-item-card")).toBeDefined();
+	});
+});
+
+/**
+ * cp3-006 compatibility criterion, at the panel: an untagged host catalog must
+ * look exactly as it did before the field existed. `Reflect.deleteProperty`
+ * reproduces a genuinely ABSENT key, which is what a pre-tags host or a remote
+ * catalog payload actually delivers.
+ */
+describe("TemplatesPanel — untagged catalog compatibility (cp3-006)", () => {
+	function untagged(id: string, title: string): CanvasTemplateEntry {
+		const base = entry({ id, title });
+		Reflect.deleteProperty(base, "tags");
+		return base;
+	}
+
+	it("lists every entry, renders no chip row, and never throws", async () => {
+		const { view } = renderPanel([
+			untagged("alpha", "Summer Sale"),
+			untagged("beta", "Winter Report"),
+		]);
+		await view.findByTestId("template-item-alpha");
+		expect(view.getByTestId("template-item-beta")).toBeDefined();
+		expect(view.queryByTestId("template-tags-alpha")).toBeNull();
+		expect(view.queryByTestId("templates-active-tag")).toBeNull();
+	});
+
+	it("keeps free-text search and the confirm flow working", async () => {
+		const { h, view } = renderPanel([
+			untagged("alpha", "Summer Sale"),
+			untagged("beta", "Winter Report"),
+		]);
+		await view.findByTestId("template-item-alpha");
+		fireEvent.change(view.getByTestId("templates-search"), {
+			target: { value: "winter" },
+		});
+		await waitFor(() =>
+			expect(view.queryByTestId("template-item-alpha")).toBeNull(),
+		);
+
+		fireEvent.click(view.getByTestId("template-item-beta"));
+		fireEvent.click(view.getByTestId("template-load-beta"));
+		expect(h.studioCtx.commitBatch).toHaveBeenCalledTimes(1);
 	});
 });
 

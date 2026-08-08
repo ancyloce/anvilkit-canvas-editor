@@ -1,10 +1,17 @@
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasT } from "../../context/canvas-studio-context.js";
+import { DEFAULT_FONT_CATALOG } from "../../text/default-font-catalog.js";
+import { createFontCatalog } from "../../text/font-catalog.js";
 import {
 	TokenAwareColorField,
 	TokenAwareFontField,
 } from "../token-aware-fields.js";
+import {
+	fontGroupLabels,
+	fontTriggerText,
+	openFontPicker,
+} from "./_font-picker-test-helpers.js";
 
 afterEach(cleanup);
 
@@ -113,7 +120,7 @@ describe("TokenAwareColorField", () => {
 describe("TokenAwareFontField", () => {
 	const FONTS = ["Inter", "Poppins"];
 
-	it("renders a plain literal TextField when the brand kit has no fonts", () => {
+	it("renders the catalog picker (not a text box) when the brand kit has no fonts", () => {
 		const onCommit = vi.fn();
 		const { getByTestId, queryByTestId } = render(
 			<TokenAwareFontField
@@ -127,8 +134,144 @@ describe("TokenAwareFontField", () => {
 				t={t}
 			/>,
 		);
-		expect(getByTestId("test-font")).toBeDefined();
+		// `cp2-004`: same test id, different control — the picker's trigger is a
+		// button, and the free-text `<input>` it replaced is gone.
+		expect(getByTestId("test-font").tagName).toBe("BUTTON");
 		expect(queryByTestId("test-font-use-token")).toBeNull();
+		// The off-catalog value the document holds is still the displayed one.
+		expect(DEFAULT_FONT_CATALOG.get("Georgia")).toBeUndefined();
+		expect(fontTriggerText("test-font")).toBe("Georgia");
+	});
+
+	it("reads Mixed for a multi-selection whose families differ", () => {
+		render(
+			<TokenAwareFontField
+				label="Font"
+				rawValue="Georgia"
+				resolvedValue="Georgia"
+				unresolved={false}
+				fonts={[]}
+				dataTestId="test-font"
+				mixed
+				onCommit={vi.fn()}
+				t={t}
+			/>,
+		);
+		expect(fontTriggerText("test-font")).toBe("Mixed");
+	});
+
+	it("reads Mixed on the brand-token picker too", () => {
+		render(
+			<TokenAwareFontField
+				label="Font"
+				rawValue={{ type: "brand-token", tokenType: "font", id: "inter" }}
+				resolvedValue="Inter"
+				unresolved={false}
+				fonts={FONTS}
+				dataTestId="test-font"
+				mixed
+				onCommit={vi.fn()}
+				t={t}
+			/>,
+		);
+		expect(screen.getByTestId("test-font").textContent).toContain("Mixed");
+		expect(screen.getByTestId("test-font").textContent).not.toContain("Inter");
+	});
+
+	it("takes an explicit catalog for a mount with no studio ancestor", async () => {
+		render(
+			<TokenAwareFontField
+				label="Font"
+				rawValue=""
+				resolvedValue=""
+				unresolved={false}
+				fonts={[]}
+				dataTestId="test-font"
+				catalog={createFontCatalog(
+					[
+						{
+							family: "Acme Host Sans",
+							category: "sans",
+							weights: [400],
+							source: { kind: "files", files: [] },
+							license: "LicenseRef-acme",
+						},
+					],
+					{ origin: "host" },
+				)}
+				onCommit={vi.fn()}
+				t={t}
+			/>,
+		);
+		const popup = await openFontPicker("test-font");
+		const options = Array.from(
+			popup.querySelectorAll<HTMLElement>('[role="option"]'),
+		).map((option) => option.textContent);
+		// An OVERRIDE, not a merge: inside a `<CanvasStudio>` the field reads the
+		// studio's already-resolved catalog (`cp2-007`), which is where the
+		// default + host merge happens and happens once. Asserted end to end in
+		// `inspector/__tests__/text-font-field.test.tsx`.
+		expect(options).toEqual(["Acme Host Sans"]);
+	});
+
+	it("pins brand-kit families first, whether or not the catalog knows them", async () => {
+		render(
+			<TokenAwareFontField
+				label="Font"
+				rawValue="Georgia"
+				resolvedValue="Georgia"
+				unresolved={false}
+				// "Lora" IS a default catalog family; "Acme Grotesk" is not — the two
+				// halves of the brand tier (re-stamped record vs synthesised one).
+				fonts={["Acme Grotesk", "Lora"]}
+				dataTestId="test-font"
+				onCommit={vi.fn()}
+				t={t}
+			/>,
+		);
+		const popup = await openFontPicker("test-font");
+		expect(fontGroupLabels(popup)).toEqual(["Brand", "All fonts"]);
+		const options = Array.from(
+			popup.querySelectorAll<HTMLElement>('[role="option"]'),
+		).map((option) => option.textContent);
+		expect(options.slice(0, 2)).toEqual(["Acme Grotesk", "Lora"]);
+		expect(options.filter((label) => label === "Lora")).toHaveLength(1);
+	});
+
+	it("passes recent families through to the picker (cp2-005 slot)", async () => {
+		render(
+			<TokenAwareFontField
+				label="Font"
+				rawValue="Georgia"
+				resolvedValue="Georgia"
+				unresolved={false}
+				fonts={[]}
+				dataTestId="test-font"
+				recentFamilies={["Lora"]}
+				onCommit={vi.fn()}
+				t={t}
+			/>,
+		);
+		const popup = await openFontPicker("test-font");
+		expect(fontGroupLabels(popup)).toEqual(["Recent", "All fonts"]);
+	});
+
+	it("flags an unresolved token on the picker row", () => {
+		const { container } = render(
+			<TokenAwareFontField
+				label="Font"
+				rawValue={{ type: "brand-token", tokenType: "font", id: "gone" }}
+				resolvedValue={undefined}
+				unresolved={true}
+				fonts={[]}
+				dataTestId="test-font"
+				onCommit={vi.fn()}
+				t={t}
+			/>,
+		);
+		expect(container.querySelector("label")?.title).toBe(
+			"Unresolved brand token — showing fallback",
+		);
 	});
 
 	it("renders the token picker for a token-backed font, keyed by slug", () => {

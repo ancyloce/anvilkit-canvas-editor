@@ -5,7 +5,8 @@
  * to the full FR-023 product surface in canvas-m2-004).
  *
  * Lists the host-supplied template catalog (`CanvasStudioProps.templates`),
- * filterable by category and a free-text search across title/description/tags,
+ * filterable by category, by tag (cp3-006), and by a free-text search across
+ * title/description/tags,
  * and instantiates a template into the current document — either replacing
  * every page (one undo entry) or inserted as new pages alongside the existing
  * ones (also one undo entry). Preview is a real thumbnail when a template
@@ -17,6 +18,7 @@ import {
 	CANVAS_SIZE_PRESETS,
 	type InstantiateTemplateWarning,
 } from "@anvilkit/canvas-core";
+import { Badge } from "@anvilkit/ui/badge";
 import { Button } from "@anvilkit/ui/button";
 import { Input } from "@anvilkit/ui/input";
 import {
@@ -26,6 +28,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@anvilkit/ui/select";
+import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	type CanvasT,
@@ -38,6 +41,7 @@ import type { CanvasTemplateEntry } from "../templates/template-entry.js";
 import {
 	type CanvasTemplateProvider,
 	createStaticTemplateProvider,
+	normalizeTemplateTag,
 } from "../templates/template-provider.js";
 import {
 	createDocumentFromTemplate,
@@ -53,6 +57,13 @@ const SEARCH_DEBOUNCE_MS = 250;
 // Stable fallback for hosts that pass no catalog, so the `categories`/
 // `filtered` memos don't recompute on a fresh `[]` identity every render.
 const NO_TEMPLATES: readonly CanvasTemplateEntry[] = [];
+
+/** An entry's tags, normalised and deduplicated, in authored order. */
+function entryTags(entry: CanvasTemplateEntry): readonly string[] {
+	return [...new Set((entry.tags ?? []).map(normalizeTemplateTag))].filter(
+		(tag) => tag.length > 0,
+	);
+}
 
 function sizeCaption(entry: CanvasTemplateEntry): string {
 	const size = entry.document.pages[0]?.size;
@@ -152,6 +163,9 @@ export function TemplatesPanel(): React.JSX.Element {
 	const recentTemplates = useRecentTemplates();
 	const [pendingId, setPendingId] = useState<string | null>(null);
 	const [category, setCategory] = useState<string>(ALL_CATEGORIES);
+	// cp3-006 tag facet. `null` is "no tag filter" — there is no sentinel
+	// string, because a catalog is free to carry a tag literally named "all".
+	const [tag, setTag] = useState<string | null>(null);
 	const [sizeId, setSizeId] = useState<string>(ALL_SIZES);
 	const [search, setSearch] = useState("");
 	const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -193,6 +207,7 @@ export function TemplatesPanel(): React.JSX.Element {
 			.search({
 				...(debouncedSearch ? { text: debouncedSearch } : {}),
 				...(category !== ALL_CATEGORIES ? { category } : {}),
+				...(tag ? { tags: [tag] } : {}),
 				...(sizePreset
 					? { size: { width: sizePreset.width, height: sizePreset.height } }
 					: {}),
@@ -215,7 +230,7 @@ export function TemplatesPanel(): React.JSX.Element {
 					nextCursor: undefined,
 				});
 			});
-	}, [provider, debouncedSearch, category, sizePreset, attempt]);
+	}, [provider, debouncedSearch, category, tag, sizePreset, attempt]);
 
 	const categories = useMemo(
 		() =>
@@ -256,6 +271,7 @@ export function TemplatesPanel(): React.JSX.Element {
 			.search({
 				...(debouncedSearch ? { text: debouncedSearch } : {}),
 				...(category !== ALL_CATEGORIES ? { category } : {}),
+				...(tag ? { tags: [tag] } : {}),
 				...(sizePreset
 					? { size: { width: sizePreset.width, height: sizePreset.height } }
 					: {}),
@@ -327,6 +343,7 @@ export function TemplatesPanel(): React.JSX.Element {
 	): React.JSX.Element {
 		const pending = pendingId === entry.id;
 		const entryFeedback = feedback[entry.id];
+		const tags = entryTags(entry);
 		return (
 			<div
 				key={`${keyPrefix}${entry.id}`}
@@ -349,6 +366,43 @@ export function TemplatesPanel(): React.JSX.Element {
 						{sizeCaption(entry)}
 					</div>
 				</button>
+
+				{/*
+				 * Tag chips (cp3-006). Outside the card's own <button> — a button
+				 * inside a button is invalid markup and swallows the inner click in
+				 * some engines — and each one TOGGLES the tag facet, so browsing by
+				 * tag needs no separate picker: the discovery affordance is the
+				 * metadata itself. Untagged entries render nothing at all, which is
+				 * what makes an untagged host catalog look exactly as it did before.
+				 */}
+				{tags.length > 0 ? (
+					<div
+						role="group"
+						aria-label={t("canvas.templates.tagsLabel", "Tags")}
+						data-testid={`${keyPrefix}template-tags-${entry.id}`}
+						className="mt-1.5 flex flex-wrap gap-1"
+					>
+						{tags.map((value) => (
+							<Badge
+								key={value}
+								variant={tag === value ? "default" : "outline"}
+								className="cursor-pointer"
+								render={
+									<button
+										type="button"
+										aria-pressed={tag === value}
+										data-testid={`${keyPrefix}template-tag-${entry.id}-${value}`}
+										onClick={() =>
+											setTag((prev) => (prev === value ? null : value))
+										}
+									/>
+								}
+							>
+								{value}
+							</Badge>
+						))}
+					</div>
+				) : null}
 
 				{entryFeedback ? (
 					<div
@@ -479,6 +533,40 @@ export function TemplatesPanel(): React.JSX.Element {
 					))}
 				</SelectContent>
 			</Select>
+
+			{/*
+			 * The active tag, echoed in the filter bar (cp3-006). Without this the
+			 * only way to clear the facet is a chip on a result card — and a facet
+			 * that matches nothing renders no cards, which would strand the user in
+			 * an empty panel with no visible cause and no way out.
+			 */}
+			{tag ? (
+				<div
+					data-testid="templates-active-tag"
+					className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+				>
+					<span>
+						{t("canvas.templates.tagFilterActive", "Filtered by tag")}
+					</span>
+					<Badge
+						variant="default"
+						className="cursor-pointer"
+						render={
+							<button
+								type="button"
+								data-testid="templates-active-tag-clear"
+								aria-label={t(
+									"canvas.templates.tagFilterClear",
+									"Clear tag filter",
+								)}
+								onClick={() => setTag(null)}
+							/>
+						}
+					>
+						{tag}
+					</Badge>
+				</div>
+			) : null}
 
 			{recents.length > 0 ? (
 				<div data-testid="templates-recents" className="flex flex-col gap-2">
