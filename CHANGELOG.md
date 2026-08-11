@@ -1,11 +1,224 @@
 # @anvilkit/canvas-editor
 
+<!--
+RELEASE CONVENTION — settled by PLAN-0035 `cp6-005`, 2026-08-11.
+
+This package is versioned by CHANGESETS, like every other published
+`@anvilkit/*` package (`@anvilkit/core`, `@anvilkit/ui` and the plugins all
+carry `changeset version` output). Every user-visible change ships a file in
+the SUPERPROJECT's `.changeset/`; that file is what bumps the version and what
+becomes the released entry. ADR 0008 decision 4 condition 1 mandates the same
+for the Elements panel break.
+
+The prose under `## Unreleased` is the LONG-FORM NARRATIVE for those same
+changes. It is not release metadata and it is not a substitute for a changeset.
+Two operational rules follow, because the two mechanisms collide if nobody
+does anything:
+
+  1. `changeset version` inserts its generated `## <version>` block
+     IMMEDIATELY UNDER THE `#` TITLE — i.e. ABOVE this section. The releaser
+     must then retitle `## Unreleased` to the version just cut and open a
+     fresh empty `## Unreleased`, or the narrative for shipped work goes on
+     claiming to be unreleased. `packages/runtime/core/CHANGELOG.md` shows
+     what a skipped retitle looks like: an `## Unreleased` heading stranded
+     below three released versions. The block lands above THIS COMMENT too —
+     `@changesets/apply-release-plan`'s `prependFile` splices at the file's
+     first newline — so move the comment back under the `#` title in the
+     same pass, or the next editor never sees the rule.
+  2. `.changeset/` lives in the SUPERPROJECT while this package is a
+     SUBMODULE. `changeset version` therefore edits this file and
+     `package.json` inside the submodule working tree, which the superproject
+     records only as a gitlink — the submodule must be committed and pushed
+     on its own before the superproject's release commit.
+-->
+
 ## Unreleased
 
 The PRD 0012 delivery (Phases 1a "editing loop", 1b "product chrome", 2
 "professional editing"), plus the PLAN-0035 work called out by its own
 sections. Behavior changes and opt-outs are catalogued in
 [docs/migration.md](./docs/migration.md); this is the feature summary.
+
+### Elements panel and the drawing tools (PLAN-0035 P3) — **breaking**
+
+ADR 0008 decision 4 (owner sign-off 2026-08-07), landed across `cp3-003` (the
+panel rebuild), `cp3-004` (insertion), `cp3-005` (recolouring) and `cp3-009`
+(the tool move).
+
+- **`<ElementsPanel>` is a content browser, not a tool picker.** It renders a
+  category tab strip and a paginated grid over a `CanvasElementProvider`,
+  defaulting to a built-in **425-entry** catalog — 307 icons, 53 shapes, 25
+  lines, 18 frames, 22 stickers — that is fetched on the panel's first query,
+  **never at editor mount** (statically importing it would add ~56 KB gzipped
+  to the eager chunk, so two tests guard the dynamic edge). Every entry is
+  `MIT`, carries an SPDX id and an upstream provenance URL, and is built from
+  real IR geometry rather than an `svg` asset, which is what makes an inserted
+  icon recolourable and exportable rather than an opaque image. Attribution
+  ships in the tarball at
+  [docs/element-catalog-attribution.md](./docs/element-catalog-attribution.md)
+  and as the machine-readable `DEFAULT_ELEMENT_ATTRIBUTIONS`. New props:
+  `elementProvider`, `onSelect`.
+- **Inserting is two gestures and one implementation.** Click (or Enter/Space
+  — the cells are real buttons) inserts at the **viewport centre**; dragging a
+  cell onto the canvas inserts at the **drop point**, parented into the frame
+  under the cursor and slotted into its Auto Layout flow when it has one. Both
+  go through one function, commit exactly **one `node.create`** — a 22-part
+  sticker included, so undo removes it in a single step — and select the new
+  node, matching every other insertion path in the editor. The drag reuses
+  `<CanvasDropZone>`'s existing handlers; no second drop surface, drop-target
+  resolver or screen→page mapping was added. `onSelect` **overrides** the
+  built-in insert rather than observing it (that is what an element *picker*
+  needs); a host that wants both calls the newly exported
+  `insertElementAtViewportCenter(ctx, entry)` itself.
+- **New public exports:** `insertCanvasElement`, `insertElementAtPoint`,
+  `insertElementAtViewportCenter`, `CanvasElementInsertOptions`,
+  `createDefaultElementProvider`, `createStaticElementProvider`,
+  `createLazyElementProvider`, and the element contract types
+  (`CanvasElementEntry`, `CanvasElementProvider`, `CanvasElementCategory`,
+  `CanvasElementPreview`, `CanvasElementRecolor`, `CanvasElementNode`, …).
+- **Inserted elements recolour through the ordinary inspector controls** — no
+  new control was built and no catalog data bakes in a colour. Each entry
+  declares how it repaints (`fill` 222 · `stroke` 181 · `multi` 22 · `none` 0)
+  and a catalog-wide audit fails any entry that would only half-repaint, which
+  is the "reads as a bug" outcome this was written to prevent. Fills accept a
+  brand token and it stays unresolved in the node, so an inserted icon is
+  brand-token-aware from the first frame. The 22 multi-colour stickers keep
+  their authored accents: a `group` has no fill in the IR, so the Group
+  inspector section now **says so** — *"A group has no color of its own.
+  Select a part to recolor it."* (one new key, all four locales) instead of
+  showing `Children: 3` and nothing else.
+- **The drawing tools moved to the floating tool strip, which is now their only
+  surface.** All 14 built-ins (`select`, `text`, `rich-text`, `frame`, `rect`,
+  `ellipse`, `polygon`, `star`, `line`, `path`, `image`, `hand`, `ai-image`,
+  `ai-brush`) keep their icon, their label and their **keyboard shortcut — no
+  shortcut changed**; the strip has been mounted by `<CanvasWorkspace>` all
+  along (`toolStrip` defaults to `true`), so nothing was unreachable at any
+  point during the move.
+- **Removed: `ElementsPanelProps.tools`.** It only ever governed the deleted
+  tool grid and was `@deprecated` in the previous release of this section.
+  Replacement: `<CanvasWorkspace toolStrip={{ items }} />`.
+- **Regression, stated deliberately (ADR 0008 decision 4, condition 2):
+  extension-registered tools lose their first-class surface.** The panel used
+  to render built-ins and extension tools in ONE flat grid. The strip's rail
+  renders built-ins only (`descriptors.filter((d) => d.builtin)`) and pushes
+  every extension tool into the **"More tools" overflow menu**. They stay fully
+  reachable and keep their label, icon, shortcut hint and `disabled` probe —
+  but they stop being visible at a glance, which is a real discoverability loss
+  for extension authors. **Mitigation:** promote the tool into the rail with
+  `<CanvasWorkspace toolStrip={{ items: ["my-tool", "select", …] }} />`; a
+  promoted extension tool leaves the overflow. `toolStrip={{ renderer }}`
+  replaces the strip's rendering entirely if you want your own arrangement.
+- **Also lost with the grid:** the Tab Panel's search box no longer filters
+  tools by localized label (it now searches the element catalog). The tool
+  strip has no search; the keyboard shortcuts are the fast path.
+- **Test selectors:** `elements-tool-<id>` → `tool-strip-<id>`, or
+  `tool-strip-more-<id>` for a tool in the overflow. `data-active` is unchanged
+  on both.
+
+### Host selection seam — `onSelectionChange` (PLAN-0035 P5, `cp5-R03`)
+
+- **New prop: `onSelectionChange?: (nodeId: string \| null) => void`**
+  (`CanvasStudioProps`, inherited by `CanvasWorkspaceProps`; optional). It
+  mirrors `onActivePageChange` exactly: it fires **once on mount** with the
+  initial value and thereafter **only on change**. Redundant fires are
+  suppressed structurally — the bridge subscribes to a derived `string | null`,
+  not to the selection array, so calling `setSelection(["r1"])` repeatedly
+  (a fresh array every time) does not re-notify.
+- **A multi-selection reports `null`.** The callback names *one* node; naming
+  one of N would be arbitrary, and a host acting on it could then mutate a node
+  the user did not choose.
+- **It costs an unwired host nothing.** The subscription lives in a leaf
+  component that is mounted only when the prop is supplied, so a host that does
+  not pass it renders exactly the tree it rendered before.
+- **Why it exists:** it is the missing half of an AI round trip. A host can now
+  know which node is selected and commit an `image.replace` against it, which
+  is what closes the loop from "the panel produced a result" to "the result is
+  on the canvas". Note the host obligation this exposes: an AI result names an
+  asset in the *host's* registry, not in the document, so a host must commit
+  the `asset.put` alongside the `image.replace` — the same atomic pair the
+  drag-to-replace path has always used.
+
+### Frame clip shapes on the canvas, and the masking UX (PLAN-0035 P4)
+
+`@anvilkit/canvas-core` `cp4-001` added `CanvasFrameNode.shape` and the one
+resolver; this is the editor half — the live stage, every raster export, and
+the controls that let a user reach it. ADR 0008 decisions 1 and 2 (owner
+sign-off 2026-08-07), landed across `cp4-003` and `cp4-004`.
+
+- **A shaped, clipping frame renders as its shape everywhere the editor
+  draws.** `ellipse`, `polygon`, `star` and `path` clips are traced through
+  Konva's `clipFunc`; `polygon`/`star` vertices come from **the same
+  `computePolygonVertices` / `computeStarVertices` core's SVG emitter calls**,
+  and the two paths are pinned against each other by a geometry-level parity
+  suite so they cannot drift. Because the offscreen rasterizer mounts the same
+  renderer, **PNG/JPEG/WebP and PDF get shape clipping too** — PDF is
+  raster-embed, so this is the only way it could.
+- **Nothing is cached to achieve it.** No Konva `cache()` and no
+  `destination-in` composite was introduced, so there is no offscreen canvas
+  allocation on the clip path and no new drag-performance risk from it. A
+  `blendMode` and a shape clip on the same frame compose: Konva pushes the clip
+  first and the composite operation second.
+- **A frame that resolves to a rectangle emits exactly the props it emitted
+  before**, so every pre-existing document renders byte-for-byte as it did.
+- **New inspector *Shape* section on a frame** — a six-option picker (None,
+  Rectangle, Ellipse, Polygon, Star, Custom path) with the per-kind parameters
+  (`sides`, `points`, inner-radius ratio, path data), a **Release shape**
+  button, and a status line for the two cases a user would otherwise read as a
+  bug: a shape sitting on an unclipped frame (inert), and geometry that could
+  not be honoured (degraded to the box). Apply and release are each **one undo
+  step**.
+- **Two deliberate asymmetries, because the obvious symmetry breaks
+  documents.** Applying a shape **turns `clip` on** — otherwise the picker
+  would look broken, since a shape on an unclipped frame is inert by contract.
+  Releasing a shape **does not turn `clip` back off**: a cover-filled photo is
+  wider than its frame by construction, so un-clipping on release would spill
+  it across the page. Applying a shape to an **empty, placeholder-less** frame
+  also makes it an image well, so "shape it, then drop a photo on it" works; a
+  frame that already holds children is never promoted, because that would
+  change what the next drop does to its content.
+- **Repositioning the photo inside a shaped well is now discoverable.**
+  Double-clicking a filled, clipping image well opens the reposition editor
+  (ordered ahead of isolation entry — every other container still isolates),
+  and a **Reposition image** button in the inspector calls the identical path
+  for anyone who does not find the gesture. Changing the shape never discards a
+  deliberate reposition, and repositioning never alters the shape.
+- **Fixed: the reposition overlay was mis-anchored for every nested image.** It
+  read the node's parent-local transform instead of composing its ancestors, so
+  the handles landed in the wrong place for *every* image inside a well — which
+  is every well photo there is. It now composes the ancestor chain through the
+  same helper the text and rich-text overlays use.
+- **Drag-and-drop tells you what you are about to fill.** The drop zone carries
+  `data-drop-target-shape` for the hovered well's resolved clip kind and shows
+  a "Drop to fill shape" badge.
+- **`{ kind: "path" }` data is in the frame's LOCAL units**, not page units —
+  the picker seeds a fresh path from the frame's own box for that reason. A
+  size-independent default would land off-box on every frame but one.
+- **Public surface:** `ToolContext.cropStore` (optional) and `BeginCropContext`
+  (exported from `./internal`); both additive and source-compatible. 16 new
+  `canvas.inspector.frameShape*` / `canvas.inspector.repositionImage` /
+  `canvas.upload.replaceTargetShape` keys in all four locales.
+- **Alpha masking was not built and is not coming.** ADR 0008 decision 3
+  deprecates `CanvasImageNode.maskAssetId` instead; masking lives on the frame.
+
+### Template tags and tag faceting (PLAN-0035 P3, `cp3-006`)
+
+- **`CanvasTemplateEntry.tags` is now optional.** It used to be required
+  (inherited from `CanvasTemplateDefinition`), and the provider spread it
+  unguarded — so a host catalog whose entries simply omit the key **threw**.
+  This is a pure widening: every catalog that satisfied the old shape still
+  satisfies this one, and an untagged catalog now lists, free-text searches,
+  filters by category and size, and paginates without error.
+- **New search facet: `CanvasTemplateSearchQuery.tags?: readonly string[]`** —
+  **AND**-matched (an entry must carry every listed tag), case-insensitive and
+  whitespace-trimmed through the new exported `normalizeTemplateTag`, and
+  composable with `category`, `text`, `size` and the offset cursor.
+- **The Templates panel renders tags as toggle chips**, with the active tag
+  echoed in a filter row that carries its own clear button — without that row,
+  a facet matching nothing would remove the only affordance to undo it along
+  with the results. Untagged entries render no chip row at all. Three new
+  `canvas.templates.tag*` keys in all four locales.
+- Free-text search already reached tags; it now does so safely on entries that
+  have none.
 
 ### Font catalog and the `fontCatalog` prop (PLAN-0035 P2)
 
@@ -129,6 +342,39 @@ sections. Behavior changes and opt-outs are catalogued in
   [docs/adapters.md](./docs/adapters.md), and
   [docs/export-capability-matrix.md](./docs/export-capability-matrix.md).
 
+### Motion and media are labelled contract-only (PLAN-0035 P0, `cp0-002`)
+
+**No behaviour changed and no export output moved** — this closes an honesty
+gap by disclosure, not by implementation. `@anvilkit/canvas-core`'s half of the
+same change is in its own CHANGELOG (`cp0-001`).
+
+- **A selected `video` or `audio` node now renders a `Media` inspector
+  section** carrying a *"Static preview"* badge and one kind-correct sentence:
+  a `video` renders **its poster still only**, on the canvas and in every
+  export; an `audio` node renders **nothing anywhere** — an editor-only
+  placeholder on the canvas, omitted from every export, with the layer keeping
+  only the asset reference. Deliberately static: a badge and a sentence, no
+  controls and no playback affordance, since anything interactive belongs to
+  the deferred motion programme.
+- **It also fixes a latent misclassification.** Neither kind had a branch in
+  the inspector's kind dispatch, so both fell through to the *extension*
+  `kindInspectors` lookup — which returns `null` for a built-in — and rendered
+  no kind-specific inspector at all. The product therefore said nothing about
+  any of this.
+- **Four new message keys** (`canvas.inspector.media`, `.mediaStaticBadge`,
+  `.mediaStaticVideo`, `.mediaStaticAudio`) in all four locale packs; no
+  literal user-facing text in the component.
+- **[docs/export-capability-matrix.md](./docs/export-capability-matrix.md)
+  gained a motion row and a "Motion: there is no motion output format"
+  section**, stating the four-way split rather than over-claiming: SVG warns
+  `ANIMATION_IGNORED` per animated node **and** per page, `pdf`/`pdf-print`
+  warn per page only, `png`/`jpeg`/`webp` drop motion **silently**, and `json`
+  round-trips the metadata verbatim.
+- **Fixed: a warning code that does not exist.** The same matrix documented
+  `ASSET_UNRESOLVED` for a missing or failed `image`/`svg` asset. Nothing emits
+  that code; the real one is `MISSING_ASSET`. A code a reader greps for and
+  cannot find is precisely the failure this disclosure exists to prevent.
+
 ### PRD 0012 completion pass
 
 - **Unit/DPI export-only decision formalized (FR-063, OD-1)**: Page Settings
@@ -146,8 +392,9 @@ sections. Behavior changes and opt-outs are catalogued in
   creates history entries.
 - **Tool-strip extensibility (FR-010)**: extension-registered tools (now
   describable via additive `label`/`labelKey`/`icon`/`shortcut`/`disabled`
-  metadata on `Tool`) surface in a "More tools" overflow and in the Elements
-  panel through ONE effective descriptor source; `toolStrip` accepts
+  metadata on `Tool`) surface in a "More tools" overflow — and, until
+  `cp3-009` deleted it, in the Elements panel's tool grid too — through ONE
+  effective descriptor source; `toolStrip` accepts
   `CanvasToolStripOptions` (`items` rail filter/reorder/promotion, `renderer`
   replacement) alongside the existing `false` opt-out.
 - **Upload progress + real cancellation (FR-091/092)**: the upload context

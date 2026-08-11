@@ -51,6 +51,14 @@ as a published npm dependency (`pnpm add`, above) is unaffected.
 - **Mountable UI** — `<LayerPanel>`, `<PropertyInspector>`, `<ElementsPanel>`,
   `<BrandPanel>`, `<ExportMenu>`, and inspector field primitives you compose
   into your own chrome (or use the `<CanvasWorkspace>` shell).
+- **Element library** — `<ElementsPanel>` is a content browser over a
+  **425-entry** MIT-licensed catalog (icons, shapes, lines, frames, stickers),
+  fetched on first query rather than at editor mount. Click or drag to insert
+  as one undo step; entries are real IR geometry, so they recolour through the
+  ordinary inspector controls and export as vectors. Supply your own with
+  `elementProvider`. **This replaced the panel's old drawing-tool grid — the
+  tool strip is now the only tool surface.** Migration:
+  [docs/migration.md](./docs/migration.md#new-defaults-and-their-opt-outs).
 - **Zero-config images** — with no asset adapter wired, dropped and picked
   files are stored in the browser (IndexedDB, 25 MiB per file / 200 MiB total,
   degrading to memory where IndexedDB is unavailable) and re-shown across
@@ -318,6 +326,17 @@ Register custom node kinds and tools through the `extensions` prop. Each
 `inspectors` (kind → inspector UI), and `tools`. Pair it with
 `createCanvasRuntime` in `@anvilkit/canvas-core`, which supplies the matching
 schema / command / serializer extensions for the same kinds.
+
+> **Where a contributed tool now appears.** Since `cp3-009` the floating tool
+> strip is the **only** tool surface — `<ElementsPanel>` used to render every
+> tool, built-in and extension alike, in one flat grid, and no longer lists
+> tools at all. An extension tool is still discovered automatically, but it
+> lands in the strip's **"More tools" overflow**: reachable, with its label,
+> icon, shortcut hint and `disabled` probe intact, but no longer visible at a
+> glance. Promote it into the rail with
+> `<CanvasWorkspace toolStrip={{ items: ["my-tool", "select", …] }} />`, or
+> replace the strip's rendering wholesale with `toolStrip={{ renderer }}`.
+> Details: [docs/migration.md](./docs/migration.md).
 
 ```tsx
 <CanvasStudio

@@ -1,6 +1,6 @@
 [
 	{
-		"name": "@anvilkit/canvas-editor",
+		"name": "@anvilkit/canvas-editor (all-inclusive, no code-splitting: inlines the ~56 kB gz lazy element catalog that no host pays eagerly — run check:bundle-budget for the eager payload)",
 		"path": "dist/index.js",
 		"limit": "400 KB",
 		"gzip": true,
