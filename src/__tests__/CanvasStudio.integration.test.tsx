@@ -911,6 +911,132 @@ describe("CanvasStudio integration", () => {
 		).not.toThrow();
 	});
 
+	describe("onSelectionChange (cp5-R03)", () => {
+		/** Drives the live selection store of whichever studio is mounted. */
+		let selectIds: (ids: readonly string[]) => void = () => undefined;
+		let clearSelection: () => void = () => undefined;
+		function CaptureSelectionApi(): null {
+			const ctx = useCanvasStudio();
+			selectIds = (ids) => ctx.selectionStore.getState().setSelection(ids);
+			clearSelection = () => ctx.selectionStore.getState().clearSelection();
+			return null;
+		}
+
+		function twoNodeIR() {
+			return createCanvasIR({
+				pages: [
+					createPage({
+						id: "p1",
+						root: createGroup({
+							id: "root",
+							bounds: { width: 400, height: 400 },
+							children: [
+								createRect({ id: "r1", bounds: { width: 10, height: 10 } }),
+								createRect({ id: "r2", bounds: { width: 10, height: 10 } }),
+							],
+						}),
+					}),
+				],
+				now: () => "2026-01-01T00:00:00.000Z",
+			});
+		}
+
+		it("fires on mount, on select and on deselect", () => {
+			const onSelectionChange = vi.fn();
+			render(
+				<CanvasStudio
+					initialIR={twoNodeIR()}
+					initialActivePageId="p1"
+					onSelectionChange={onSelectionChange}
+				>
+					<CaptureSelectionApi />
+				</CanvasStudio>,
+			);
+			// Mount reports the initial (empty) selection, exactly as
+			// `onActivePageChange` reports the initial page.
+			expect(onSelectionChange.mock.calls).toEqual([[null]]);
+
+			act(() => selectIds(["r1"]));
+			expect(onSelectionChange.mock.calls).toEqual([[null], ["r1"]]);
+
+			act(() => selectIds(["r2"]));
+			expect(onSelectionChange.mock.calls).toEqual([[null], ["r1"], ["r2"]]);
+
+			// Deselection reports null rather than going silent.
+			act(() => clearSelection());
+			expect(onSelectionChange.mock.calls).toEqual([
+				[null],
+				["r1"],
+				["r2"],
+				[null],
+			]);
+		});
+
+		it("does NOT re-fire for a redundant re-selection", () => {
+			const onSelectionChange = vi.fn();
+			render(
+				<CanvasStudio
+					initialIR={twoNodeIR()}
+					initialActivePageId="p1"
+					onSelectionChange={onSelectionChange}
+				>
+					<CaptureSelectionApi />
+				</CanvasStudio>,
+			);
+			act(() => selectIds(["r1"]));
+			expect(onSelectionChange).toHaveBeenCalledTimes(2);
+
+			// `setSelection` stores a FRESH array every time, so the store's
+			// `selectedIds` identity changes on each of these calls even though
+			// the selection does not. A naive effect keyed on the array would
+			// fire three more times; the derived-primitive snapshot fires none.
+			act(() => selectIds(["r1"]));
+			act(() => selectIds(["r1"]));
+			act(() => selectIds(["r1"]));
+			expect(onSelectionChange).toHaveBeenCalledTimes(2);
+			expect(onSelectionChange.mock.calls).toEqual([[null], ["r1"]]);
+
+			// A redundant DESELECT is equally silent.
+			act(() => clearSelection());
+			act(() => clearSelection());
+			expect(onSelectionChange.mock.calls).toEqual([[null], ["r1"], [null]]);
+		});
+
+		it("reports null for a multi-selection rather than picking one of N", () => {
+			const onSelectionChange = vi.fn();
+			render(
+				<CanvasStudio
+					initialIR={twoNodeIR()}
+					initialActivePageId="p1"
+					onSelectionChange={onSelectionChange}
+				>
+					<CaptureSelectionApi />
+				</CanvasStudio>,
+			);
+			act(() => selectIds(["r1"]));
+			act(() => selectIds(["r1", "r2"]));
+			expect(onSelectionChange.mock.calls).toEqual([[null], ["r1"], [null]]);
+
+			// Narrowing a multi-selection back to one node names it again.
+			act(() => selectIds(["r2"]));
+			expect(onSelectionChange.mock.calls).toEqual([
+				[null],
+				["r1"],
+				[null],
+				["r2"],
+			]);
+		});
+
+		it("does not throw when the selection changes without an onSelectionChange prop", () => {
+			render(
+				<CanvasStudio initialIR={twoNodeIR()} initialActivePageId="p1">
+					<CaptureSelectionApi />
+				</CanvasStudio>,
+			);
+			expect(() => act(() => selectIds(["r1"]))).not.toThrow();
+		});
+	});
+
 	it("renders children inside the context provider, giving host UI live useCanvasStudio() access (I3-5)", () => {
 		// A host toolbar/panel passed via `children` must resolve the SAME
 		// per-instance context as the editor — read the live active page and

@@ -29,6 +29,24 @@ export {
 	createCanvasEditorActions,
 	useCanvasActions,
 } from "./actions/editor-actions.js";
+// ── Element catalog (PLAN-0035 P3, cp3-001..cp3-003) ─────────────────────────
+// `<ElementsPanel elementProvider>` is the seam. The DEFAULT catalog is behind
+// a dynamic `import()` and is fetched on the panel's first query, never at
+// editor mount — importing `createDefaultElementProvider` costs the seam, not
+// the 189 KB of geometry. Host catalogs go through
+// `createStaticElementProvider(entries)`, or `createLazyElementProvider(load)`
+// to keep a large one out of the eager graph the same way.
+// Insertion (`cp3-004`) is exported alongside the catalog because
+// `<ElementsPanel onSelect>` OVERRIDES the built-in insert: a host that wants
+// its own handler AND the default behaviour needs a way to ask for it. Both
+// take the value `useCanvasStudio()` returns, commit ONE `node.create`, and
+// select the result — so undo removes an inserted element in one step.
+export {
+	type CanvasElementInsertOptions,
+	insertCanvasElement,
+	insertElementAtPoint,
+	insertElementAtViewportCenter,
+} from "./actions/element-insert-actions.js";
 // ── Asset adapter contracts (FR-090/091) ─────────────────────────────────────
 export type {
 	CanvasAssetPicker,
@@ -179,13 +197,6 @@ export {
 	resolveFontCatalog,
 	useCanvasFontCatalog,
 } from "./context/use-font-catalog.js";
-// ── Element catalog (PLAN-0035 P3, cp3-001..cp3-003) ─────────────────────────
-// `<ElementsPanel elementProvider>` is the seam. The DEFAULT catalog is behind
-// a dynamic `import()` and is fetched on the panel's first query, never at
-// editor mount — importing `createDefaultElementProvider` costs the seam, not
-// the 189 KB of geometry. Host catalogs go through
-// `createStaticElementProvider(entries)`, or `createLazyElementProvider(load)`
-// to keep a large one out of the eager graph the same way.
 export { createDefaultElementProvider } from "./elements/default-element-provider.js";
 export {
 	CANVAS_ELEMENT_CATEGORIES,

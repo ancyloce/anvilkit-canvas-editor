@@ -140,7 +140,10 @@ import { createRulerGuideStore } from "./stores/ruler-guide-store.js";
 import type { CanvasSaveState } from "./stores/save-status-store.js";
 import { createSaveStatusStore } from "./stores/save-status-store.js";
 import { createSceneStore } from "./stores/scene-store.js";
-import { createSelectionStore } from "./stores/selection-store.js";
+import {
+	createSelectionStore,
+	type SelectionStoreApi,
+} from "./stores/selection-store.js";
 import { createToolStore, type ToolId } from "./stores/tool-store.js";
 import { createUploadStore } from "./stores/upload-store.js";
 import { createViewportStore } from "./stores/viewport-store.js";
@@ -197,6 +200,23 @@ export interface CanvasStudioProps {
 	 * the artboard id).
 	 */
 	onActivePageChange?: (pageId: string) => void;
+	/**
+	 * Fires when the SINGLE selected node changes, with its id — or `null`
+	 * whenever there is no single node to name: nothing selected (deselection),
+	 * or a multi-selection, where naming one of N would be arbitrary. Hosts wire
+	 * this to surfaces that operate on exactly one node, e.g. the AI panel's
+	 * `image.replace` round-trip, which needs `AiLayerContext.selectedNodeId`.
+	 *
+	 * Fires once on mount with the initial value — like {@link onActivePageChange}
+	 * — and after that ONLY when the reported id actually changes. Re-selecting
+	 * the node that is already selected, or any selection churn that leaves the
+	 * derived id equal, is not reported again.
+	 *
+	 * Reports the PERSISTENT-node projection (`selectionStore.selectedIds`), so
+	 * a virtual node selected inside a component instance reports the owning
+	 * instance id — the id a `node.*` / `image.replace` command may target.
+	 */
+	onSelectionChange?: (nodeId: string | null) => void;
 	/** Required for the image tool (MVP-6 Task 8). Host opens picker, returns asset id. */
 	onPickAsset?: () => Promise<string>;
 	/**
@@ -545,6 +565,51 @@ function useHostCallbackRef<T>(callback: T): React.RefObject<T> {
 		ref.current = callback;
 	}, [callback]);
 	return ref;
+}
+
+/**
+ * cp5-R03: the one node a host callback can name, or `null`.
+ *
+ * A multi-selection has no single answer and an empty one has no answer at
+ * all. Both report `null` rather than picking a winner, so a host can never
+ * commit an `image.replace` against an arbitrarily-chosen node.
+ */
+function singleSelectedNodeId(ids: readonly string[]): string | null {
+	return ids.length === 1 ? (ids[0] ?? null) : null;
+}
+
+/**
+ * cp5-R03: fire {@link CanvasStudioProps.onSelectionChange} when — and only
+ * when — the single-selection id changes.
+ *
+ * A leaf component rather than an effect in `<CanvasStudio>`'s own body, for
+ * the reason `<CanvasToasterBridge>` is one: selection changes on every click,
+ * and subscribing at the studio level would re-render the whole editor body
+ * for a value nothing else there reads.
+ *
+ * The redundant-fire suppression is `useSyncExternalStore` comparing the
+ * DERIVED primitive with `Object.is`: selection churn that leaves the id equal
+ * — re-selecting the node already selected, or `setSelection` with an equal
+ * list (a fresh array every time) — produces neither a re-render here nor a
+ * re-run of the effect. Subscribing to `selectedIds` itself instead would fire
+ * on every one of those, which is exactly the naive-`useEffect` bug.
+ */
+function HostSelectionBridge({
+	selectionStore,
+	callbackRef,
+}: {
+	selectionStore: SelectionStoreApi;
+	callbackRef: React.RefObject<((nodeId: string | null) => void) | undefined>;
+}): null {
+	const selectedNodeId = useSyncExternalStore(
+		selectionStore.subscribe,
+		() => singleSelectedNodeId(selectionStore.getState().selectedIds),
+		() => singleSelectedNodeId(selectionStore.getState().selectedIds),
+	);
+	useEffect(() => {
+		callbackRef.current?.(selectedNodeId);
+	}, [selectedNodeId, callbackRef]);
+	return null;
 }
 
 /**
@@ -1053,6 +1118,7 @@ export function CanvasStudio({
 	onChange,
 	onChanges,
 	onActivePageChange,
+	onSelectionChange,
 	onPickAsset,
 	onAiIntent,
 	onError,
@@ -1150,6 +1216,10 @@ export function CanvasStudio({
 	useEffect(() => {
 		onActivePageChangeRef.current?.(activePageId);
 	}, [activePageId, onActivePageChangeRef]);
+
+	// cp5-R03: same host-callback shape as `onActivePageChange` above, but the
+	// subscription lives in <HostSelectionBridge> — see it for why.
+	const onSelectionChangeRef = useHostCallbackRef(onSelectionChange);
 
 	// FR-055: the isolation stack is per page — switching pages exits it.
 	useEffect(() => {
@@ -1959,6 +2029,12 @@ export function CanvasStudio({
 				)}
 				<CanvasKeyboardLayer />
 				<SceneAccessibilityTree />
+				{onSelectionChange ? (
+					<HostSelectionBridge
+						selectionStore={selectionStore}
+						callbackRef={onSelectionChangeRef}
+					/>
+				) : null}
 				{children}
 			</CanvasStudioStableContext>
 		</CanvasStudioContext>

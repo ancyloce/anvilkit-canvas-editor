@@ -53,11 +53,13 @@ export interface ToolDescriptor {
 }
 
 /**
- * Default tool order. Drawing tools first, then the AI tools. Consumed today
- * by the Elements dock panel; the floating tool strip (PRD 0012 FR-010,
- * Phase 1b) will reuse this same list. Hosts can consume a narrower slice
- * (e.g. to hide pen/AI). NOTE: no `<ToolRail>` component exists (M0-08 doc
- * fix — an earlier draft referenced one that was never built).
+ * Default tool order. Drawing tools first, then the AI tools. Consumed by the
+ * floating tool strip (PRD 0012 FR-010) — since `cp3-009` the ONLY surface for
+ * the built-in tools, so an id missing from this list is unreachable by
+ * pointer anywhere in the product. Hosts can consume a narrower slice (e.g. to
+ * hide pen/AI) via `<CanvasWorkspace toolStrip={{ items }}>`. NOTE: no
+ * `<ToolRail>` component exists (M0-08 doc fix — an earlier draft referenced
+ * one that was never built).
  */
 export const TOOL_RAIL_ITEMS: readonly ToolDescriptor[] = [
 	{
@@ -151,8 +153,9 @@ export interface RegistryToolDescriptor {
 /**
  * Merge {@link TOOL_RAIL_ITEMS} (built-ins, in rail order) with the
  * extension-registered tools of the effective registry (registry order) into
- * ONE descriptor list — the single source for the tool strip, its "More
- * tools" overflow, and the Elements panel. `registry` is normally
+ * ONE descriptor list — the single source for the tool strip and its "More
+ * tools" overflow (`cp3-009` retired the third consumer, the Elements panel's
+ * drawing-tool grid). `registry` is normally
  * `useCanvasStudio().toolRegistry`; `undefined` (e.g. a partial test context)
  * yields the built-ins alone. A registry override of a BUILT-IN id keeps the
  * rail's own metadata — overriding behavior must not reshuffle the chrome.

@@ -1,14 +1,16 @@
 /**
  * The element catalog contract (PLAN-0035 §5 P3, `cp3-001`).
  *
- * WHAT IS BROKEN TODAY.
+ * WHAT THIS REPLACED.
  *
- * The "Elements" panel is a misnomer. It maps the drawing-tool registry to
- * buttons and filters them by localized label (`panels/ElementsPanel.tsx:47-70`),
- * announcing itself as `aria-label` **"Drawing tools"** (`:91`). There is no
- * shape library, no icon set, no graphics. This module defines the contract
- * behind a real one; `cp3-009` retires the tool-filter panel (ADR 0008
- * decision 4).
+ * The "Elements" panel used to be a misnomer: it mapped the drawing-TOOL
+ * registry to buttons and filtered them by localized label, announcing itself
+ * as `aria-label` **"Drawing tools"**. There was no shape library, no icon set,
+ * no graphics. This module defines the contract behind a real one. `cp3-003`
+ * rebuilt the panel as a content browser over {@link CanvasElementProvider} and
+ * `cp3-009` deleted the leftover tool grid outright — the drawing tools now
+ * live only in the floating tool strip (`workspace/toolstrip/ToolStrip.tsx`).
+ * ADR 0008 decision 4.
  *
  * THE KEY DECISION: `build()` RETURNS A NODE, NOT AN ASSET REFERENCE.
  *

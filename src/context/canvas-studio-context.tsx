@@ -449,9 +449,10 @@ export interface CanvasStudioContextValue {
 	/**
 	 * The EFFECTIVE tool registry (FR-010): default tools + extension-
 	 * contributed tools + the `toolRegistry` prop override — the SAME registry
-	 * `ToolInteractionLayer` dispatches through, so chrome surfaces (tool
-	 * strip, its "More tools" overflow, the Elements panel) list exactly the
-	 * tools that can actually run. Referentially stable (memoized by
+	 * `ToolInteractionLayer` dispatches through, so the chrome (the tool strip
+	 * and its "More tools" overflow — the only tool surfaces since `cp3-009`)
+	 * lists exactly the tools that can actually run. Referentially stable
+	 * (memoized by
 	 * `<CanvasStudio>`; changes only when `extensions`/`toolRegistry` change).
 	 * Optional for partial test contexts, where chrome falls back to the
 	 * built-in rail alone.

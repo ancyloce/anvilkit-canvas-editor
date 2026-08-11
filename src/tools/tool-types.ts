@@ -112,8 +112,10 @@ export interface Tool {
 	cursor: string;
 	/**
 	 * FR-010 presentation metadata (all optional — behavior-only tools stay
-	 * valid): how this tool appears in the workspace chrome (tool strip
-	 * overflow, Elements panel). English display name; falls back to `id`.
+	 * valid): how this tool appears in the workspace chrome (the tool strip's
+	 * "More tools" overflow, or the rail itself when the host promotes the id
+	 * with `<CanvasWorkspace toolStrip={{ items }}>`). English display name;
+	 * falls back to `id`.
 	 */
 	label?: string;
 	/** `canvas.*` i18n key resolved before {@link label} via `t(labelKey, label)`. */
