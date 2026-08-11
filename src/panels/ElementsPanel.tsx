@@ -14,20 +14,28 @@
  * speaks. ADR 0008 decision 4 approved the restructuring as an announced
  * user-visible break (owner sign-off 2026-08-07).
  *
- * THE DRAWING TOOLS ARE STILL HERE, AND THAT IS DELIBERATE — `cp3-009` REMOVES
- * THEM.
+ * INSERTION (`cp3-004`) HAS TWO PATHS AND ONE IMPLEMENTATION.
  *
- * `ToolStrip` already renders the identical effective registry and is already
- * mounted by `CanvasWorkspace`, so the tools are not stranded. But nine E2E
- * specs outside this package drive tool activation through this panel's
- * `elements-tool-<id>` testids (`apps/studio/e2e/canvas/*.spec.ts` ×8 and
- * `apps/docs/tests/playground-canvas.spec.ts`, the latter in a separate CI
- * job), and ADR 0008 decision 4 assigns "the move and the spec updates" to
- * `cp3-009`. Deleting the grid here would redden two CI jobs that this task
- * cannot fix. So the tool grid survives as an explicitly DEPRECATED secondary
- * section with its testids and behaviour byte-identical, and `cp3-009` deletes
- * {@link LEGACY_TOOL_SECTION_MARKER}'s block together with the selector swap in
- * one atomic change. Nothing else in this file references it.
+ * Clicking a cell (or Enter/Space on it — the cells are real buttons) inserts
+ * at the viewport centre; dragging one onto the canvas inserts at the drop
+ * point, inside the frame under the cursor. Both go through
+ * `actions/element-insert-actions.ts`, which commits ONE `node.create` and
+ * selects it, so undo removes an inserted element in a single step. The drag
+ * rides `CanvasDropZone`'s existing handlers rather than a second drop surface.
+ *
+ * THE DRAWING TOOLS ARE GONE FROM HERE — `cp3-009` MOVED THEM.
+ *
+ * `cp3-003` left the old tool grid behind as a dated, marked, single-block
+ * migration bridge so the deletion and the selector swap in the nine E2E specs
+ * that drove it could land as ONE change with no red window. `cp3-009` is that
+ * change: `LegacyToolSection`, its call site and `ElementsPanelProps.tools` are
+ * deleted, and the specs now drive `tool-strip-<id>`. The tools were never
+ * stranded for a moment — `<ToolStrip>` renders the identical effective
+ * registry (`chrome/icons.ts`'s `toolDescriptorsFromRegistry`) and
+ * `<CanvasWorkspace>` has mounted it all along (`toolStrip` defaults to true).
+ * This panel no longer reads the tool registry or the tool store at all; the
+ * ONE thing it still takes from `useCanvasStudio()` is the insert dispatch
+ * (`cp3-004`). ADR 0008 decision 4, conditions 2 and 3.
  *
  * THE CATALOG IS NEVER STATICALLY IMPORTED.
  *
@@ -42,19 +50,14 @@
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import * as React from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	useSyncExternalStore,
-} from "react";
+	beginElementDrag,
+	ELEMENT_DRAG_MIME,
+	endElementDrag,
+	insertElementAtViewportCenter,
+} from "../actions/element-insert-actions.js";
 import {
-	type ToolDescriptor,
-	toolDescriptorsFromRegistry,
-} from "../chrome/icons.js";
-import {
-	type CanvasT,
 	useCanvasStudio,
 	useCanvasT,
 } from "../context/canvas-studio-context.js";
@@ -109,9 +112,6 @@ const PREVIEW_STROKE_RATIO = 0.0625;
 
 /** Skeleton cells while the first page is in flight — Templates renders 3. */
 const SKELETON_COUNT = 6;
-
-/** Grep handle for `cp3-009`: the deprecated tool grid's only marker. */
-const LEGACY_TOOL_SECTION_MARKER = "cp3-009-delete-with-toolstrip-migration";
 
 /** Tab labels. Static literals so the A-11 catalog scan can see every key. */
 const CATEGORY_LABELS: Record<
@@ -283,20 +283,17 @@ export interface ElementsPanelProps {
 	/**
 	 * Activation callback — click, Enter or Space on a grid cell.
 	 *
-	 * `cp3-004` owns insertion (drop point, viewport centre, one `node.create`,
-	 * selection); this is the seam it binds to. Absent means the grid browses
-	 * without inserting.
+	 * OVERRIDES the built-in insert (`cp3-004`) rather than observing it: a
+	 * supplied handler owns the interaction, which is what an element PICKER —
+	 * a host dialog that returns a choice instead of editing the document —
+	 * needs. Absent (the normal case) inserts the entry at the viewport centre
+	 * as one undo entry and selects it.
+	 *
+	 * A host that wants both its own handler AND the default behaviour calls
+	 * `insertElementAtViewportCenter(ctx, entry)` itself; it is exported from
+	 * the package root for exactly that.
 	 */
 	onSelect?: (entry: CanvasElementEntry) => void;
-	/**
-	 * @deprecated Scoped to the deprecated drawing-tool section and removed with
-	 * it in `cp3-009` (ADR 0008 decision 4). It still means exactly what it
-	 * always meant — "render these tools instead of the effective registry" —
-	 * and has NOT been repurposed for element content. Use
-	 * {@link ElementsPanelProps.elementProvider} for the catalog, and
-	 * `<CanvasWorkspace toolStrip={{ items }}>` to control the tool surface.
-	 */
-	tools?: readonly ToolDescriptor[];
 	className?: string;
 }
 
@@ -304,10 +301,14 @@ export function ElementsPanel({
 	search = "",
 	elementProvider,
 	onSelect,
-	tools,
 	className,
 }: ElementsPanelProps): React.JSX.Element {
 	const t = useCanvasT();
+	// `cp3-004` — the insert dispatch, and the ONLY reason this panel still
+	// reads the studio context now that `cp3-009` has deleted the tool grid.
+	// (`cp3-003`'s handoff predicted this import would go with the grid; it
+	// cannot — the click and drag insert paths dispatch through it.)
+	const ctx = useCanvasStudio();
 	const [category, setCategory] = useState<CanvasElementCategory | "all">(
 		ALL_CATEGORIES,
 	);
@@ -387,6 +388,19 @@ export function ElementsPanel({
 				if (requestSeq.current !== seq) return;
 				setResult((prev) => ({ ...prev, loading: false, error: true }));
 			});
+	}
+
+	/**
+	 * `cp3-004` click / Enter / Space: insert at the viewport centre, unless the
+	 * host took the seam. Real `<button type="button">` cells mean the keyboard
+	 * path is the platform's and needs no key handler of its own.
+	 */
+	function activate(entry: CanvasElementEntry): void {
+		if (onSelect) {
+			onSelect(entry);
+			return;
+		}
+		insertElementAtViewportCenter(ctx, entry);
 	}
 
 	// Clamped during render rather than reset in an effect: a shrinking result
@@ -529,8 +543,22 @@ export function ElementsPanel({
 								data-testid={`elements-item-${entry.id}`}
 								data-category={entry.category}
 								title={entry.name}
+								// `cp3-004` drag path. The id goes in the `dataTransfer`
+								// (so `CanvasDropZone`'s `dragover` can recognise the drag
+								// from `types` alone, before any data is readable); the
+								// ENTRY goes in the module-scope handoff, because
+								// `entry.build()` is a function and a `DataTransfer`
+								// carries strings. `dragend` always fires, including on a
+								// cancelled drag, so the handoff cannot outlive the gesture.
+								draggable
+								onDragStart={(event) => {
+									event.dataTransfer.setData(ELEMENT_DRAG_MIME, entry.id);
+									event.dataTransfer.effectAllowed = "copy";
+									beginElementDrag(entry);
+								}}
+								onDragEnd={endElementDrag}
 								onFocus={() => setActiveIndex(index)}
-								onClick={() => onSelect?.(entry)}
+								onClick={() => activate(entry)}
 								className="h-auto flex-col gap-1.5 rounded-lg px-1 py-2 text-[10.5px] font-medium text-muted-foreground"
 							>
 								<span className="flex h-10 w-full items-center justify-center">
@@ -554,116 +582,6 @@ export function ElementsPanel({
 						</Button>
 					) : null}
 				</>
-			)}
-
-			<LegacyToolSection search={search} t={t} {...(tools ? { tools } : {})} />
-		</div>
-	);
-}
-
-/**
- * DEPRECATED — `cp3-009` deletes this component, its call site, and
- * {@link ElementsPanelProps.tools} in one change, together with the
- * `elements-tool-<id>` → `tool-strip-<id>` selector swap across the nine E2E
- * specs that drive it. Marker: {@link LEGACY_TOOL_SECTION_MARKER}.
- *
- * Behaviour, markup and testids are byte-identical to the pre-`cp3-003` panel
- * on purpose: this exists only so the migration is one atomic commit instead of
- * two red CI jobs in between (ADR 0008 decision 4, condition 3).
- */
-function LegacyToolSection({
-	search,
-	tools,
-	t,
-}: {
-	search: string;
-	tools?: readonly ToolDescriptor[];
-	t: CanvasT;
-}): React.JSX.Element {
-	const ctx = useCanvasStudio();
-	const activeTool = useSyncExternalStore(
-		ctx.toolStore.subscribe,
-		() => ctx.toolStore.getState().activeTool,
-		() => ctx.toolStore.getState().activeTool,
-	);
-
-	const query = search.trim().toLowerCase();
-	// Resolve the localized label once per tool so the search filter, button
-	// title, and visible caption all match what the user reads. Without a
-	// `tools` override the list derives from the effective registry — an
-	// absent registry (partial test contexts) yields the built-ins alone.
-	const resolved = tools
-		? tools.map((tool) => ({
-				id: tool.id,
-				icon: tool.icon,
-				resolvedLabel: t(tool.labelKey, tool.label),
-			}))
-		: toolDescriptorsFromRegistry(ctx.toolRegistry).map((tool) => ({
-				id: tool.id,
-				icon: tool.icon,
-				resolvedLabel:
-					tool.labelKey !== undefined
-						? t(tool.labelKey, tool.label)
-						: tool.label,
-			}));
-	const visible = query
-		? resolved.filter((tool) =>
-				tool.resolvedLabel.toLowerCase().includes(query),
-			)
-		: resolved;
-
-	return (
-		<div
-			data-testid="elements-tools"
-			data-deprecated={LEGACY_TOOL_SECTION_MARKER}
-			className="mt-1 flex flex-col gap-2 border-t border-border pt-2"
-		>
-			<div className="px-1 text-[11px] font-medium text-muted-foreground">
-				{t("canvas.elements.drawingTools", "Drawing tools")}
-			</div>
-			{visible.length === 0 ? (
-				<div
-					className="px-1 py-2 text-xs text-muted-foreground italic"
-					data-testid="elements-panel-empty"
-				>
-					{t("canvas.elements.noMatch", "No tools match “{search}”.").replace(
-						"{search}",
-						search,
-					)}
-				</div>
-			) : (
-				// Unchanged from the pre-cp3-003 panel; cp3-009 deletes it.
-				<div
-					className="grid grid-cols-3 gap-2"
-					role="listbox"
-					aria-label={t("canvas.elements.drawingTools", "Drawing tools")}
-				>
-					{visible.map(({ id, resolvedLabel, icon: Icon }) => {
-						const active = activeTool === id;
-						return (
-							<Button
-								key={id}
-								type="button"
-								variant="ghost"
-								role="option"
-								aria-selected={active}
-								data-testid={`elements-tool-${id}`}
-								data-active={active ? "true" : "false"}
-								title={resolvedLabel}
-								onClick={() => ctx.toolStore.getState().setActiveTool(id)}
-								className={cn(
-									"h-auto flex-col gap-1.5 rounded-lg px-0 py-3 text-[10.5px] font-medium",
-									active
-										? "bg-foreground text-background hover:bg-foreground/90 hover:text-background"
-										: "text-muted-foreground",
-								)}
-							>
-								<Icon className="size-5" aria-hidden />
-								<span>{resolvedLabel}</span>
-							</Button>
-						);
-					})}
-				</div>
 			)}
 		</div>
 	);

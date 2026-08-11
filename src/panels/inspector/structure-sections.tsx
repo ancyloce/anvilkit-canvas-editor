@@ -2,6 +2,7 @@
 
 import type { CanvasGroupNode, CanvasPathNode } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
+import * as React from "react";
 import type {
 	CanvasStudioContextValue,
 	CanvasT,
@@ -69,6 +70,21 @@ export function renderPathFields(
 	);
 }
 
+/**
+ * A group carries no paint of its own, and that is a fact of the IR rather
+ * than a gap in this section: `CanvasGroupNode` is `{ type; children }`
+ * (`core/src/ir/types.ts:484-487`) — no `fill`, no `background`, no `stroke`.
+ *
+ * `cp3-005`: that is exactly what makes the 22 multi-colour catalog stickers
+ * safe. Each builds a `group` of independently-painted parts, so there is no
+ * single control here that COULD repaint "some" of one — the half-recolour
+ * this task forbids is structurally impossible rather than merely avoided.
+ * What was missing is that the product never said so, leaving a user who
+ * selects a sticker looking at a colourless section with no idea that
+ * recolouring is per part. Hence the note: it names the mechanism (select the
+ * part, in the Layer panel or on the canvas) instead of leaving the absence of
+ * a fill control to be read as a bug.
+ */
 export function renderGroupFields(
 	nodes: readonly CanvasGroupNode[],
 	t: CanvasT,
@@ -89,6 +105,16 @@ export function renderGroupFields(
 						: children.value}
 				</span>
 			</FieldRow>
+			<p
+				data-testid="prop-group-part-colors"
+				role="note"
+				className="rounded-md bg-muted px-2.5 py-2 text-[0.7rem] leading-snug text-muted-foreground"
+			>
+				{t(
+					"canvas.inspector.groupPartColors",
+					"A group has no color of its own. Select a part to recolor it.",
+				)}
+			</p>
 		</Section>
 	);
 }

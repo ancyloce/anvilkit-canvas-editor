@@ -446,8 +446,17 @@ describe("ElementsPanel — keyboard grid (a11y)", () => {
 	});
 });
 
-describe("ElementsPanel — deprecated drawing-tool section (cp3-009 deletes it)", () => {
-	it("still renders elements-tool-<id> and still activates the tool", async () => {
+describe("ElementsPanel — the drawing tools are GONE (cp3-009)", () => {
+	/**
+	 * `cp3-003` left a deprecated `LegacyToolSection` in this panel and pinned it
+	 * with two tests, deliberately, so that deleting the grid without also
+	 * swapping the nine E2E specs' selectors would go red. `cp3-009` did both in
+	 * one change, so those two tests are gone with the code they pinned — and
+	 * these replace them, asserting the ABSENCE rather than nothing at all. The
+	 * positive half ("all 14 tools activate from the rail") lives in
+	 * `workspace/toolstrip/__tests__/ToolStrip.test.tsx`.
+	 */
+	it("renders no elements-tool-<id> button for any built-in tool", async () => {
 		const harness = makeHarness();
 		render(
 			<CanvasStudioContext.Provider value={harness.studioCtx}>
@@ -456,40 +465,55 @@ describe("ElementsPanel — deprecated drawing-tool section (cp3-009 deletes it)
 		);
 		await screen.findByTestId("elements-grid");
 
-		// Nine E2E specs outside this package drive tool activation through these
-		// testids. They stay green until cp3-009 swaps them for tool-strip-<id>
-		// in the same change that deletes this section.
-		const rect = screen.getByTestId("elements-tool-rect");
-		fireEvent.click(rect);
-		expect(harness.studioCtx.toolStore.getState().activeTool).toBe("rect");
-		expect(screen.getByTestId("elements-tool-rect")).toHaveAttribute(
-			"data-active",
-			"true",
-		);
+		for (const id of ["select", "rect", "ellipse", "text", "hand", "image"]) {
+			expect(screen.queryByTestId(`elements-tool-${id}`)).toBeNull();
+		}
+		// The whole section, its heading and its empty state went with the grid.
+		expect(screen.queryByTestId("elements-tools")).toBeNull();
+		expect(screen.queryByTestId("elements-panel-empty")).toBeNull();
+		expect(document.querySelector("[data-deprecated]")).toBeNull();
 	});
 
-	it("the `tools` prop still overrides the tool list and nothing else", async () => {
+	it("never touches the tool store — activating an element does not change the active tool", async () => {
 		const harness = makeHarness();
+		const before = harness.studioCtx.toolStore.getState().activeTool;
+		const setActiveTool = vi.spyOn(
+			harness.studioCtx.toolStore.getState(),
+			"setActiveTool",
+		);
 		render(
 			<CanvasStudioContext.Provider value={harness.studioCtx}>
 				<ElementsPanel
 					elementProvider={createStaticElementProvider(CATALOG)}
-					tools={[
-						{
-							id: "rect",
-							labelKey: "canvas.tool.rect",
-							label: "Rectangle",
-							icon: () => <svg aria-hidden />,
-						},
-					]}
+					onSelect={() => undefined}
 				/>
 			</CanvasStudioContext.Provider>,
 		);
 		await screen.findByTestId("elements-grid");
+		fireEvent.click(screen.getByTestId("elements-item-square"));
 
-		expect(screen.getByTestId("elements-tool-rect")).toBeTruthy();
-		expect(screen.queryByTestId("elements-tool-ellipse")).toBeNull();
-		// It governs the tool grid only — the element content is untouched.
+		expect(setActiveTool).not.toHaveBeenCalled();
+		expect(harness.studioCtx.toolStore.getState().activeTool).toBe(before);
+	});
+
+	it("the tool registry no longer reaches this panel at all", async () => {
+		// A registry carrying an extension tool used to add a cell to the grid.
+		// Now it changes nothing: the option count is exactly the catalog's.
+		const harness = makeHarness();
+		harness.studioCtx.toolRegistry = {
+			"my-ext-tool": {
+				id: "my-ext-tool",
+				cursor: "crosshair",
+				label: "My extension tool",
+			},
+		};
+		render(
+			<CanvasStudioContext.Provider value={harness.studioCtx}>
+				<ElementsPanel elementProvider={createStaticElementProvider(CATALOG)} />
+			</CanvasStudioContext.Provider>,
+		);
+		await screen.findByTestId("elements-grid");
 		expect(options()).toHaveLength(CATALOG.length);
+		expect(screen.queryByTestId("elements-tool-my-ext-tool")).toBeNull();
 	});
 });
