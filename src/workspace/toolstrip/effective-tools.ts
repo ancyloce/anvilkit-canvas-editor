@@ -14,10 +14,11 @@ import {
  *
  * ONE resolved, display-ready list per registry: the built-in rail items in
  * rail order, then every extension-registered tool. Feeds the tool strip, its
- * "More tools" overflow, and custom `toolStrip` renderers. The raw (un-
- * localized) merge lives in `chrome/icons.ts` (`toolDescriptorsFromRegistry`)
- * so lower-layer surfaces like the Elements panel can share it —
- * `check-layering.mjs` ranks `panels/` below `workspace/`.
+ * "More tools" overflow, and custom `toolStrip` renderers — which, since
+ * `cp3-009` deleted the Elements panel's drawing-tool grid, are the whole set
+ * of tool surfaces. The raw (un-localized) merge still lives one layer down in
+ * `chrome/icons.ts` (`toolDescriptorsFromRegistry`), where `check-layering.mjs`
+ * lets any surface below `workspace/` reach it.
  */
 
 /** A display-ready tool entry: localized label, icon, shortcut label. */

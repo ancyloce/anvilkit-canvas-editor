@@ -41,6 +41,7 @@ import {
 	switchToPage,
 } from "@/pages/page-actions.js";
 import { usePageThumbnails } from "@/perf/page-thumbnails.js";
+import { CANVAS_VIEWPORT_ATTRIBUTE } from "@/stage/viewport-point.js";
 import { CanvasRulers } from "./CanvasRulers.js";
 import { type ElementActions, ElementControls } from "./ElementControls.js";
 import { IsolationBreadcrumb } from "./IsolationBreadcrumb.js";
@@ -219,6 +220,14 @@ export function PagesCanvas({
 			<div
 				ref={scrollRef}
 				data-testid="pages-canvas"
+				// `cp3-004`: the runtime marker `viewportCenterInPage` finds by
+				// `closest()` from the stage container. The stage is sized to the
+				// active page × zoom, so once zoomed past "fit" its own centre is the
+				// PAGE's centre, not the view's; intersecting it with this element's
+				// rect is what makes click-to-insert land in the middle of what the
+				// user can actually see. Same role `[data-page-surface="active"]`
+				// plays for `CanvasRulers` — a runtime contract, not a test hook.
+				{...{ [CANVAS_VIEWPORT_ATTRIBUTE]: "" }}
 				className="min-h-0 flex-1 overflow-auto px-7 pt-16 pb-14 dark:bg-neutral-800 bg-neutral-50"
 			>
 				<div className="flex flex-col items-center gap-8 pb-8">

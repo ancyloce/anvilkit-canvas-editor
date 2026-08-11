@@ -8,6 +8,13 @@ import {
 import * as React from "react";
 import { type ReactNode, useRef, useState } from "react";
 import {
+	draggedElementEntry,
+	ELEMENT_DRAG_MIME,
+	endElementDrag,
+	insertCanvasElement,
+	insertElementAtPoint,
+} from "../../actions/element-insert-actions.js";
+import {
 	insertAssetsImpl,
 	uploadFilesImpl,
 	uploadSingleFile,
@@ -24,6 +31,7 @@ import {
 	wellImage,
 } from "../../selection/frame-image-actions.js";
 import { resolvedPageSpace } from "../../stage/resolved-page-space.js";
+import { clientPointToPage } from "../../stage/viewport-point.js";
 import { type CanvasDropTarget, resolveDropTarget } from "./drop-target.js";
 import { runUploadWork } from "./upload-failure.js";
 
@@ -33,35 +41,6 @@ import { runUploadWork } from "./upload-failure.js";
  * re-upload happens on drop.
  */
 export const ASSET_DRAG_MIME = "application/x-anvilkit-canvas-asset";
-
-/**
- * Convert a drop event's screen coordinates into page-space coordinates
- * (FR-092 "inserted at the drop position"). Mirrors — inverted — the
- * container + zoom + pan transform already used to place on-stage overlays
- * (`CropEditorOverlay`/`TextEditorOverlay`/`RichTextToolbar`:
- * `screenX = containerRect.left + pageX * zoom + panX`). Returns undefined
- * when there's no live stage to anchor against, so callers fall back to
- * page-center insertion.
- */
-function clientPointToPage(
-	ctx: CanvasStudioContextValue,
-	clientX: number,
-	clientY: number,
-): { x: number; y: number } | undefined {
-	const stage = ctx.stage;
-	// Call `container()` AS A METHOD — an unbound reference drops Konva's
-	// `this` binding and crashes against a real stage (see the same note on
-	// CropEditorOverlay/TextEditorOverlay).
-	const container =
-		stage && typeof stage.container === "function" ? stage.container() : null;
-	const rect = container?.getBoundingClientRect?.();
-	if (!rect) return undefined;
-	const vp = ctx.viewportStore.getState();
-	return {
-		x: (clientX - rect.left - vp.panX) / vp.zoom,
-		y: (clientY - rect.top - vp.panY) / vp.zoom,
-	};
-}
 
 /** The FR-093 replace target under a client point, if any. */
 function targetAtClientPoint(
@@ -152,7 +131,20 @@ export function CanvasDropZone({
 	const hoverRaf = useRef<number | null>(null);
 
 	const isAcceptedDrag = (types: readonly string[] | DOMStringList): boolean =>
-		Array.from(types).some((ty) => ty === "Files" || ty === ASSET_DRAG_MIME);
+		Array.from(types).some(
+			(ty) =>
+				ty === "Files" || ty === ASSET_DRAG_MIME || ty === ELEMENT_DRAG_MIME,
+		);
+
+	/**
+	 * `cp3-004`: an element drag is a CREATE, never a replace. Resolving a
+	 * replace target for it would light the "Drop to replace" badge over an
+	 * image the drop is not going to touch — so the hover pass is skipped
+	 * entirely and the drop parents into the frame under the cursor instead
+	 * (see `insertElementAtPoint`).
+	 */
+	const isElementDrag = (types: readonly string[] | DOMStringList): boolean =>
+		Array.from(types).some((ty) => ty === ELEMENT_DRAG_MIME);
 
 	const clearHover = (): void => {
 		if (hoverRaf.current !== null) {
@@ -261,6 +253,29 @@ export function CanvasDropZone({
 		insertAssetsImpl(ctx, [asset], clientPointToPage(ctx, clientX, clientY));
 	};
 
+	/**
+	 * `cp3-004`: a catalog element dragged out of the Elements panel. ONE
+	 * `node.create` at the drop point, parented into the frame under the cursor
+	 * when there is one — see `actions/element-insert-actions.ts`. A drop whose
+	 * payload never arrived (a drag begun in another window) inserts nothing:
+	 * the entry's `build()` is not something a `dataTransfer` can carry.
+	 */
+	const handleElementDrop = (
+		entryId: string,
+		clientX: number,
+		clientY: number,
+	): void => {
+		const entry = draggedElementEntry(entryId);
+		endElementDrag();
+		if (!entry) return;
+		const point = clientPointToPage(ctx, clientX, clientY);
+		// No measurable stage → page centre, the same fallback
+		// `buildAssetInsertCommands` uses for an unanchorable drop. Never (0, 0):
+		// an element pinned to the page origin reads as a bug.
+		if (point) insertElementAtPoint(ctx, entry, point);
+		else insertCanvasElement(ctx, entry);
+	};
+
 	const hoverShapeKind = hoveredClipShapeKind(hoverTarget);
 	const hoverLabel =
 		hoverTarget === undefined
@@ -288,6 +303,10 @@ export function CanvasDropZone({
 				e.preventDefault();
 				setDragging(true);
 				const { clientX, clientY } = e;
+				// An element drag creates; it never replaces. Skipping the hover
+				// pass is what keeps "Drop to replace" off an image the drop is
+				// not going to touch.
+				if (isElementDrag(e.dataTransfer.types)) return;
 				// Single-item OS drags don't expose file counts until drop; the
 				// highlight is advisory — the drop handler re-resolves and applies
 				// the multi-file rule authoritatively.
@@ -300,9 +319,15 @@ export function CanvasDropZone({
 			onDragLeave={clearHover}
 			onDrop={(e) => {
 				// `getData` may be absent on synthetic dataTransfer stubs.
+				const elementId = e.dataTransfer?.getData?.(ELEMENT_DRAG_MIME);
 				const assetId = e.dataTransfer?.getData?.(ASSET_DRAG_MIME);
 				const files = e.dataTransfer?.files;
 				clearHover();
+				if (elementId) {
+					e.preventDefault();
+					handleElementDrop(elementId, e.clientX, e.clientY);
+					return;
+				}
 				if (assetId) {
 					e.preventDefault();
 					handleAssetDrop(assetId, e.clientX, e.clientY);
