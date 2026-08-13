@@ -42,6 +42,7 @@ import {
 } from "../context/field-contract.js";
 import { resolveNodeWorldPosition } from "../stage/node-world-position.js";
 import { resolvedNodeWorldPosition } from "../stage/resolved-page-space.js";
+import { pageToClientPoint } from "../stage/viewport-point.js";
 import {
 	flattenRichText,
 	rebuildRichTextParagraphs,
@@ -296,9 +297,6 @@ export function RichTextToolbar(): React.JSX.Element | null {
 			: node;
 	};
 
-	const container =
-		typeof ctx.stage.container === "function" ? ctx.stage.container() : null;
-	const rect = container?.getBoundingClientRect?.();
 	// Ancestor-composed (E-10) — see TextEditorOverlay, which shares this
 	// positioning contract; a rich-text node nested in a moved/rotated/scaled
 	// group or frame needs more than its own local transform.x/y.
@@ -308,8 +306,10 @@ export function RichTextToolbar(): React.JSX.Element | null {
 			: null) ??
 		resolveNodeWorldPosition(ctx.ir, richText.id) ??
 		richText.transform;
-	const left = (rect?.left ?? 0) + worldPosition.x * zoom + panX;
-	const top = (rect?.top ?? 0) + worldPosition.y * zoom + panY;
+	// K-1: footprint-anchored shared mapping (see TextEditorOverlay).
+	const anchor = pageToClientPoint(ctx, worldPosition.x, worldPosition.y);
+	const left = anchor?.x ?? worldPosition.x * zoom + panX;
+	const top = anchor?.y ?? worldPosition.y * zoom + panY;
 
 	const firstStyle = resolveSpanStyle(
 		richText.paragraphs[0]?.spans[0] ?? { text: "" },

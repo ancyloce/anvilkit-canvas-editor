@@ -27,6 +27,7 @@ import {
 import { useCanvasBrandKit } from "../stage/CanvasBrandKitContext.js";
 import { resolveNodeWorldPosition } from "../stage/node-world-position.js";
 import { resolvedNodeWorldPosition } from "../stage/resolved-page-space.js";
+import { pageToClientPoint } from "../stage/viewport-point.js";
 import {
 	flattenRichText,
 	rebuildRichTextParagraphs,
@@ -172,13 +173,6 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 		return null;
 	}
 
-	// Call `container()` AS A METHOD on the stage — Konva's `container()`
-	// delegates to `this.getContainer()`, so an unbound `const fn =
-	// stage.container; fn()` crashes ("reading 'getContainer'") against a real
-	// Konva stage (fake test stages use a `this`-less function, so tests pass).
-	const container =
-		typeof stage.container === "function" ? stage.container() : null;
-	const rect = container?.getBoundingClientRect?.();
 	// Ancestor-composed (E-10): a node nested inside a moved/rotated/scaled
 	// group or frame needs more than its own local transform.x/y to find its
 	// TRUE page-space position. Falls back to the node's own transform (the
@@ -191,8 +185,16 @@ export function TextEditorOverlay(): React.JSX.Element | null {
 			: null) ??
 		resolveNodeWorldPosition(ir, editingNodeId) ??
 		editingNode.transform;
-	const left = (rect?.left ?? 0) + worldPosition.x * zoom + panX;
-	const top = (rect?.top ?? 0) + worldPosition.y * zoom + panY;
+	// K-1: the shared forward mapping anchors on the stage FOOTPRINT, so the
+	// windowed stage cannot skew this overlay; the raw-formula fallback keeps
+	// the pre-existing container-less behavior (anchor at the page origin).
+	const anchor = pageToClientPoint(
+		{ stage, viewportStore },
+		worldPosition.x,
+		worldPosition.y,
+	);
+	const left = anchor?.x ?? worldPosition.x * zoom + panX;
+	const top = anchor?.y ?? worldPosition.y * zoom + panY;
 	const overlayStyle = resolveOverlayStyle(editingNode, brandKit);
 
 	const commitAndClose = () => {

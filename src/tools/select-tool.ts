@@ -46,6 +46,36 @@ function selectionScope(ctx: ToolContext): readonly CanvasNode[] {
 const MIN_MOVE_DISTANCE = 0.5;
 const MIN_MARQUEE_SIZE = 2;
 
+/**
+ * Place every dragged node's LIVE Konva node at `nodeStart + delta`, applying
+ * each node's render offset so centered shapes (Konva.Ellipse, whose
+ * `position()` is its center, not its top-left) track the cursor instead of
+ * drifting by half their bounds. See `nodeRenderOffset`.
+ *
+ * Shared by the drag itself and by the sub-threshold RESTORE below, which
+ * passes a zero delta. Those two must agree exactly — a restore that
+ * reconstructed the offset arithmetic on its own would put centered shapes back
+ * half a bounds away — so they are one function, not two.
+ */
+function positionDraggedNodes(
+	ctx: ToolContext,
+	nodeStarts: readonly NodeStart[],
+	dx: number,
+	dy: number,
+): void {
+	const scope = selectionScope(ctx);
+	for (const start of nodeStarts) {
+		const konvaNode = findNodeById(ctx.stage, start.id);
+		if (!konvaNode) continue;
+		const node = scope.find((c) => c.id === start.id);
+		const offset = node ? nodeRenderOffset(node) : { x: 0, y: 0 };
+		konvaNode.position({
+			x: start.x + dx + offset.x,
+			y: start.y + dy + offset.y,
+		});
+	}
+}
+
 /** Same-node repeat-click window for isolation entry (C-09). */
 const DOUBLE_CLICK_MS = 400;
 /** Last primary click, for the double-click detector. Module-level: the select tool is a singleton. */
@@ -343,7 +373,21 @@ function commitLayoutDrop(
 	}
 
 	const first = cmds[0];
-	if (!first) return true;
+	if (!first) {
+		// Handled, but nothing to commit — dropping a node back into the slot it
+		// came from produces zero commands. The nodes were still moved by direct
+		// Konva mutation during the gesture, and with no commit there is no IR
+		// change, so no re-render, so nothing would ever write x/y back: they
+		// would sit at the drop position while the IR says otherwise (K-9).
+		//
+		// This used to be masked by the drag-layer promote/demote remounting the
+		// node from IR props on pointerup. K-4 removed that remount, so the
+		// restore has to be explicit — which it should have been anyway: a
+		// correctness invariant resting on an unrelated optimisation is one
+		// refactor away from breaking silently.
+		positionDraggedNodes(ctx, nodeStarts, 0, 0);
+		return true;
+	}
 	if (cmds.length > 1 && ctx.commitBatch) {
 		ctx.commitBatch(cmds, "Move");
 	} else if (cmds.length === 1) {
@@ -489,20 +533,7 @@ export const selectTool: Tool = {
 				ctx.guidesStore.getState().setGuides(snapped.guides);
 			}
 			// Direct Konva mutation during interaction (PRD FR-011) — no commits.
-			// Apply each node's render offset so centered shapes (Konva.Ellipse,
-			// whose `position()` is its center, not its top-left) track the cursor
-			// instead of drifting by half their bounds. See `nodeRenderOffset`.
-			const scope = selectionScope(ctx);
-			for (const start of draft.nodeStarts) {
-				const konvaNode = findNodeById(ctx.stage, start.id);
-				if (!konvaNode) continue;
-				const node = scope.find((c) => c.id === start.id);
-				const offset = node ? nodeRenderOffset(node) : { x: 0, y: 0 };
-				konvaNode.position({
-					x: start.x + dx + offset.x,
-					y: start.y + dy + offset.y,
-				});
-			}
+			positionDraggedNodes(ctx, draft.nodeStarts, dx, dy);
 			// T-M4-06: refresh the flow-insertion preview. Preview state only —
 			// the IR is NEVER reordered during pointer movement (NFR-PERF-003).
 			const layoutDrop = computeLayoutDrop(
@@ -543,6 +574,22 @@ export const selectTool: Tool = {
 				Math.abs(dx) < MIN_MOVE_DISTANCE &&
 				Math.abs(dy) < MIN_MOVE_DISTANCE
 			) {
+				// Put the nodes back where the IR says they are before bailing.
+				// `onPointerMove` moved them by direct Konva mutation, and
+				// react-konva reconciles a node's props against its PREVIOUS PROPS
+				// — never against the live Konva attrs (that is what react-konva's
+				// `useStrictMode` adds, and it is off here). This branch commits
+				// nothing, so the IR and therefore every React prop is unchanged,
+				// so nothing would ever write x/y back: the node would just keep
+				// the mutated position, permanently out of step with the IR by up
+				// to MIN_MOVE_DISTANCE plus any snap correction.
+				//
+				// Above the threshold this is masked — the node was promoted onto
+				// the drag layer, and demoting it remounts a fresh Konva node from
+				// IR props. Below it there is no promotion at all (`selectDraggedIds`
+				// gates on the same distance), so nothing masks it. A zero delta is
+				// exactly the IR position.
+				positionDraggedNodes(ctx, draft.nodeStarts, 0, 0);
 				return;
 			}
 			// T-M4-06: a previewed layout drop commits a reorder/reparent instead

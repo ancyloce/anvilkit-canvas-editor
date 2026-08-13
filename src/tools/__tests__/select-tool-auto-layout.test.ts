@@ -9,7 +9,7 @@ import {
 	insertNode,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createIsolationStore } from "@/stores/isolation-store.js";
 import { createResolvedDocumentStore } from "@/stores/resolved-document-store.js";
 import { createSceneStore } from "@/stores/scene-store.js";
@@ -81,7 +81,13 @@ function fixtureIR(opts?: FixtureOptions): CanvasIR {
 	return ir;
 }
 
-function setup(opts?: { isolate?: boolean } & FixtureOptions) {
+function setup(
+	opts?: {
+		isolate?: boolean;
+		/** Node ids to expose through `stage.findOne` with a `position` spy. */
+		trackPositions?: readonly string[];
+	} & FixtureOptions,
+) {
 	const ir = fixtureIR(opts);
 	const h = makeHarness({ ir, pageId: "p1" });
 	h.ctx.getIR = () => ir;
@@ -91,15 +97,29 @@ function setup(opts?: { isolate?: boolean } & FixtureOptions) {
 		sceneStore: createSceneStore({ initialIR: ir }),
 		fieldPreviewStore,
 	});
-	// The pointer-move Konva mutation path looks nodes up via stage.findOne;
-	// the plain fake stage has none — a null lookup just skips the mutation.
-	h.ctx.stage = { findOne: () => null } as unknown as Konva.Stage;
+	// The pointer-move Konva mutation path looks nodes up via stage.findOne.
+	// The default fake stage has none — a null lookup just skips the mutation —
+	// but `trackPositions` installs nodes with a `position` spy so a test can
+	// assert what the gesture left on the live Konva node.
+	const positionFns = new Map<string, ReturnType<typeof vi.fn>>();
+	if (opts?.trackPositions) {
+		for (const id of opts.trackPositions) positionFns.set(id, vi.fn());
+	}
+	h.ctx.stage = {
+		findOne: (selector: (node: { id(): string }) => boolean) => {
+			for (const [id, position] of positionFns) {
+				const node = { id: () => id, position };
+				if (selector(node)) return node;
+			}
+			return null;
+		},
+	} as unknown as Konva.Stage;
 	if (opts?.isolate) {
 		const isolationStore = createIsolationStore();
 		isolationStore.getState().enter("f1");
 		h.ctx.isolationStore = isolationStore;
 	}
-	return h;
+	return Object.assign(h, { positionFns });
 }
 
 function target(id: string): Konva.Node {
@@ -263,6 +283,32 @@ describe("selectTool — same-parent flow reorder (TS-34)", () => {
 		expect(draft(h).layoutDrop).toMatchObject({ index: 0 });
 		selectTool.onPointerUp?.(pointerEvent(108, 110), h.ctx);
 		expect(h.commits).toHaveLength(0);
+	});
+
+	// K-9 case 2. A same-slot drop is "handled" (it must not fall through to a
+	// plain `node.move`) but emits zero commands — so there is no IR change, no
+	// re-render, and nothing to write the imperatively-dragged position back.
+	// This used to be masked by the drag layer remounting the node from IR
+	// props on pointerup; K-4 removed that remount, so the restore is explicit.
+	it("restores the dragged node's Konva position on a no-op same-slot drop", () => {
+		const h = setup({ isolate: true, trackPositions: ["r1"] });
+		selectTool.onPointerDown?.(
+			pointerEvent(105, 110, { target: target("r1") }),
+			h.ctx,
+		);
+		selectTool.onPointerMove?.(pointerEvent(108, 110), h.ctx);
+		const position = h.positionFns.get("r1");
+		// The gesture really did move the live node…
+		expect(position).toHaveBeenCalled();
+		const duringDrag = position?.mock.calls.at(-1)?.[0];
+		expect(duringDrag).not.toEqual({ x: 0, y: 0 });
+
+		selectTool.onPointerUp?.(pointerEvent(108, 110), h.ctx);
+
+		expect(h.commits).toHaveLength(0);
+		// …and pointerup put it back on r1's stored transform (0,0 in frame
+		// space), not the abandoned drop position.
+		expect(position).toHaveBeenLastCalledWith({ x: 0, y: 0 });
 	});
 });
 

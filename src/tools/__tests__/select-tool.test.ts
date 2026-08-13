@@ -361,6 +361,87 @@ describe("selectTool — drag-to-move", () => {
 		expect(h.commits).toHaveLength(0);
 	});
 
+	// K-9. `onPointerMove` moves nodes by DIRECT Konva mutation, and react-konva
+	// reconciles a node against its previous PROPS — never against the live
+	// Konva attrs (that is react-konva's `useStrictMode`, which is off). A
+	// sub-threshold gesture commits nothing, so the IR and every React prop stay
+	// put and nothing would ever write x/y back: the node kept the mutated
+	// position, permanently out of step with the IR. Above the threshold a
+	// drag-layer demote remounts the node from IR and hides this; below it
+	// there is no promotion at all, so nothing does.
+	it("restores the Konva position when the drag ends below MIN_MOVE_DISTANCE", () => {
+		const h = makeHarness();
+		h.ctx.getIR = () => fixtureIR();
+		const stage = fakeStageWithNodes({ rectA: { x: 10, y: 20 } });
+		h.ctx.stage = stage;
+		selectTool.onPointerDown?.(
+			pointerEvent(16, 24, { target: fakeKonvaNodeWithName("rectA") }),
+			h.ctx,
+		);
+		// Binary-exact deltas (0.25, 0.125) so the intermediate assertion below
+		// is not a float comparison. Both stay under MIN_MOVE_DISTANCE (0.5).
+		selectTool.onPointerMove?.(pointerEvent(16.25, 24.125), h.ctx);
+		const positionFn = (
+			stage as unknown as {
+				_positionFns: Map<string, ReturnType<typeof vi.fn>>;
+			}
+		)._positionFns.get("rectA");
+		// The drag really did mutate the live node — otherwise the restore below
+		// would pass vacuously.
+		expect(positionFn).toHaveBeenLastCalledWith({ x: 10.25, y: 20.125 });
+
+		selectTool.onPointerUp?.(pointerEvent(16.25, 24.125), h.ctx);
+
+		expect(h.commits).toHaveLength(0);
+		// Back at the IR transform, not the abandoned drag position.
+		expect(positionFn).toHaveBeenLastCalledWith({ x: 10, y: 20 });
+	});
+
+	// The restore has to reuse the drag's own offset arithmetic: a Konva.Ellipse
+	// is positioned by its CENTER, so restoring to the raw IR transform would
+	// park it half a bounds up-and-left of where it belongs.
+	it("restores a centered shape to its offset position, not its raw transform", () => {
+		const ellipseIR = (): CanvasIR => {
+			const page = createPage({ id: "p1" });
+			page.root = createGroup({
+				id: "p1-root",
+				bounds: page.root.bounds,
+				children: [
+					createEllipse({
+						id: "ellA",
+						bounds: { width: 100, height: 50 },
+						transform: { x: 10, y: 20 },
+					}),
+				],
+			});
+			return createCanvasIR({
+				id: "ir-ell",
+				pages: [page],
+				now: () => FIXED_TS,
+			});
+		};
+		const h = makeHarness();
+		h.ctx.getIR = ellipseIR;
+		const stage = fakeStageWithNodes({ ellA: { x: 10, y: 20 } });
+		h.ctx.stage = stage;
+		selectTool.onPointerDown?.(
+			pointerEvent(16, 24, { target: fakeKonvaNodeWithName("ellA") }),
+			h.ctx,
+		);
+		selectTool.onPointerMove?.(pointerEvent(16.25, 24.125), h.ctx);
+		selectTool.onPointerUp?.(pointerEvent(16.25, 24.125), h.ctx);
+
+		expect(h.commits).toHaveLength(0);
+		const positionFn = (
+			stage as unknown as {
+				_positionFns: Map<string, ReturnType<typeof vi.fn>>;
+			}
+		)._positionFns.get("ellA");
+		// top-left(10,20) + half-bounds offset(50,25) — the same place the
+		// renderer puts it, which is what the drag preview also targets.
+		expect(positionFn).toHaveBeenLastCalledWith({ x: 60, y: 45 });
+	});
+
 	it("multi-node selection fires one commit per moved node", () => {
 		const h = makeHarness();
 		h.ctx.getIR = () => fixtureIR();
