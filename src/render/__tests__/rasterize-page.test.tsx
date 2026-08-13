@@ -56,8 +56,10 @@ vi.mock("react-konva", () => {
 	};
 });
 
+const useImageMock = vi.fn(() => [null, "loading"] as const);
 vi.mock("use-image", () => ({
-	default: () => [null, "loading"],
+	default: (...args: unknown[]) =>
+		(useImageMock as unknown as (...a: unknown[]) => unknown)(...args),
 }));
 
 vi.mock("../../stage/CanvasStage.js", () => ({
@@ -95,6 +97,7 @@ beforeEach(() => {
 	groupCalls.length = 0;
 	rectCalls.length = 0;
 	preloadedSrcs.length = 0;
+	useImageMock.mockClear();
 });
 
 afterEach(() => {
@@ -500,6 +503,180 @@ describe("rasterizePage", () => {
 	// Bug 1 (FR-153 custom size): an unlocked, non-proportional width × height
 	// pair must actually reach the rasterizer instead of being silently
 	// collapsed to a single width-derived ratio.
+	// K-17. The rasterizer preloads and decodes every asset, but the renderer
+	// used to go through `use-image` and start its OWN load — so this function
+	// had nothing to wait on and guessed with two animation frames. Handing the
+	// decoded elements down makes the first render already-loaded.
+	describe("decoded image handoff", () => {
+		it("renders the preloaded element without starting a second load", async () => {
+			stubImageLoader();
+			const imageNode: CanvasImageNode = {
+				id: "i1",
+				type: "image",
+				transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+				bounds: { width: 32, height: 32 },
+				zIndex: 1,
+				assetId: "a1",
+			};
+			const uri = "data:image/png;base64,iVBORw0=";
+			await rasterizePage({
+				page: buildPage([imageNode]),
+				assets: { a1: { id: "a1", uri } },
+			});
+
+			// Exactly ONE element was ever constructed for this asset: the
+			// preload's. Without the handoff `use-image` built a second one, and
+			// the export raced it.
+			expect(preloadedSrcs.filter((src) => src === uri)).toHaveLength(1);
+			// And the renderer drew that element rather than the loading
+			// placeholder — an image node reaching Konva at all proves it
+			// resolved, since an unloaded one renders nothing in an export pass.
+			expect(useImageMock).not.toHaveBeenCalledWith(uri, "anonymous");
+		});
+
+		it("still falls back to use-image when the preload could not decode", async () => {
+			// No `stubImageLoader`, so jsdom's Image never fires onload and the
+			// preload times out with an empty map.
+			const imageNode: CanvasImageNode = {
+				id: "i1",
+				type: "image",
+				transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+				bounds: { width: 32, height: 32 },
+				zIndex: 1,
+				assetId: "a1",
+			};
+			const result = await rasterizePage({
+				page: buildPage([imageNode]),
+				assets: { a1: { id: "a1", uri: "https://example.test/x.png" } },
+			});
+			// The export still completes; the renderer took the legacy path.
+			expect(result.url.startsWith("data:")).toBe(true);
+			expect(useImageMock).toHaveBeenCalledWith(
+				"https://example.test/x.png",
+				"anonymous",
+			);
+		});
+	});
+
+	// K-17. Konva measures and draws text with whatever font is resolved at
+	// draw time, so serializing while a web font is still in flight bakes the
+	// fallback face — and its metrics — into the export.
+	describe("font readiness", () => {
+		it("does not serialize until in-flight fonts have resolved", async () => {
+			let resolveFonts: (() => void) | undefined;
+			const ready = new Promise<void>((r) => {
+				resolveFonts = r;
+			});
+			const original = (document as { fonts?: unknown }).fonts;
+			Object.defineProperty(document, "fonts", {
+				value: { ready },
+				configurable: true,
+			});
+			try {
+				const run = rasterizePage({ page: buildPage() });
+				// Long enough that BOTH `waitFrame()` rAF ticks have fired (jsdom
+				// schedules them ~16ms apart) — otherwise this would pass on the
+				// frame waits alone and say nothing about the font gate.
+				await new Promise((r) => setTimeout(r, 120));
+				const stage = stageInstances[0];
+				if (!stage) throw new Error("stage was not created");
+				expect(stage.toDataURL).not.toHaveBeenCalled();
+
+				resolveFonts?.();
+				await run;
+				expect(stage.toDataURL).toHaveBeenCalledTimes(1);
+			} finally {
+				Object.defineProperty(document, "fonts", {
+					value: original,
+					configurable: true,
+				});
+			}
+		});
+
+		it("serializes anyway when the environment has no font API", async () => {
+			const original = (document as { fonts?: unknown }).fonts;
+			Object.defineProperty(document, "fonts", {
+				value: undefined,
+				configurable: true,
+			});
+			try {
+				const result = await rasterizePage({ page: buildPage() });
+				expect(result.url.startsWith("data:")).toBe(true);
+			} finally {
+				Object.defineProperty(document, "fonts", {
+					value: original,
+					configurable: true,
+				});
+			}
+		});
+	});
+
+	// K-2. `toDataURL` with no rect resolves its origin and size from
+	// `getClientRect()` — for a Stage, the union of every visible child, taken
+	// WITH stroke/shadow and BEFORE any clip. So the exported size used to
+	// follow the content rather than the page. react-konva is mocked here, so
+	// what these tests pin is the mechanism that makes content irrelevant: an
+	// explicit page rect on every call.
+	describe("capture rectangle", () => {
+		it("captures the page rect", async () => {
+			const page = buildPage();
+			await rasterizePage({ page });
+			const stage = stageInstances[0];
+			if (!stage) throw new Error("stage was not created");
+			expect(stage.toDataURL.mock.calls[0]?.[0]).toMatchObject({
+				x: 0,
+				y: 0,
+				width: page.size.width,
+				height: page.size.height,
+			});
+		});
+
+		it("captures the page rect even with a node overhanging the page edge", async () => {
+			// The node that used to grow the export: it starts inside the page and
+			// extends well past its right/bottom edge.
+			const overhang: CanvasRectNode = {
+				id: "overhang",
+				type: "rect",
+				transform: {
+					x: 1000,
+					y: 1000,
+					rotation: 0,
+					scaleX: 1,
+					scaleY: 1,
+				},
+				bounds: { width: 900, height: 900 },
+				zIndex: 1,
+				fill: "#00ff00",
+			};
+			const page = buildPage([overhang]);
+			await rasterizePage({ page });
+			const stage = stageInstances[0];
+			if (!stage) throw new Error("stage was not created");
+			expect(stage.toDataURL.mock.calls[0]?.[0]).toMatchObject({
+				x: 0,
+				y: 0,
+				width: page.size.width,
+				height: page.size.height,
+			});
+		});
+
+		// FR-150 transparent background. This path has no page-sized <Rect> at
+		// all, so nothing anchored the client-rect union at (0,0) — the export
+		// cropped to whatever the content spanned, at whatever origin it began.
+		it("captures the page rect when the background is excluded", async () => {
+			const page = buildPage();
+			await rasterizePage({ page, includeBackground: false });
+			const stage = stageInstances[0];
+			if (!stage) throw new Error("stage was not created");
+			expect(stage.toDataURL.mock.calls[0]?.[0]).toMatchObject({
+				x: 0,
+				y: 0,
+				width: page.size.width,
+				height: page.size.height,
+			});
+		});
+	});
+
 	describe("independent x/y pixelRatio (FR-153 custom size, Bug 1)", () => {
 		it("uses a single Konva pixelRatio when x and y match", async () => {
 			const page = buildPage();
@@ -531,6 +708,22 @@ describe("rasterizePage", () => {
 			// own axis scale — no additional uniform pixelRatio multiplier.
 			expect(callArgs?.pixelRatio).toBe(1);
 			expect(result.url.startsWith("data:")).toBe(true);
+		});
+
+		// The capture rect is in POST-scale units here: `_toKonvaCanvas` sizes
+		// its canvas from `config.width` and then draws the scene THROUGH the
+		// stage transform, so the requested output is `page × per-axis ratio`.
+		it("requests a rect scaled per axis when x and y differ", async () => {
+			const page = buildPage();
+			await rasterizePage({ page, pixelRatio: { x: 3, y: 5 } });
+			const stage = stageInstances[0];
+			if (!stage) throw new Error("stage was not created");
+			expect(stage.toDataURL.mock.calls[0]?.[0]).toMatchObject({
+				x: 0,
+				y: 0,
+				width: page.size.width * 3,
+				height: page.size.height * 5,
+			});
 		});
 	});
 });

@@ -16,6 +16,7 @@ import type { BrandKit } from "../brand/brand-kit.js";
 import { EMPTY_BRAND_KIT } from "../brand/brand-kit.js";
 import { CanvasAssetsContext } from "../stage/CanvasAssetsContext.js";
 import { CanvasBrandKitContext } from "../stage/CanvasBrandKitContext.js";
+import { CanvasDecodedImagesContext } from "../stage/CanvasDecodedImagesContext.js";
 import { CanvasNodeRenderer } from "../stage/CanvasNodeRenderer.js";
 import { CanvasResolvedDocumentContext } from "../stage/CanvasResolvedDocumentContext.js";
 import { CanvasStage } from "../stage/CanvasStage.js";
@@ -104,7 +105,7 @@ export async function rasterizePage(
 	// component resolution. A component's images live in the DEFINITION tree, not
 	// the page, so walking the raw page would miss them entirely and every image
 	// inside a component would race `use-image` and rasterize blank.
-	await preloadImageAssets(
+	const decodedImages = await preloadImageAssets(
 		input.resolvedDocument?.source.pages.find((p) => p.id === page.id) ?? page,
 		assets,
 	);
@@ -126,6 +127,12 @@ export async function rasterizePage(
 				<CanvasResolvedDocumentContext.Provider
 					value={input.resolvedDocument ?? null}
 				>
+					{/* K-17: hand the renderer the elements we already decoded, so
+					    every image is `loaded` on the FIRST render. Without this the
+					    renderer started a second load through `use-image` and this
+					    function had nothing to wait on — it guessed with two animation
+					    frames, and an image that missed the window exported blank. */}
+					<CanvasDecodedImagesContext.Provider value={decodedImages}>
 					<CanvasAssetsContext.Provider value={assets}>
 						<CanvasBrandKitContext.Provider value={brandKit}>
 							<CanvasStage
@@ -152,9 +159,24 @@ export async function rasterizePage(
 							</CanvasStage>
 						</CanvasBrandKitContext.Provider>
 					</CanvasAssetsContext.Provider>
+					</CanvasDecodedImagesContext.Provider>
 				</CanvasResolvedDocumentContext.Provider>,
 			);
 		});
+
+		// K-17: fonts have to be RESOLVED before we serialize. Konva measures and
+		// draws text with whatever family is resolved at draw time, so an export
+		// issued while a web font is still loading renders in the fallback face —
+		// with different metrics than the layout engine assumed, which shows up
+		// as wrapping that disagrees with the editor.
+		//
+		// Ordering matters and is the reason this sits AFTER the render: the
+		// render is what makes the loads pending (`CanvasTextNodeRenderer` calls
+		// `useFontStatus`, which kicks off `document.fonts.load` per family), and
+		// `document.fonts.ready` only waits on loads already in flight. The frame
+		// yields below then let React flush the re-render each arriving font
+		// triggers, so the serialize sees re-measured text.
+		await waitForFonts();
 
 		// `useImage` performs async setState after Image.onload. Yield two
 		// frames so those states flush before we serialize. The first frame also
@@ -169,8 +191,24 @@ export async function rasterizePage(
 		}
 		const readyStage = stage as Konva.Stage;
 		let url: string;
+		// The capture rect is EXPLICIT. `toDataURL` with no rect resolves its
+		// origin and size from `getClientRect()`, which for a Stage is the union
+		// of every visible child's rect — stroke- and shadow-inflated, and taken
+		// before any `clipFunc` is applied (`konva/lib/Container.js`). So a node
+		// overhanging the page, a drop shadow, or an oversized photo inside a
+		// clipping frame all silently resize and re-origin the output.
+		//
+		// This path has a second failure the live stage does not: with
+		// `includeBackground: false` (FR-150 transparent background) no page-sized
+		// <Rect> is mounted at all, so nothing anchored the union at (0,0) and the
+		// export cropped to whatever the content happened to span.
+		const { width: pageWidth, height: pageHeight } = page.size;
 		if (pixelRatioX === pixelRatioY) {
 			url = readyStage.toDataURL({
+				x: 0,
+				y: 0,
+				width: pageWidth,
+				height: pageHeight,
 				pixelRatio: pixelRatioX,
 				mimeType,
 				quality,
@@ -180,9 +218,21 @@ export async function rasterizePage(
 			// independent-axis stage scale rather than a uniform `pixelRatio` — the
 			// stage is short-lived/off-screen (torn down in `finally` below), so
 			// mutating its scale here has no side effects outside this call.
+			//
+			// The rect is in POST-scale units: `_toKonvaCanvas` sizes its canvas
+			// from `config.width` and then draws the scene THROUGH the stage
+			// transform, so the requested output is `page × per-axis ratio`.
 			readyStage.scaleX(pixelRatioX);
 			readyStage.scaleY(pixelRatioY);
-			url = readyStage.toDataURL({ pixelRatio: 1, mimeType, quality });
+			url = readyStage.toDataURL({
+				x: 0,
+				y: 0,
+				width: pageWidth * pixelRatioX,
+				height: pageHeight * pixelRatioY,
+				pixelRatio: 1,
+				mimeType,
+				quality,
+			});
 		}
 		return { url, mimeType };
 	} finally {
@@ -190,6 +240,25 @@ export async function rasterizePage(
 		if (container.parentNode) {
 			container.parentNode.removeChild(container);
 		}
+	}
+}
+
+/**
+ * Best-effort wait for in-flight web fonts, bounded so a font that never
+ * arrives cannot hang an export. Absent in jsdom/SSR (no CSS Font Loading
+ * API), where it resolves immediately — the same "never crash" contract
+ * `text/font-status.ts` holds for FR-083.
+ */
+const FONT_READY_TIMEOUT_MS = 2000;
+
+async function waitForFonts(): Promise<void> {
+	const fonts = (document as { fonts?: FontFaceSet }).fonts;
+	if (!fonts || typeof fonts.ready?.then !== "function") return;
+	try {
+		await Promise.race([fonts.ready, timeout(FONT_READY_TIMEOUT_MS)]);
+	} catch {
+		// A rejected font load must not fail the export; the fallback face is
+		// still a legitimate render.
 	}
 }
 
@@ -205,41 +274,62 @@ function waitFrame(): Promise<void> {
 
 const ASSET_PRELOAD_TIMEOUT_MS = 2000;
 
+/**
+ * Decode every image the page references, and KEEP the elements (K-17).
+ *
+ * These used to be loaded and thrown away — the renderer then built its own
+ * through `use-image`, so the decode happened twice and, more importantly,
+ * this function had no way to know when the renderer's copy was ready. Handing
+ * the elements down through `CanvasDecodedImagesContext` is what removes the
+ * guesswork. Keyed by URI because that is what the renderer resolves an asset
+ * to.
+ *
+ * Still best-effort: a failed or slow asset is simply absent from the map and
+ * the renderer falls back to `use-image`, exactly as before.
+ */
 async function preloadImageAssets(
 	page: CanvasPage,
 	assets: Record<string, CanvasAssetRef>,
-): Promise<void> {
+): Promise<ReadonlyMap<string, HTMLImageElement>> {
+	const decoded = new Map<string, HTMLImageElement>();
 	const ids = collectImageAssetIds(page.root);
-	if (ids.length === 0) return;
+	if (ids.length === 0) return decoded;
 	await Promise.all(
 		ids.map(async (id) => {
 			const ref = assets[id];
 			if (!ref?.uri) return;
+			const uri = ref.uri;
 			try {
-				await Promise.race([
-					loadImage(ref.uri),
+				const image = await Promise.race([
+					loadImage(uri),
 					timeout(ASSET_PRELOAD_TIMEOUT_MS),
 				]);
+				// `timeout` resolves with nothing; only a real load contributes.
+				if (image) decoded.set(uri, image);
 			} catch {
 				// Best-effort preload; render path will fall back to use-image.
 			}
 		}),
 	);
+	return decoded;
 }
 
-function loadImage(uri: string): Promise<void> {
+function loadImage(uri: string): Promise<HTMLImageElement> {
 	return new Promise((resolve, reject) => {
 		const img = new Image();
+		// CORS mode must match the renderer's fallback path (E-1) — a
+		// differently-credentialed element would taint the canvas and make
+		// `toDataURL` throw `SecurityError`.
 		img.crossOrigin = "anonymous";
-		img.onload = () => resolve();
+		img.onload = () => resolve(img);
 		img.onerror = () => reject(new Error(`load failed: ${uri}`));
 		img.src = uri;
 	});
 }
 
-function timeout(ms: number): Promise<void> {
+function timeout(ms: number): Promise<undefined> {
 	return new Promise((resolve) => {
-		setTimeout(resolve, ms);
+		setTimeout(() => resolve(undefined), ms);
 	});
 }
 

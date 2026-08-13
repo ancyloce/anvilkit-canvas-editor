@@ -38,7 +38,17 @@ function fakeGroup(name: string) {
 
 type Vector2d = { x: number; y: number };
 
-/** Fake stage exposing getLayers/find/scale/position/toDataURL/batchDraw. */
+/** The surface size every fake stage below renders, before zoom. */
+const PAGE = { width: 800, height: 600 };
+
+/**
+ * Fake stage exposing getLayers/find/scale/position/width/height/toDataURL/
+ * batchDraw.
+ *
+ * `width()`/`height()` mirror how `<CanvasStudio>` sizes the real stage —
+ * `surface × zoom`, with `scale` set to the same zoom — because that is the
+ * relationship `surfaceRect` inverts to recover the page rect.
+ */
 function fakeStage(
 	layers: ReturnType<typeof fakeLayer>[],
 	groups: ReturnType<typeof fakeGroup>[] = [],
@@ -46,9 +56,12 @@ function fakeStage(
 		scale: { x: 1, y: 1 },
 		position: { x: 0, y: 0 },
 	},
+	page: { width: number; height: number } = PAGE,
 ) {
 	let scale = viewport.scale;
 	let position = viewport.position;
+	const boxWidth = page.width * viewport.scale.x;
+	const boxHeight = page.height * viewport.scale.y;
 	const toDataURL = vi.fn(
 		// Snapshot which layers/groups were visible, and the scale/position in
 		// effect, at the moment of serialization (E-14) — so a test can prove
@@ -64,6 +77,8 @@ function fakeStage(
 		find: vi.fn((selector: (node: { name(): string }) => boolean) =>
 			groups.filter((g) => selector(g)),
 		),
+		width: () => boxWidth,
+		height: () => boxHeight,
 		scale: vi.fn((next?: Vector2d) => {
 			if (next === undefined) return scale;
 			scale = next;
@@ -126,6 +141,10 @@ describe("exportStageContentDataURL", () => {
 			pixelRatio: 3,
 			mimeType: "image/jpeg",
 			quality: 0.8,
+			x: 0,
+			y: 0,
+			width: PAGE.width,
+			height: PAGE.height,
 		});
 	});
 
@@ -239,5 +258,198 @@ describe("exportStageContentDataURL", () => {
 		const stage = fakeStage([content]);
 		exportStageContentDataURL(stage);
 		expect(stage.batchDraw).not.toHaveBeenCalled();
+	});
+
+	// K-2. `toDataURL` with no rect does NOT capture the page: Konva resolves
+	// both the origin and the size from `getClientRect()`, which for a Stage is
+	// the union of every visible child — stroke- and shadow-inflated, and taken
+	// before any `clipFunc` applies. A node overhanging the page edge, a drop
+	// shadow, or an oversized photo inside a clipping frame therefore resized
+	// and re-origined the export. Passing the rect explicitly is what bounds the
+	// output to the page, whatever the content does.
+	describe("capture rectangle", () => {
+		it("captures the page rect rather than Konva's content bounding box", () => {
+			const content = fakeLayer("content");
+			const stage = fakeStage([content]);
+
+			exportStageContentDataURL(stage, { pixelRatio: 2 });
+
+			expect(stage.toDataURL).toHaveBeenCalledWith({
+				pixelRatio: 2,
+				x: 0,
+				y: 0,
+				width: PAGE.width,
+				height: PAGE.height,
+			});
+		});
+
+		// The stage BOX is `page × zoom` (see `<CanvasStudio>`), so reading
+		// `stage.width()` alone would export a canvas `zoom` times too large with
+		// the page stranded in its top-left corner. The rect has to be taken
+		// against the pre-neutralization scale.
+		it("recovers the page rect from a zoomed stage box", () => {
+			const content = fakeLayer("content");
+			const stage = fakeStage([content], [], {
+				scale: { x: 2, y: 2 },
+				position: { x: 100, y: 50 },
+			});
+
+			// Sanity: the stage really is twice the page, as the live editor sizes it.
+			expect(stage.width()).toBe(PAGE.width * 2);
+
+			exportStageContentDataURL(stage);
+
+			expect(stage.toDataURL).toHaveBeenCalledWith({
+				x: 0,
+				y: 0,
+				width: PAGE.width,
+				height: PAGE.height,
+			});
+		});
+
+		it("recovers the page rect at a zoom below 1", () => {
+			const content = fakeLayer("content");
+			const stage = fakeStage([content], [], {
+				scale: { x: 0.5, y: 0.5 },
+				position: { x: 0, y: 0 },
+			});
+
+			exportStageContentDataURL(stage);
+
+			// Without the rect this exported at half the page and cropped the
+			// bottom-right of the design away.
+			expect(stage.toDataURL).toHaveBeenCalledWith({
+				x: 0,
+				y: 0,
+				width: PAGE.width,
+				height: PAGE.height,
+			});
+		});
+
+		it("omits the rect for a stage that cannot be measured", () => {
+			// Unit-test fakes exposing only `toDataURL` keep Konva's own defaults
+			// rather than being handed a garbage rect.
+			const toDataURL = vi.fn(() => "data:image/png;base64,PLAIN");
+			const stage = { toDataURL } as unknown as Konva.Stage;
+
+			exportStageContentDataURL(stage, { pixelRatio: 2 });
+
+			expect(toDataURL).toHaveBeenCalledWith({ pixelRatio: 2 });
+		});
+
+		it("omits the rect for a degenerate zero scale", () => {
+			// A zero scale would divide the stage box to Infinity. Better to fall
+			// back to Konva's default than to request an impossible canvas.
+			const content = fakeLayer("content");
+			const stage = fakeStage([content], [], {
+				scale: { x: 0, y: 0 },
+				position: { x: 0, y: 0 },
+			});
+
+			exportStageContentDataURL(stage, { pixelRatio: 2 });
+
+			expect(stage.toDataURL).toHaveBeenCalledWith({ pixelRatio: 2 });
+		});
+	});
+});
+
+/** Minimal culled-content fake: a node the K-12 controller hid. */
+function fakeCulledNode(name: string, culled = true) {
+	let visible = !culled;
+	const visibleAtSerialize: boolean[] = [];
+	return {
+		name: () => name,
+		getAttr: (key: string) => (key === "akCulled" ? culled : undefined),
+		visible: vi.fn((next?: boolean) => {
+			if (next === undefined) return visible;
+			visible = next;
+			return undefined as unknown as boolean;
+		}),
+		_isVisible: () => visible,
+		_visibleAtSerialize: visibleAtSerialize,
+	};
+}
+
+describe("exportStageContentDataURL — K-1/K-12 additions", () => {
+	it("prefers the akSurfaceSize attr over the stage-box derivation (K-1)", () => {
+		// A WINDOWED stage: the box is the viewport window (500×400 at zoom 2),
+		// nothing like page × zoom. The attr carries the true page size, and
+		// the capture rect must come from it.
+		const content = fakeLayer("content");
+		const stage = fakeStage(
+			[content],
+			[],
+			{ scale: { x: 2, y: 2 }, position: { x: -300, y: -700 } },
+			{ width: 250, height: 200 }, // stage box = 500×400 — the WINDOW
+		);
+		(stage as unknown as { getAttr: (k: string) => unknown }).getAttr = (
+			key: string,
+		) => (key === "akSurfaceSize" ? { width: 800, height: 600 } : undefined);
+
+		exportStageContentDataURL(stage, { pixelRatio: 2 });
+
+		expect(stage.toDataURL).toHaveBeenCalledWith({
+			pixelRatio: 2,
+			x: 0,
+			y: 0,
+			width: 800,
+			height: 600,
+		});
+	});
+
+	it("falls back to the stage-box derivation when the attr is absent or junk", () => {
+		const content = fakeLayer("content");
+		const stage = fakeStage([content], [], {
+			scale: { x: 2, y: 2 },
+			position: { x: 0, y: 0 },
+		});
+		(stage as unknown as { getAttr: (k: string) => unknown }).getAttr = (
+			key: string,
+		) => (key === "akSurfaceSize" ? { width: Number.NaN, height: 0 } : undefined);
+
+		exportStageContentDataURL(stage);
+
+		expect(stage.toDataURL).toHaveBeenCalledWith({
+			x: 0,
+			y: 0,
+			width: PAGE.width,
+			height: PAGE.height,
+		});
+	});
+
+	it("unhides viewport-culled nodes for the capture and re-hides them after (K-12)", () => {
+		const content = fakeLayer("content");
+		const culled = fakeCulledNode("ak-culled-node");
+		const stage = fakeStage([content], [culled as never]);
+		// Snapshot the culled node's visibility at the moment of serialization.
+		const toDataURL = stage.toDataURL as unknown as ReturnType<typeof vi.fn>;
+		toDataURL.mockImplementation(() => {
+			culled._visibleAtSerialize.push(culled._isVisible());
+			return "data:image/png;base64,SNAP";
+		});
+
+		exportStageContentDataURL(stage);
+
+		// Visible DURING the capture…
+		expect(culled._visibleAtSerialize).toEqual([true]);
+		// …and re-hidden afterwards (the culling controller still owns it).
+		expect(culled._isVisible()).toBe(false);
+		expect(stage.batchDraw).toHaveBeenCalled();
+	});
+
+	it("leaves un-culled and already-visible nodes alone", () => {
+		const content = fakeLayer("content");
+		const notCulled = fakeCulledNode("ordinary", false);
+		const stage = fakeStage([content], [notCulled as never]);
+
+		exportStageContentDataURL(stage);
+
+		// Never toggled: `visible(false)`/`visible(true)` writes would show up
+		// as calls with an argument.
+		const writes = (
+			notCulled.visible as unknown as ReturnType<typeof vi.fn>
+		).mock.calls.filter((args: unknown[]) => args.length > 0);
+		expect(writes).toEqual([]);
+		expect(notCulled._isVisible()).toBe(true);
 	});
 });
