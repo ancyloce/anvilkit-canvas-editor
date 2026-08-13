@@ -107,13 +107,14 @@
  * "drops the alpha-mask fixture and gains one fixture per `CanvasFrameShape`
  * variant". There is no alpha-mask code on either path to compare.
  *
- * ## The two known divergences
+ * ## The two reported divergences
  *
  * Both were found by `cp4-003` and handed here for adjudication. Neither is
  * papered over: see `describe("known Konva ↔ SVG divergences")` at the bottom,
- * where D-1 is a documented `it.fails` (it will start failing the day someone
- * reconciles the paths, forcing this record to be updated) and D-2 is a fixture
- * that shows the reported divergence is not a clip-geometry divergence at all.
+ * where D-1 is now RESOLVED (the fixture that recorded it is an ordinary parity
+ * assertion, and the characterization records the reconciled behaviour) and D-2
+ * is a fixture that shows the reported divergence is not a clip-geometry
+ * divergence at all.
  */
 
 import {
@@ -1123,38 +1124,30 @@ describe("known Konva ↔ SVG divergences (cp4-003 handoff)", () => {
 	};
 
 	/**
-	 * **D-1 — UNRESOLVED. This `it.fails` is the open defect, not a waiver.**
+	 * **D-1 — RESOLVED. This is now an ordinary parity assertion.**
 	 *
-	 * The two paths guard `kind: "path"` with different oracles, by design:
-	 * SVG applies `PATH_D_RE`, a character allowlist
-	 * (`canvas/core/src/serialize/svg.ts:1968-1971` via `isValidPathD`); Konva
-	 * applies `hasDrawablePathData`, i.e. Konva's own parser
-	 * (`editor/src/stage/finite-geometry.ts:108`). `d: "Z"` passes the allowlist
-	 * and yields no points, so SVG emits `<path d="Z" />` inside the
-	 * `<clipPath>` — an empty clip region that erases the frame's entire
-	 * content — while Konva degrades to the frame box.
+	 * The two paths used to guard `kind: "path"` with different oracles: SVG
+	 * applied `PATH_D_RE`, a character allowlist, and Konva applied
+	 * `hasDrawablePathData`, i.e. Konva's own parser. `d: "Z"` passes the
+	 * allowlist and yields no points, so SVG emitted `<path d="Z" />` inside the
+	 * `<clipPath>` — an empty clip region that erased the frame's entire content
+	 * — while Konva degraded to the frame box.
 	 *
-	 * `cp4-003` deliberately did NOT match SVG, because matching it means
-	 * deliberately rendering nothing. `cp4-001` left path data
-	 * un-character-checked in `ir/` (rank 1 cannot import rank 5's regex), so
-	 * **no task currently owns the fix.**
+	 * The resolution is the one this file recommended, and it went further in the
+	 * only direction that removes the defect class rather than this instance of
+	 * it: BOTH predicates moved to `canvas/core/src/path-data.ts` (rank 0, the
+	 * same forcing argument that produced `uri.ts` — `ir/` at rank 1 could not
+	 * import a rank-5 regex, which is the entire reason the question was split in
+	 * two), and `resolveFrameClipShape` now applies both. Drawability and
+	 * character safety are still separate questions with separate
+	 * `FrameClipDegradation` reasons, but ONE resolver answers them for every
+	 * consumer, so neither renderer decides for itself any more. Konva's own
+	 * parser is no longer consulted for frame clips at all.
 	 *
-	 * **Recommended resolution and owner:** `cp4-002` should adopt the
-	 * drawability oracle, not the character one — an SVG export that silently
-	 * blanks a frame is strictly worse than one that clips to the box, and it is
-	 * the only side that currently produces an unusable render. The character
-	 * allowlist stays as the sanitizer it was written to be; the *emptiness*
-	 * check is a second, independent question. Because `ir/` cannot own it
-	 * either, the natural home is a small drawability predicate in
-	 * `canvas/core/src/serialize/`, applied alongside `isValidPathD`, degrading
-	 * to the frame box with the existing `FRAME_CLIP_SHAPE_DEGRADED` warning —
-	 * which is what Konva already does. That is an ADR-level change to a shipped
-	 * emitter and is deliberately NOT made here.
-	 *
-	 * When it is made, this test starts passing, vitest reports
-	 * "expected to fail but passed", and the record below has to be updated.
+	 * `hasDrawablePathData` remains in `finite-geometry.ts` for path NODES, where
+	 * the question really is Konva's ("does `getSelfRect` return a real rect").
 	 */
-	it.fails('D-1: the two paths disagree on an undrawable path `d` ("Z") — UNRESOLVED, see the comment above', async () => {
+	it('D-1: an undrawable path `d` ("Z") degrades identically on both paths', async () => {
 		const paths = await bothPaths(undrawablePath);
 		expectClipParity(
 			undrawablePath.id,
@@ -1165,23 +1158,24 @@ describe("known Konva ↔ SVG divergences (cp4-003 handoff)", () => {
 	});
 
 	/**
-	 * Characterization of D-1 — a record of WHAT each path does today so the
-	 * `it.fails` above is diagnosable without re-deriving it. This is not a
-	 * ratification of either behaviour; it exists so that a silent change on
-	 * EITHER side is caught while the divergence is open.
+	 * Characterization of the RESOLVED D-1 — a record of what each path does, so
+	 * a silent change on either side is caught. The parity assertion above proves
+	 * they agree; this proves *what* they agree on, which is the half that
+	 * matters: agreeing to emit an empty clip would also be parity.
 	 */
-	it("D-1 characterization: SVG emits an empty clip region, Konva falls back to the frame box", async () => {
+	it("D-1 characterization: both paths degrade to the frame box, and SVG warns", async () => {
 		const paths = await bothPaths(undrawablePath);
-		expect(paths.svg("f1")).toEqual({ kind: "path", d: "Z" });
-		expect(paths.konva("f1")).toEqual({
+		const box = {
 			kind: "rect",
 			width: BOUNDS.width,
 			height: BOUNDS.height,
 			radii: NO_CORNERS,
-		});
-		// SVG does not even warn: `isValidPathD("Z")` is true, so nothing on that
-		// path knows the region is empty.
-		expect(paths.warnings).not.toContain("FRAME_CLIP_SHAPE_DEGRADED");
+		};
+		expect(paths.svg("f1")).toEqual(box);
+		expect(paths.konva("f1")).toEqual(box);
+		// And it is no longer silent: the resolver rejected the shape, so the
+		// export says so instead of shipping an empty region.
+		expect(paths.warnings).toContain("FRAME_CLIP_SHAPE_DEGRADED");
 	});
 
 	/**

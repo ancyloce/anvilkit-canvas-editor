@@ -18,8 +18,8 @@ vi.mock("react-konva", () => ({
 		calls.push({ type: "Group", props });
 		return <div data-testid="Group">{children}</div>;
 	},
-	Line: (props: Record<string, unknown>) => {
-		calls.push({ type: "Line", props });
+	Shape: (props: Record<string, unknown>) => {
+		calls.push({ type: "Shape", props });
 		return null;
 	},
 }));
@@ -27,7 +27,12 @@ vi.mock("react-konva", () => ({
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
 import type { CreateViewportStoreOptions } from "@/stores/viewport-store.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
-import { GRID_CHROME_GROUP_NAME, Grid, MAX_GRID_LINES } from "../Grid.js";
+import {
+	computeGridGeometry,
+	GRID_CHROME_GROUP_NAME,
+	Grid,
+	MAX_GRID_LINES,
+} from "../Grid.js";
 
 afterEach(() => {
 	cleanup();
@@ -75,13 +80,73 @@ function renderGrid(opts: RenderGridOptions = {}) {
 	return { h, view };
 }
 
-function lines(): ElementCall[] {
-	return calls.filter((c) => c.type === "Line");
+function shapes(): ElementCall[] {
+	return calls.filter((c) => c.type === "Shape");
 }
 
-function linesByStroke(stroke: string): ElementCall[] {
-	return lines().filter((c) => c.props.stroke === stroke);
+function tierByStroke(stroke: string): ElementCall | undefined {
+	return shapes().find((c) => c.props.stroke === stroke);
 }
+
+const PAGE = { width: 400, height: 200 };
+
+/**
+ * K-8. Grid geometry is a pure function so the budget rules can be asserted
+ * directly. This used to be checked through one rendered `<Line>` per grid
+ * line — which pinned the very thing that made a fine grid on a large page
+ * cost ~2000 Konva nodes on the same layer as the design content.
+ */
+describe("computeGridGeometry (FR-112)", () => {
+	it("places page-bounded interior lines at gridSize spacing", () => {
+		const g = computeGridGeometry(PAGE, 100, 1);
+		// 400x200 page @ 100px: vertical x=100,200,300; horizontal y=100. Page
+		// edges are the page border, not grid lines.
+		expect(g.mainVertical).toEqual([100, 200, 300]);
+		expect(g.mainHorizontal).toEqual([100]);
+		expect(g.step).toBe(100);
+		expect(g.subStep).toBeNull();
+	});
+
+	it("places sub-grid lines between main lines, skipping coinciding positions", () => {
+		const g = computeGridGeometry(PAGE, 100, 2);
+		expect(g.subStep).toBe(50);
+		// x=100/200/300 coincide with main lines and are skipped.
+		expect(g.subVertical).toEqual([50, 150, 250, 350]);
+		expect(g.subHorizontal).toEqual([50, 150]);
+		// Main lines are unaffected by the sub-grid.
+		expect(g.mainVertical).toEqual([100, 200, 300]);
+	});
+
+	it("emits no sub-grid for subdivisions of 0 and 1", () => {
+		for (const subdivisions of [0, 1]) {
+			const g = computeGridGeometry(PAGE, 100, subdivisions);
+			expect(g.subStep).toBeNull();
+			expect(g.subVertical).toEqual([]);
+			expect(g.subHorizontal).toEqual([]);
+			expect(g.mainVertical).toHaveLength(3);
+		}
+	});
+
+	it("coarsens the step to stay under the per-axis line budget", () => {
+		// 1080 / 0.5 = 2160 lines per axis — over budget. Doubling: 0.5 → 1 →
+		// 2 → 4 (1080 / 4 = 270 <= 512). Interior lines: 269 per axis.
+		const g = computeGridGeometry({ width: 1080, height: 1080 }, 0.5, 1);
+		expect(g.step).toBe(4);
+		expect(g.mainVertical).toHaveLength(269);
+		expect(g.mainVertical[0]).toBe(4);
+		expect(g.mainVertical.length).toBeLessThanOrEqual(MAX_GRID_LINES);
+	});
+
+	it("drops the sub-grid before coarsening when only the sub-grid busts the budget", () => {
+		const g = computeGridGeometry({ width: 1080, height: 1080 }, 8, 10);
+		// Main grid fits (1080 / 8 = 135 <= 512) and is untouched…
+		expect(g.step).toBe(8);
+		expect(g.mainVertical).toHaveLength(134);
+		// …but the sub-grid (step 0.8 → 1350 lines/axis) is skipped entirely.
+		expect(g.subStep).toBeNull();
+		expect(g.subVertical).toEqual([]);
+	});
+});
 
 describe("Grid (FR-112)", () => {
 	it("renders nothing when gridEnabled is false", () => {
@@ -108,54 +173,23 @@ describe("Grid (FR-112)", () => {
 		});
 	});
 
-	it("renders page-bounded interior lines at gridSize spacing", () => {
-		const { h } = renderGrid({ gridSize: 100 });
-		const gridColor = h.studioCtx.viewportStore.getState().gridColor;
-		const main = linesByStroke(gridColor);
-		// 400x200 page @ 100px: vertical x=100,200,300; horizontal y=100. Page
-		// edges are the page border, not grid lines.
-		expect(main.map((c) => c.props.points)).toEqual([
-			[100, 0, 100, 200],
-			[200, 0, 200, 200],
-			[300, 0, 300, 200],
-			[0, 100, 400, 100],
-		]);
-		for (const line of main) {
-			expect(line.props.listening).toBe(false);
-			expect(line.props.perfectDrawEnabled).toBe(false);
-		}
+	// The node-count guarantee itself: ONE Konva node per tier, regardless of
+	// how many lines that tier draws.
+	it("paints each tier as a single Shape, not one node per line", () => {
+		renderGrid({ pageWidth: 1080, pageHeight: 1080, gridSize: 8 });
+		// 1080/8 → 134 interior lines per axis, 268 lines total, 1 node.
+		expect(shapes()).toHaveLength(1);
+		expect(calls.filter((c) => c.type === "Line")).toHaveLength(0);
 	});
 
-	it("renders sub-grid lines between main lines, skipping coinciding positions", () => {
+	it("adds a second Shape for the sub-grid, painted below the main tier", () => {
 		const { h } = renderGrid({ gridSize: 100, gridSubdivisions: 2 });
 		const vs = h.studioCtx.viewportStore.getState();
-		const sub = linesByStroke(vs.subGridColor);
-		// Sub-step 50: x=50,150,250,350 (100/200/300 coincide with main lines and
-		// are skipped), y=50,150.
-		expect(sub.map((c) => c.props.points)).toEqual([
-			[50, 0, 50, 200],
-			[150, 0, 150, 200],
-			[250, 0, 250, 200],
-			[350, 0, 350, 200],
-			[0, 50, 400, 50],
-			[0, 150, 400, 150],
-		]);
-		// Main lines are unaffected by the sub-grid.
-		expect(linesByStroke(vs.gridColor)).toHaveLength(4);
-	});
-
-	it("gridSubdivisions of 0 and 1 render no sub-grid", () => {
-		for (const subdivisions of [0, 1]) {
-			calls.length = 0;
-			cleanup();
-			const { h } = renderGrid({
-				gridSize: 100,
-				gridSubdivisions: subdivisions,
-			});
-			const vs = h.studioCtx.viewportStore.getState();
-			expect(linesByStroke(vs.subGridColor)).toHaveLength(0);
-			expect(linesByStroke(vs.gridColor)).toHaveLength(4);
-		}
+		const all = shapes();
+		expect(all).toHaveLength(2);
+		// Sub-grid first so main lines paint on top at shared crossings.
+		expect(all[0]?.props.stroke).toBe(vs.subGridColor);
+		expect(all[1]?.props.stroke).toBe(vs.gridColor);
 	});
 
 	it("applies the store's grid + sub-grid colors and stroke widths", () => {
@@ -165,52 +199,58 @@ describe("Grid (FR-112)", () => {
 			gridColor: "#ff0000",
 			subGridColor: "#00ff00",
 		});
-		const main = linesByStroke("#ff0000");
-		const sub = linesByStroke("#00ff00");
-		expect(main.length).toBeGreaterThan(0);
-		expect(sub.length).toBeGreaterThan(0);
-		for (const line of main) expect(line.props.strokeWidth).toBe(1);
-		for (const line of sub) expect(line.props.strokeWidth).toBe(0.5);
+		expect(tierByStroke("#ff0000")?.props.strokeWidth).toBe(1);
+		expect(tierByStroke("#00ff00")?.props.strokeWidth).toBe(0.5);
 	});
 
 	it("keeps lines one screen pixel via strokeWidth = 1/zoom", () => {
 		renderGrid({ gridSize: 100, gridSubdivisions: 2, zoom: 2 });
-		const widths = new Set(lines().map((c) => c.props.strokeWidth));
+		const widths = new Set(shapes().map((c) => c.props.strokeWidth));
 		expect(widths).toEqual(new Set([1 / 2, 0.5 / 2]));
 	});
 
-	it("coarsens the step to stay under the per-axis line budget (1080px page, 0.5px grid)", () => {
-		const { h } = renderGrid({
-			pageWidth: 1080,
-			pageHeight: 1080,
-			gridSize: 0.5,
+	it("declares the page box so the Shape does not measure 0x0", () => {
+		renderGrid({ pageWidth: 400, pageHeight: 200, gridSize: 100 });
+		expect(shapes()[0]?.props).toMatchObject({
+			width: 400,
+			height: 200,
+			listening: false,
+			perfectDrawEnabled: false,
 		});
-		const vs = h.studioCtx.viewportStore.getState();
-		const main = linesByStroke(vs.gridColor);
-		// 1080 / 0.5 = 2160 lines per axis — over budget. Doubling: 0.5 → 1 →
-		// 2 → 4 (1080 / 4 = 270 <= 512). Interior lines: 269 per axis.
-		expect(main).toHaveLength(269 * 2);
-		const verticals = main.filter(
-			(c) =>
-				(c.props.points as number[])[1] === 0 &&
-				(c.props.points as number[])[3] === 1080 &&
-				(c.props.points as number[])[0] === (c.props.points as number[])[2],
-		);
-		expect(verticals[0]?.props.points).toEqual([4, 0, 4, 1080]);
-		expect(verticals.length).toBeLessThanOrEqual(MAX_GRID_LINES);
 	});
 
-	it("drops the sub-grid before coarsening when only the sub-grid busts the budget", () => {
-		const { h } = renderGrid({
-			pageWidth: 1080,
-			pageHeight: 1080,
-			gridSize: 8,
-			gridSubdivisions: 10,
-		});
-		const vs = h.studioCtx.viewportStore.getState();
-		// Main grid fits (1080 / 8 = 135 <= 512) and is untouched…
-		expect(linesByStroke(vs.gridColor)).toHaveLength(134 * 2);
-		// …but the sub-grid (step 0.8 → 1350 lines/axis) is skipped entirely.
-		expect(linesByStroke(vs.subGridColor)).toHaveLength(0);
+	// The painted result must be identical to the per-Line version: the
+	// sceneFunc is the only place the positions are consumed now, so it is
+	// driven against a recording context here.
+	it("strokes exactly the computed line positions in one path", () => {
+		renderGrid({ gridSize: 100 });
+		const sceneFunc = shapes()[0]?.props.sceneFunc as (
+			ctx: unknown,
+			shape: unknown,
+		) => void;
+		expect(typeof sceneFunc).toBe("function");
+		const ops: string[] = [];
+		const recorder = {
+			beginPath: () => ops.push("begin"),
+			moveTo: (x: number, y: number) => ops.push(`move ${x},${y}`),
+			lineTo: (x: number, y: number) => ops.push(`line ${x},${y}`),
+			strokeShape: () => ops.push("stroke"),
+		};
+		const shape = {};
+		sceneFunc(recorder, shape);
+		expect(ops).toEqual([
+			"begin",
+			// verticals x=100,200,300 spanning the page height…
+			"move 100,0",
+			"line 100,200",
+			"move 200,0",
+			"line 200,200",
+			"move 300,0",
+			"line 300,200",
+			// …then the single horizontal y=100 spanning the page width.
+			"move 0,100",
+			"line 400,100",
+			"stroke",
+		]);
 	});
 });

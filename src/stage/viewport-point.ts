@@ -1,5 +1,11 @@
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
 
+/** The slice of the studio context the mappings here actually read. */
+export type ViewportPointContext = Pick<
+	CanvasStudioContextValue,
+	"stage" | "viewportStore"
+>;
+
 /**
  * @file Screen ↔ page-space mapping for the live stage (`cp3-004`).
  *
@@ -26,7 +32,7 @@ import type { CanvasStudioContextValue } from "../context/canvas-studio-context.
  * binding and crashes against a real stage (the same note is on
  * `CropEditorOverlay`/`TextEditorOverlay`).
  */
-function stageContainer(ctx: CanvasStudioContextValue): HTMLElement | null {
+function stageContainer(ctx: ViewportPointContext): HTMLElement | null {
 	const stage = ctx.stage;
 	return stage && typeof stage.container === "function"
 		? stage.container()
@@ -34,26 +40,81 @@ function stageContainer(ctx: CanvasStudioContextValue): HTMLElement | null {
 }
 
 /**
+ * Attribute marking the stage FOOTPRINT — the in-flow element spanning
+ * `page × zoom` that the K-1 windowed stage positions its (smaller) canvas
+ * window inside. A runtime contract like {@link CANVAS_VIEWPORT_ATTRIBUTE}.
+ *
+ * Every screen ↔ page mapping in this file anchors on the footprint when
+ * one exists: `footprintRect.origin + page × zoom + pan` is the page-origin
+ * anchor REGARDLESS of where the canvas window currently sits, because the
+ * stage's Konva position compensates the window offset exactly
+ * (`stage.x = pan − window.x` while the container div sits at `window.x`
+ * inside the footprint — the two cancel). Anchoring here rather than on the
+ * stage transform keeps the mapping reactive to the viewport store with no
+ * commit lag, and keeps the pre-K-1 formula bit-for-bit for stages mounted
+ * without a footprint (bare hosts, unit-test fakes, the offscreen
+ * rasterizer).
+ */
+export const CANVAS_STAGE_FOOTPRINT_ATTRIBUTE = "data-canvas-stage-footprint";
+
+/**
+ * The rect page-space maps against: the K-1 footprint when the container is
+ * mounted inside one, else the container itself (identical before K-1, and
+ * still identical whenever the stage is not windowed).
+ */
+function pageAnchorRect(ctx: ViewportPointContext): { left: number; top: number } | undefined {
+	const container = stageContainer(ctx);
+	if (!container) return undefined;
+	const footprint = container.closest?.(
+		`[${CANVAS_STAGE_FOOTPRINT_ATTRIBUTE}]`,
+	);
+	const rect = (footprint ?? container).getBoundingClientRect?.();
+	return rect ?? container.getBoundingClientRect?.();
+}
+
+/**
  * Convert a drop event's screen coordinates into page-space coordinates
- * (FR-092 "inserted at the drop position"). Mirrors — inverted — the
- * container + zoom + pan transform already used to place on-stage overlays
- * (`CropEditorOverlay`/`TextEditorOverlay`/`RichTextToolbar`:
- * `screenX = containerRect.left + pageX * zoom + panX`). Returns undefined
- * when there's no live stage to anchor against, so callers fall back to
- * page-center insertion.
+ * (FR-092 "inserted at the drop position"). The inverse of
+ * {@link pageToClientPoint}. Returns undefined when there's no live stage to
+ * anchor against, so callers fall back to page-center insertion.
  */
 export function clientPointToPage(
-	ctx: CanvasStudioContextValue,
+	ctx: ViewportPointContext,
 	clientX: number,
 	clientY: number,
 ): { x: number; y: number } | undefined {
-	const container = stageContainer(ctx);
-	const rect = container?.getBoundingClientRect?.();
+	const rect = pageAnchorRect(ctx);
 	if (!rect) return undefined;
 	const vp = ctx.viewportStore.getState();
 	return {
 		x: (clientX - rect.left - vp.panX) / vp.zoom,
 		y: (clientY - rect.top - vp.panY) / vp.zoom,
+	};
+}
+
+/**
+ * The screen (client) position of a page-space point — the ONE forward
+ * mapping shared by every DOM overlay anchored to canvas content
+ * (`TextEditorOverlay`, `RichTextToolbar`, `CropEditorOverlay`,
+ * `CornerRadiusOverlay`). Each of those used to inline
+ * `containerRect + page × zoom + pan`, which silently assumed the stage
+ * container starts at the page origin; under the K-1 windowed stage that is
+ * the FOOTPRINT's origin, not the container's (see
+ * {@link CANVAS_STAGE_FOOTPRINT_ATTRIBUTE}). Returns undefined without a
+ * measurable anchor, so callers can skip rendering rather than anchor at
+ * (0,0).
+ */
+export function pageToClientPoint(
+	ctx: ViewportPointContext,
+	pageX: number,
+	pageY: number,
+): { x: number; y: number } | undefined {
+	const rect = pageAnchorRect(ctx);
+	if (!rect) return undefined;
+	const vp = ctx.viewportStore.getState();
+	return {
+		x: rect.left + pageX * vp.zoom + vp.panX,
+		y: rect.top + pageY * vp.zoom + vp.panY,
 	};
 }
 
@@ -80,19 +141,26 @@ export const CANVAS_VIEWPORT_ATTRIBUTE = "data-canvas-viewport";
  * container's own rect is used, which is correct there because nothing is
  * clipping it.
  *
- * `undefined` when the stage is unmeasurable: no mounted stage, or a
- * zero-by-zero rect (jsdom's default, and any container that has not been laid
+ * `undefined` when the stage is unmeasurable: no mounted stage, or a rect with
+ * NO positive area (jsdom's default, and any container that has not been laid
  * out yet). Callers fall back to the page centre rather than inserting at the
  * page origin — an element pinned to (0, 0) reads as a bug, and "no measurement
  * means centre of the page" is the fallback `buildAssetInsertCommands` already
  * uses for an out-of-bounds drop.
+ *
+ * EITHER dimension being zero is enough to disqualify the rect, not both. A
+ * container measured mid-layout as `{ width: 800, height: 0 }` is not a
+ * measurement: the host intersection below cannot satisfy `bottom > top`, so
+ * the centre collapses onto `rect.top` and the element lands at the top edge —
+ * off-page once its own height is subtracted — while the documented page-centre
+ * fallback is skipped because a point WAS returned.
  */
 export function viewportCenterInPage(
-	ctx: CanvasStudioContextValue,
+	ctx: ViewportPointContext,
 ): { x: number; y: number } | undefined {
 	const container = stageContainer(ctx);
 	const rect = container?.getBoundingClientRect?.();
-	if (!rect || (rect.width <= 0 && rect.height <= 0)) return undefined;
+	if (!rect || rect.width <= 0 || rect.height <= 0) return undefined;
 	const host = container
 		?.closest?.(`[${CANVAS_VIEWPORT_ATTRIBUTE}]`)
 		?.getBoundingClientRect?.();

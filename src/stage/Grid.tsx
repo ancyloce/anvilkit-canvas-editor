@@ -1,8 +1,9 @@
 "use client";
 
+import type Konva from "konva";
 import * as React from "react";
-import { useSyncExternalStore } from "react";
-import { Group, Line } from "react-konva";
+import { useMemo, useSyncExternalStore } from "react";
+import { Group, Shape } from "react-konva";
 import {
 	useActivePage,
 	useCanvasStudio,
@@ -10,7 +11,7 @@ import {
 
 /**
  * Per-axis budget for grid lines (main and sub-grid counted separately). See
- * the coarsening strategy note on {@link Grid}.
+ * the coarsening strategy note on {@link computeGridGeometry}.
  */
 export const MAX_GRID_LINES = 512;
 
@@ -46,6 +47,124 @@ function linePositions(
 	return positions;
 }
 
+/** Where every grid line sits, in page coordinates. */
+export interface GridGeometry {
+	/** Main-grid spacing actually used, after any budget coarsening. */
+	readonly step: number;
+	/** Sub-grid spacing, or `null` when the sub-grid was dropped. */
+	readonly subStep: number | null;
+	readonly mainVertical: readonly number[];
+	readonly mainHorizontal: readonly number[];
+	readonly subVertical: readonly number[];
+	readonly subHorizontal: readonly number[];
+}
+
+/**
+ * Resolve the visible grid to line positions — pure, and exported so the
+ * budget rules below are unit-testable without rendering anything.
+ *
+ * LINE-COUNT BUDGET. The node count must stay bounded for tiny grid sizes on
+ * large pages. Strategy: with `step = gridSize`, first DROP the sub-grid
+ * whenever `maxPageDimension / (step / subdivisions)` exceeds
+ * {@link MAX_GRID_LINES}, then COARSEN the main step (double it repeatedly)
+ * until `maxPageDimension / step` fits the budget. Coarsened lines still sit
+ * on grid multiples, so what remains is an honest (sparser) view of the grid.
+ */
+export function computeGridGeometry(
+	size: { width: number; height: number },
+	gridSize: number,
+	gridSubdivisions: number,
+): GridGeometry {
+	const { width, height } = size;
+	const maxDimension = Math.max(width, height);
+
+	let step = gridSize;
+	while (maxDimension / step > MAX_GRID_LINES) step *= 2;
+	const subdivisions = Math.floor(gridSubdivisions);
+	const subStep =
+		subdivisions > 1 && maxDimension / (step / subdivisions) <= MAX_GRID_LINES
+			? step / subdivisions
+			: null;
+
+	return {
+		step,
+		subStep,
+		mainVertical: linePositions(width, step),
+		mainHorizontal: linePositions(height, step),
+		subVertical:
+			subStep !== null ? linePositions(width, subStep, subdivisions) : [],
+		subHorizontal:
+			subStep !== null ? linePositions(height, subStep, subdivisions) : [],
+	};
+}
+
+/**
+ * One grid tier (main or sub) as a SINGLE Konva node.
+ *
+ * This used to be one `<Line>` per grid line, which on a large page with a
+ * fine grid meant up to `MAX_GRID_LINES × 2 × 2` ≈ 2048 Konva nodes — each a
+ * full scene-graph member with its own transform, attrs and React element,
+ * all living on the same physical layer as the design content, and so all
+ * re-stroked whenever anything on that layer redraws (Konva clears and
+ * re-walks a whole layer per draw; `Layer.drawScene`). Collapsing a tier into
+ * one `sceneFunc` keeps the identical painted result — same positions, same
+ * stroke — while the layer walks 1 node instead of ~1000 (K-8).
+ *
+ * `sceneFunc` is memoised because Konva's `_setAttr` never short-circuits a
+ * function-valued attribute, so a fresh closure per render would re-set it and
+ * re-request a draw every commit (K-3).
+ */
+function GridTier({
+	vertical,
+	horizontal,
+	width,
+	height,
+	stroke,
+	strokeWidth,
+}: {
+	vertical: readonly number[];
+	horizontal: readonly number[];
+	width: number;
+	height: number;
+	stroke: string;
+	strokeWidth: number;
+}): React.JSX.Element {
+	const sceneFunc = useMemo(
+		() => (ctx: Konva.Context, shape: Konva.Shape) => {
+			// One path for the whole tier: `strokeShape` then applies the shape's
+			// own stroke/strokeWidth to all of it in a single stroke() call.
+			ctx.beginPath();
+			for (const x of vertical) {
+				ctx.moveTo(x, 0);
+				ctx.lineTo(x, height);
+			}
+			for (const y of horizontal) {
+				ctx.moveTo(0, y);
+				ctx.lineTo(width, y);
+			}
+			ctx.strokeShape(shape);
+		},
+		[vertical, horizontal, width, height],
+	);
+	return (
+		<Shape
+			sceneFunc={sceneFunc}
+			stroke={stroke}
+			strokeWidth={strokeWidth}
+			// A custom Shape cannot infer its own bounds from `sceneFunc`, so the
+			// page box is declared explicitly — otherwise it measures 0×0 and
+			// silently drops out of every `getClientRect` union it takes part in.
+			width={width}
+			height={height}
+			listening={false}
+			// Editor-only chrome, excluded from every export, so the buffer-canvas
+			// pass Konva would use for a semi-transparent stroked shape buys
+			// nothing here. (Content shapes deliberately keep it — see K-10.)
+			perfectDrawEnabled={false}
+		/>
+	);
+}
+
 /**
  * FR-112 grid overlay for the LIVE stage. Renders page-bounded main lines
  * every `gridSize` px and (when `gridSubdivisions > 1`) sub-lines at
@@ -55,14 +174,8 @@ function linePositions(
  * (`gridEnabled`) is INDEPENDENT of snapping (`snapToGridEnabled`) — hiding
  * the grid does not turn grid snap off (see `viewport-store.ts`).
  *
- * PERFORMANCE — line-count budget: one Konva `<Line>` per grid line is the
- * house style (page-bounded Line lists, not a single sceneFunc Shape), so the
- * node count must stay bounded for tiny grid sizes on large pages. Strategy:
- * with `step = gridSize`, first DROP the sub-grid whenever
- * `maxPageDimension / (step / subdivisions)` exceeds {@link MAX_GRID_LINES},
- * then COARSEN the main step (double it repeatedly) until
- * `maxPageDimension / step` fits the budget. Coarsened lines still sit on
- * grid multiples, so what remains is an honest (sparser) view of the grid.
+ * Geometry lives in {@link computeGridGeometry}; each tier paints as one
+ * {@link GridTier} node rather than one node per line.
  *
  * Chrome only: wrapped in `<Group name={GRID_CHROME_GROUP_NAME} listening={false}>`
  * so `export-stage.ts` can hide it during live-stage serialization; the
@@ -78,71 +191,40 @@ export function Grid(): React.JSX.Element | null {
 	// Resolved-source page (plan 0024 Phase 2) so the grid extent tracks a live
 	// page-size preview instead of snapping only on commit.
 	const page = useActivePage();
-	if (!vs.gridEnabled || !page || vs.gridSize <= 0) return null;
+	const size = page?.size;
+	// Hoisted above the early return — hooks may not be conditional. Memoised on
+	// the page size plus the two grid settings, which is every input.
+	const geometry = useMemo(
+		() =>
+			size && vs.gridSize > 0
+				? computeGridGeometry(size, vs.gridSize, vs.gridSubdivisions)
+				: null,
+		[size, vs.gridSize, vs.gridSubdivisions],
+	);
+	if (!vs.gridEnabled || !size || !geometry) return null;
 
-	const { width, height } = page.size;
-	const maxDimension = Math.max(width, height);
-
-	// Budget (see the component doc comment): coarsen the main step first…
-	let step = vs.gridSize;
-	while (maxDimension / step > MAX_GRID_LINES) step *= 2;
-	// …and keep the sub-grid only when it independently fits the budget.
-	const subdivisions = Math.floor(vs.gridSubdivisions);
-	const subStep =
-		subdivisions > 1 && maxDimension / (step / subdivisions) <= MAX_GRID_LINES
-			? step / subdivisions
-			: null;
-
-	const mainStrokeWidth = 1 / vs.zoom;
-	const subStrokeWidth = 0.5 / vs.zoom;
-
+	const { width, height } = size;
 	return (
 		<Group name={GRID_CHROME_GROUP_NAME} listening={false}>
 			{/* Sub-grid first so main lines paint on top at shared crossings. */}
-			{subStep !== null
-				? linePositions(width, subStep, subdivisions).map((x) => (
-						<Line
-							key={`grid-sub-v-${x}`}
-							points={[x, 0, x, height]}
-							stroke={vs.subGridColor}
-							strokeWidth={subStrokeWidth}
-							listening={false}
-							perfectDrawEnabled={false}
-						/>
-					))
-				: null}
-			{subStep !== null
-				? linePositions(height, subStep, subdivisions).map((y) => (
-						<Line
-							key={`grid-sub-h-${y}`}
-							points={[0, y, width, y]}
-							stroke={vs.subGridColor}
-							strokeWidth={subStrokeWidth}
-							listening={false}
-							perfectDrawEnabled={false}
-						/>
-					))
-				: null}
-			{linePositions(width, step).map((x) => (
-				<Line
-					key={`grid-v-${x}`}
-					points={[x, 0, x, height]}
-					stroke={vs.gridColor}
-					strokeWidth={mainStrokeWidth}
-					listening={false}
-					perfectDrawEnabled={false}
+			{geometry.subStep !== null ? (
+				<GridTier
+					vertical={geometry.subVertical}
+					horizontal={geometry.subHorizontal}
+					width={width}
+					height={height}
+					stroke={vs.subGridColor}
+					strokeWidth={0.5 / vs.zoom}
 				/>
-			))}
-			{linePositions(height, step).map((y) => (
-				<Line
-					key={`grid-h-${y}`}
-					points={[0, y, width, y]}
-					stroke={vs.gridColor}
-					strokeWidth={mainStrokeWidth}
-					listening={false}
-					perfectDrawEnabled={false}
-				/>
-			))}
+			) : null}
+			<GridTier
+				vertical={geometry.mainVertical}
+				horizontal={geometry.mainHorizontal}
+				width={width}
+				height={height}
+				stroke={vs.gridColor}
+				strokeWidth={1 / vs.zoom}
+			/>
 		</Group>
 	);
 }

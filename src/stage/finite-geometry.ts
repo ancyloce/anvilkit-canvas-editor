@@ -1,5 +1,6 @@
 import type { CanvasNode, CanvasTransform } from "@anvilkit/canvas-core";
-import Konva from "konva";
+import type Konva from "konva";
+import KonvaRuntime from "./konva.js";
 
 /**
  * @file Guards that keep geometry Konva cannot measure out of the scene graph.
@@ -107,7 +108,7 @@ export function sanitizeBox<
  */
 export function hasDrawablePathData(d: string): boolean {
 	try {
-		return Konva.Path.parsePathData(d).some(
+		return KonvaRuntime.Path.parsePathData(d).some(
 			(command) => command.points.length > 0,
 		);
 	} catch {

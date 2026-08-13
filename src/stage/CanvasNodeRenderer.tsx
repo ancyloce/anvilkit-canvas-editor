@@ -7,6 +7,7 @@ import {
 	type CanvasAiPlaceholderStatus,
 	type CanvasAudioNode,
 	type CanvasComponentInstanceNode,
+	type CanvasCornerRadii,
 	type CanvasEffect,
 	type CanvasEllipseNode,
 	type CanvasFill,
@@ -38,9 +39,18 @@ import {
 	resolveSpanStyle,
 	toResolvedNodeId,
 } from "@anvilkit/canvas-core";
-import Konva from "konva";
+import type Konva from "konva";
+import { BlurFilter } from "./konva.js";
 import * as React from "react";
-import { use, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import {
+	use,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useSyncExternalStore,
+} from "react";
 import {
 	Arrow,
 	Ellipse,
@@ -78,7 +88,9 @@ import {
 } from "../text/rich-text-style.js";
 import { useCanvasAsset } from "./CanvasAssetsContext.js";
 import { useCanvasBrandKit } from "./CanvasBrandKitContext.js";
+import { useDecodedImage } from "./CanvasDecodedImagesContext.js";
 import { CanvasResolvedDocumentContext } from "./CanvasResolvedDocumentContext.js";
+import { canvasNodeRef } from "./find-node-by-id.js";
 import {
 	finiteOr,
 	hasDrawablePathData,
@@ -97,6 +109,15 @@ export interface CanvasNodeRendererProps {
 interface CommonProps {
 	id: string;
 	name: string;
+	/**
+	 * Indexes this node under its `CanvasNode.id` for {@link findNodeById}
+	 * (K-6). Riding on `commonProps` is deliberate: it is the ONE thing every
+	 * addressable node already spreads, so the index cannot drift out of step
+	 * with what is actually mounted the way a per-renderer opt-in would.
+	 * `canvasNodeRef` hands back a stable callback per id, so this does not
+	 * churn React's ref attach/detach.
+	 */
+	ref: (node: Konva.Node | null) => (() => void) | void;
 	x: number;
 	y: number;
 	rotation: number;
@@ -113,6 +134,7 @@ function commonProps(node: CanvasNodeBase & { id: string }): CommonProps {
 	return {
 		id: node.id,
 		name: node.id,
+		ref: canvasNodeRef(node.id),
 		x: node.transform.x,
 		y: node.transform.y,
 		rotation: node.transform.rotation,
@@ -231,6 +253,133 @@ function shadowProps(node: {
 	};
 }
 
+/**
+ * Everything {@link useShapeStyleProps} reads. Loose on purpose: the shape
+ * kinds do not share a nominal base carrying exactly these fields, and every
+ * one of them is optional in at least one kind.
+ */
+type ShapeStyleSource = CanvasStrokeStyle & {
+	fill?: CanvasFill;
+	bounds: { width: number; height: number };
+	stroke?: string;
+	strokeWidth?: number;
+	effects?: CanvasEffect[];
+	shadow?: CanvasShadow;
+};
+
+/**
+ * Memoised fill + shadow + stroke props (K-3).
+ *
+ * WHY this has to be memoised, when the values are "the same" anyway: Konva's
+ * `Node._setAttr` short-circuits on `oldVal === val` only for PRIMITIVES —
+ * `if (oldVal === val && !Util.isObject(val)) return;` — so every object-,
+ * array- or function-valued attribute is treated as changed on identity alone.
+ * `fillProps` builds fresh gradient point objects and a fresh colour-stop
+ * array, and `strokeStyleProps` a fresh `dash` array, so re-running them
+ * produced a `fillLinearGradientColorStopsChange` on every render. Konva
+ * listens for exactly that event to drop its cached `CanvasGradient`
+ * (`Shape.js`), so a gradient-filled shape rebuilt its gradient every commit.
+ *
+ * The deps are the SOURCE FIELDS, not `node`, and that distinction is the
+ * point: the IR is updated immutably, so dragging a shape allocates a new
+ * `node` while `node.fill` keeps its identity — field-level deps skip the
+ * gradient rebuild on a move, `[node]` would not.
+ */
+function useShapeStyleProps(
+	node: ShapeStyleSource,
+	brandKit: BrandKit,
+): Konva.ShapeConfig {
+	const {
+		fill,
+		bounds,
+		effects,
+		shadow,
+		stroke,
+		strokeWidth,
+		strokeOpacity,
+		strokeDash,
+		strokeCap,
+		strokeJoin,
+	} = node;
+	return useMemo(
+		() => ({
+			...fillProps(fill, bounds, brandKit),
+			...shadowProps({ effects, shadow }),
+			...strokeStyleProps({
+				stroke,
+				strokeWidth,
+				strokeOpacity,
+				strokeDash,
+				strokeCap,
+				strokeJoin,
+			}),
+		}),
+		[
+			fill,
+			bounds,
+			brandKit,
+			effects,
+			shadow,
+			stroke,
+			strokeWidth,
+			strokeOpacity,
+			strokeDash,
+			strokeCap,
+			strokeJoin,
+		],
+	);
+}
+
+/** Stroke-only counterpart of {@link useShapeStyleProps}, for unfilled kinds. */
+function useStrokeProps(
+	node: CanvasStrokeStyle & { stroke?: string; strokeWidth?: number },
+): Konva.ShapeConfig {
+	const {
+		stroke,
+		strokeWidth,
+		strokeOpacity,
+		strokeDash,
+		strokeCap,
+		strokeJoin,
+	} = node;
+	return useMemo(
+		() =>
+			strokeStyleProps({
+				stroke,
+				strokeWidth,
+				strokeOpacity,
+				strokeDash,
+				strokeCap,
+				strokeJoin,
+			}),
+		[stroke, strokeWidth, strokeOpacity, strokeDash, strokeCap, strokeJoin],
+	);
+}
+
+/**
+ * Konva's `cornerRadius`, memoised (K-3). The four-corner form is an ARRAY, so
+ * — like the gradient stops above — Konva re-fires `cornerRadiusChange` on
+ * every render unless the reference is held stable.
+ */
+function useCornerRadius(node: {
+	cornerRadii?: CanvasCornerRadii;
+	radius?: number;
+}): number | number[] | undefined {
+	const { cornerRadii, radius } = node;
+	return useMemo(
+		() =>
+			cornerRadii
+				? [
+						cornerRadii.topLeft,
+						cornerRadii.topRight,
+						cornerRadii.bottomRight,
+						cornerRadii.bottomLeft,
+					]
+				: radius,
+		[cornerRadii, radius],
+	);
+}
+
 function CanvasGroupNodeRenderer({ node }: { node: CanvasGroupNode }) {
 	return (
 		<Group {...commonProps(node)}>
@@ -243,6 +392,15 @@ function CanvasGroupNodeRenderer({ node }: { node: CanvasGroupNode }) {
 
 /** The callback Konva hands its scene context to. Named so the helpers below can be typed from Konva's own contract. */
 type FrameClipFunc = NonNullable<Konva.ContainerConfig["clipFunc"]>;
+
+/**
+ * Exactly the fields {@link frameClipProps} reads: `bounds`, plus the four
+ * `resolveFrameClipShape` inputs. Spelled out rather than taking a whole
+ * `CanvasFrameNode` so {@link useFrameClipProps}'s dependency list is provably
+ * the complete set of inputs, not a claim in a comment.
+ */
+type FrameClipSource = Pick<CanvasFrameNode, "bounds"> &
+	Partial<Pick<CanvasFrameNode, "clip" | "shape" | "radius" | "cornerRadii">>;
 
 /**
  * Trace a closed polyline through `vertices`, in the frame's LOCAL space.
@@ -290,9 +448,15 @@ function polygonClipFunc(vertices: readonly PolygonVertex[]): FrameClipFunc {
  *
  * NO node is cached and no offscreen canvas is allocated: `clipFunc` is ordinary
  * per-frame canvas state, so shape clipping costs a path trace per draw and
- * nothing else (PLAN-0035 §9 R-3). The closure is rebuilt on every render from
- * the current bounds and shape, so there is no memo to invalidate and no way for
- * it to capture stale geometry.
+ * nothing else (PLAN-0035 §9 R-3).
+ *
+ * The closure captures `bounds` and the resolved shape, so callers must go
+ * through {@link useFrameClipProps} rather than calling this during render:
+ * a `clipFunc` is a FUNCTION, and Konva's `_setAttr` never short-circuits on
+ * those, so an unmemoised closure re-set the attribute (and re-requested a
+ * draw) on every render of every clipping frame (K-3). That hook's dependency
+ * list is exactly the set of fields captured here, which is what keeps the
+ * memo from ever holding stale geometry.
  *
  * Composition with `blendMode` is Konva's own ordering, not something this
  * function participates in: `Container._drawChildren` pushes the clip first
@@ -300,7 +464,7 @@ function polygonClipFunc(vertices: readonly PolygonVertex[]): FrameClipFunc {
  * `globalCompositeOperation` after it, so a frame carrying both blends its
  * children into the backdrop *and* restricts them to the clip region.
  */
-function frameClipProps(node: CanvasFrameNode): Konva.ContainerConfig {
+function frameClipProps(node: FrameClipSource): Konva.ContainerConfig {
 	const resolved = resolveFrameClipShape(node);
 	if (!resolved.clipped) return {};
 	const { width, height } = node.bounds;
@@ -375,26 +539,37 @@ function frameClipProps(node: CanvasFrameNode): Konva.ContainerConfig {
 			// clip input, so `d` is never re-parsed here. It is built ONCE per render
 			// rather than inside the callback, which Konva invokes on every draw.
 			//
-			// Two guards, both degrading to the frame box rather than to nothing: a
-			// path Konva's parser yields no points for (`"Z"`, `"M"`, an SVG import's
-			// junk — all valid per the IR, which only requires a non-empty `d`) would
-			// clip the frame's entire content away, a silent wrong render, and this
-			// mirrors `CanvasPathNodeRenderer`'s "substitute a bounds-sized Rect
-			// rather than render nothing" precedent. `Path2D` itself is absent in a
-			// DOM without a canvas implementation (jsdom), where clipping cannot be
-			// expressed at all.
+			// ONE guard, and it is an ENVIRONMENT check rather than a data check:
+			// `Path2D` is absent in a DOM without a canvas implementation (jsdom),
+			// where clipping cannot be expressed at all.
+			//
+			// Whether `d` is honourable is NOT decided here. This used to apply
+			// `hasDrawablePathData` (Konva's own parser) while the SVG emitter
+			// applied its character allowlist, and two oracles for one question is
+			// exactly what defect D-1 was: `d: "Z"` passed SVG's and failed this
+			// one, so an export blanked a frame the stage drew normally. The
+			// resolver now owns both checks (`core/src/path-data.ts`, applied by
+			// `resolveFrameClipShape`), so anything undrawable has already been
+			// substituted with the rectangle above and cannot reach this arm.
 			if (typeof Path2D !== "function") return boxClip;
-			if (!hasDrawablePathData(shape.d)) return boxClip;
 			const path = new Path2D(shape.d);
 			return { clipFunc: () => [path] };
 		}
-		default:
-			// Unreachable for TypeScript — `CanvasFrameShape` is closed and the
-			// resolver degrades anything else to `{ kind: "rect" }` — but the IR's
-			// loose schemas mean a newer peer's shape can exist at runtime, and a
-			// frame that clips to its box is the same fallback the resolver picks.
-			return boxClip;
 	}
+}
+
+/**
+ * {@link frameClipProps}, memoised on exactly the fields it reads —
+ * `bounds` plus the four `resolveFrameClipShape` inputs (`clip`, `shape`,
+ * `radius`, `cornerRadii`). Field-level rather than `[node]` so a frame that
+ * merely MOVES keeps its clip closure, and Konva keeps its `clipFunc` attr.
+ */
+function useFrameClipProps(node: CanvasFrameNode): Konva.ContainerConfig {
+	const { bounds, clip, shape, radius, cornerRadii } = node;
+	return useMemo(
+		() => frameClipProps({ bounds, clip, shape, radius, cornerRadii }),
+		[bounds, clip, shape, radius, cornerRadii],
+	);
 }
 
 /**
@@ -407,6 +582,12 @@ const FRAME_PLACEHOLDER_FALLBACK_FILL = "#e2e8f0";
 
 /** Stage-only chrome for an empty well. Never document content — see below. */
 const PLACEHOLDER_OUTLINE = "#94a3b8";
+/**
+ * Hoisted so the reference is stable (K-3). An inline `[6, 4]` is a fresh
+ * array every render, and Konva's `_setAttr` never short-circuits on objects,
+ * so it re-fired `dashChange` and re-requested a draw on every commit.
+ */
+const PLACEHOLDER_DASH: number[] = [6, 4];
 const PLACEHOLDER_LABEL_COLOR = "#64748b";
 
 /**
@@ -450,9 +631,15 @@ function CanvasFrameNodeRenderer({ node }: { node: CanvasFrameNode }) {
 	// selection box, the Transformer's `oldBox` (and so the resize ratio) and the
 	// floating ElementControls anchor for frames that were never broken.
 	const needsGeometryRect = fill !== undefined || node.children.length === 0;
+	const clipProps = useFrameClipProps(node);
+	const cornerRadius = useCornerRadius(node);
+	const backdropFill = useMemo(
+		() => fillProps(fill, node.bounds, brandKit),
+		[fill, node.bounds, brandKit],
+	);
 
 	return (
-		<Group {...commonProps(node)} {...frameClipProps(node)}>
+		<Group {...commonProps(node)} {...clipProps}>
 			{needsGeometryRect ? (
 				<Rect
 					// Deliberately carries NO id/name. `findHitNodeId` resolves a
@@ -480,17 +667,8 @@ function CanvasFrameNodeRenderer({ node }: { node: CanvasFrameNode }) {
 					width={width}
 					height={height}
 					listening={fill !== undefined}
-					cornerRadius={
-						node.cornerRadii
-							? [
-									node.cornerRadii.topLeft,
-									node.cornerRadii.topRight,
-									node.cornerRadii.bottomRight,
-									node.cornerRadii.bottomLeft,
-								]
-							: node.radius
-					}
-					{...fillProps(fill, node.bounds, brandKit)}
+					cornerRadius={cornerRadius}
+					{...backdropFill}
 				/>
 			) : null}
 			{emptyWell && isInteractive ? (
@@ -500,19 +678,10 @@ function CanvasFrameNodeRenderer({ node }: { node: CanvasFrameNode }) {
 						y={0}
 						width={width}
 						height={height}
-						cornerRadius={
-							node.cornerRadii
-								? [
-										node.cornerRadii.topLeft,
-										node.cornerRadii.topRight,
-										node.cornerRadii.bottomRight,
-										node.cornerRadii.bottomLeft,
-									]
-								: node.radius
-						}
+						cornerRadius={cornerRadius}
 						stroke={PLACEHOLDER_OUTLINE}
 						strokeWidth={1}
-						dash={[6, 4]}
+						dash={PLACEHOLDER_DASH}
 					/>
 					<Text
 						x={0}
@@ -546,24 +715,15 @@ function placeholderLabel(
 
 function CanvasRectNodeRenderer({ node }: { node: CanvasRectNode }) {
 	const brandKit = useCanvasBrandKit();
+	const style = useShapeStyleProps(node, brandKit);
+	const cornerRadius = useCornerRadius(node);
 	return (
 		<Rect
 			{...commonProps(node)}
 			width={node.bounds.width}
 			height={node.bounds.height}
-			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node)}
-			{...strokeStyleProps(node)}
-			cornerRadius={
-				node.cornerRadii
-					? [
-							node.cornerRadii.topLeft,
-							node.cornerRadii.topRight,
-							node.cornerRadii.bottomRight,
-							node.cornerRadii.bottomLeft,
-						]
-					: node.radius
-			}
+			{...style}
+			cornerRadius={cornerRadius}
 		/>
 	);
 }
@@ -577,6 +737,7 @@ function CanvasEllipseNodeRenderer({ node }: { node: CanvasEllipseNode }) {
 	const base = commonProps(node);
 	const offset = nodeRenderOffset(node);
 	const brandKit = useCanvasBrandKit();
+	const style = useShapeStyleProps(node, brandKit);
 	return (
 		<Ellipse
 			{...base}
@@ -584,9 +745,7 @@ function CanvasEllipseNodeRenderer({ node }: { node: CanvasEllipseNode }) {
 			y={base.y + offset.y}
 			radiusX={radiusX}
 			radiusY={radiusY}
-			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node)}
-			{...strokeStyleProps(node)}
+			{...style}
 		/>
 	);
 }
@@ -595,6 +754,7 @@ function CanvasPolygonNodeRenderer({ node }: { node: CanvasPolygonNode }) {
 	const base = commonProps(node);
 	const offset = nodeRenderOffset(node);
 	const brandKit = useCanvasBrandKit();
+	const style = useShapeStyleProps(node, brandKit);
 	return (
 		<RegularPolygon
 			{...base}
@@ -603,9 +763,7 @@ function CanvasPolygonNodeRenderer({ node }: { node: CanvasPolygonNode }) {
 			scaleY={base.scaleY * aspectFitScaleY(node.bounds)}
 			sides={node.sides}
 			radius={node.bounds.width / 2}
-			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node)}
-			{...strokeStyleProps(node)}
+			{...style}
 		/>
 	);
 }
@@ -615,6 +773,7 @@ function CanvasStarNodeRenderer({ node }: { node: CanvasStarNode }) {
 	const offset = nodeRenderOffset(node);
 	const outerRadius = node.bounds.width / 2;
 	const brandKit = useCanvasBrandKit();
+	const style = useShapeStyleProps(node, brandKit);
 	return (
 		<Star
 			{...base}
@@ -624,9 +783,7 @@ function CanvasStarNodeRenderer({ node }: { node: CanvasStarNode }) {
 			numPoints={node.points}
 			innerRadius={outerRadius * node.innerRadiusRatio}
 			outerRadius={outerRadius}
-			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node)}
-			{...strokeStyleProps(node)}
+			{...style}
 		/>
 	);
 }
@@ -636,12 +793,15 @@ function CanvasLineNodeRenderer({ node }: { node: CanvasLineNode }) {
 	// exporter's <marker> path is the exact form. Plain lines stay Konva.Line.
 	const arrowStart = (node.arrowStart ?? "none") !== "none";
 	const arrowEnd = (node.arrowEnd ?? "none") !== "none";
+	// Hoisted above the branch: hooks may not be called conditionally, and both
+	// arms want the same memoised stroke props.
+	const strokeProps = useStrokeProps(node);
 	if (arrowStart || arrowEnd) {
 		return (
 			<Arrow
 				{...commonProps(node)}
 				points={node.points}
-				{...strokeStyleProps(node)}
+				{...strokeProps}
 				fill={node.stroke}
 				pointerAtBeginning={arrowStart}
 				pointerAtEnding={arrowEnd}
@@ -649,16 +809,14 @@ function CanvasLineNodeRenderer({ node }: { node: CanvasLineNode }) {
 		);
 	}
 	return (
-		<Line
-			{...commonProps(node)}
-			points={node.points}
-			{...strokeStyleProps(node)}
-		/>
+		<Line {...commonProps(node)} points={node.points} {...strokeProps} />
 	);
 }
 
 function CanvasPathNodeRenderer({ node }: { node: CanvasPathNode }) {
 	const brandKit = useCanvasBrandKit();
+	// Hoisted above the early return below — hooks may not be conditional.
+	const style = useShapeStyleProps(node, brandKit);
 	// Path data Konva cannot turn into points measures as an all-`NaN` rect,
 	// which poisons every ancestor's rect and the selection Transformer's matrix
 	// math (see `finite-geometry.ts`). Memoised: Konva re-parses on every call.
@@ -685,13 +843,7 @@ function CanvasPathNodeRenderer({ node }: { node: CanvasPathNode }) {
 		);
 	}
 	return (
-		<Path
-			{...commonProps(node)}
-			data={node.d}
-			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node)}
-			{...strokeStyleProps(node)}
-		/>
+		<Path {...commonProps(node)} data={node.d} {...style} />
 	);
 }
 
@@ -704,6 +856,7 @@ function CanvasTextNodeRenderer({ node }: { node: CanvasTextNode }) {
 	// FR-083 (C-11): re-render when the family finishes loading so Konva
 	// re-draws with the real font instead of staying on fallback metrics.
 	useFontStatus(fontFamily);
+	const style = useShapeStyleProps(node, brandKit);
 	return (
 		<Text
 			{...commonProps(node)}
@@ -711,8 +864,7 @@ function CanvasTextNodeRenderer({ node }: { node: CanvasTextNode }) {
 			{...(fontFamily !== undefined ? { fontFamily } : {})}
 			fontSize={node.fontSize}
 			fontStyle={node.fontWeight}
-			{...fillProps(node.fill, node.bounds, brandKit)}
-			{...shadowProps(node)}
+			{...style}
 			align={node.align}
 			width={node.bounds.width}
 			height={node.bounds.height}
@@ -861,12 +1013,19 @@ function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 
 	const effectiveWidth = autoWidth ? measuredWidth : node.width;
 
-	return (
-		<Group
-			{...commonProps(node)}
-			{...richTextClipProps(node, measured.height, effectiveWidth)}
-		>
-			{measured.lines.flatMap((line) =>
+	// Memoised (K-16 / K-3). One `<Text>` per RUN means a styled paragraph is
+	// dozens of Konva nodes, and rebuilding that whole element list on every
+	// render also rebuilt every run's `fillProps` object. Gradient-filled runs
+	// are the ones that actually cost: Konva's `_setAttr` short-circuits a
+	// repeated STRING fill but never an object, so a fresh gradient per run per
+	// render dropped Konva's cached `CanvasGradient` each time.
+	//
+	// `measured` is itself cached on `node.paragraphs` (`text/layout-cache.ts`),
+	// so a drag or transform — which never touches `paragraphs` — now re-renders
+	// this node without re-measuring OR rebuilding any of its runs.
+	const runs = useMemo(
+		() =>
+			measured.lines.flatMap((line) =>
 				line.runs.map((run) => {
 					const paragraph = node.paragraphs[line.paragraphIndex];
 					const span = paragraph?.spans[run.spanIndex];
@@ -893,19 +1052,83 @@ function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 								.filter(Boolean)
 								.join(" ")}
 							{...fillProps(
-								style.fill,
-								{
-									width: run.width,
-									height: line.height,
-								},
-								brandKit,
-							)}
-						/>
-					);
-				}),
-			)}
+									style.fill,
+									{
+										width: run.width,
+										height: line.height,
+									},
+									brandKit,
+								)}
+								// K-16: the block's hit area is ONE rect (below), not N
+								// glyph runs. Konva renders a listening Text into the hit
+								// canvas glyph by glyph, on every frame the layer redraws
+								// — the most expensive hit geometry in the scene, for a
+								// shape the user only ever clicks as a block.
+								listening={false}
+							/>
+						);
+					}),
+				),
+		[measured, node.paragraphs, brandKit, verticalOffset],
+	);
+
+	// The block's single hit target (K-16), sized to the LARGER of the declared
+	// box and the laid-out text so overflowing lines stay clickable — with
+	// `overflow: clip`/`ellipsis` the Group's clip trims both the paint and the
+	// hit region to the box anyway, so one rect is correct in either mode.
+	//
+	// Two deliberate consequences. Clicking a gap between lines or after the
+	// last glyph now selects the block, where it used to fall through; that
+	// matches how every other design tool treats a text frame, and matches the
+	// box the Transformer and the inspector already work in. And the Group's
+	// `getClientRect` becomes the declared box rather than the union of the
+	// glyphs, so the selection box now agrees with `bounds` instead of hugging
+	// short text inside a wide frame.
+	const hitHeight = Math.max(node.height ?? measured.height, measured.height);
+	return (
+		<Group
+			{...commonProps(node)}
+			{...richTextClipProps(node, measured.height, effectiveWidth)}
+		>
+			<Rect
+				x={0}
+				y={0}
+				width={effectiveWidth}
+				height={hitHeight}
+				// Paints nothing; present only so the hit canvas has one cheap
+				// rectangle to rasterise for the whole block. Same device the
+				// asset/component placeholders use to stay selectable.
+				fill="transparent"
+			/>
+			{runs}
 		</Group>
 	);
+}
+
+/**
+ * Resolve an asset URI to a drawable image (K-17).
+ *
+ * Prefers an element the surrounding pass already decoded
+ * ({@link useDecodedImage}) — that is what makes the offscreen rasterizer
+ * deterministic — and otherwise loads it the way the live editor always has.
+ *
+ * `useImage` is still called unconditionally (hooks rules), but with an empty
+ * url when a decoded element is in hand: `use-image` bails on a falsy url
+ * (`if (!url) return;`), so no second `HTMLImageElement` is created and the
+ * large bitmap is not decoded twice.
+ *
+ * CORS mode is preserved on the fallback path (E-1): a cross-origin source —
+ * e.g. an Unsplash hotlink the asset manager stores as-is — otherwise taints
+ * the canvas and makes `stage.toDataURL()` throw `SecurityError` on
+ * export/thumbnail/save.
+ */
+function useAssetImage(
+	uri: string,
+): [HTMLImageElement | undefined, "loading" | "loaded" | "failed"] {
+	const decoded = useDecodedImage(uri);
+	const [loaded, loadedStatus] = useImage(decoded ? "" : uri, "anonymous");
+	if (decoded) return [decoded, "loaded"];
+	return [loaded, loadedStatus];
 }
 
 /**
@@ -919,12 +1142,27 @@ function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 function AdjustedKonvaImage({
 	adjustments,
 	image,
+	ref: forwardedRef,
 	...imageProps
 }: {
 	adjustments: CanvasImageAdjustments | undefined;
 	image: HTMLImageElement;
+	/**
+	 * The registering ref from `commonProps` (K-6). Pulled out of the spread
+	 * and COMPOSED with this component's own cache ref below — left in
+	 * `imageProps` it would land after `ref={ref}` in the JSX and silently
+	 * win, leaving the filter cache with nothing to cache.
+	 */
+	ref?: (node: Konva.Node | null) => (() => void) | void;
 } & Konva.ImageConfig): React.JSX.Element {
 	const ref = useRef<Konva.Image>(null);
+	const setRef = useCallback(
+		(node: Konva.Image | null): void => {
+			ref.current = node;
+			forwardedRef?.(node);
+		},
+		[forwardedRef],
+	);
 	const matrix = adjustments ? computeAdjustmentColorMatrix(adjustments) : null;
 	const blurRadius = adjustments ? adjustmentBlurRadius(adjustments) : 0;
 	const matrixKey = matrix ? matrix.join(",") : "";
@@ -945,7 +1183,7 @@ function AdjustedKonvaImage({
 	const filters = useMemo(
 		() => [
 			...(colorFilter ? [colorFilter] : []),
-			...(hasBlur ? [Konva.Filters.Blur] : []),
+			...(hasBlur ? [BlurFilter] : []),
 		],
 		[colorFilter, hasBlur],
 	);
@@ -957,21 +1195,46 @@ function AdjustedKonvaImage({
 	const cropKey = crop
 		? `${crop.x},${crop.y},${crop.width},${crop.height}`
 		: "";
-	useEffect(() => {
+	// LAYOUT effect, not a passive one: react-konva applies the `filters` prop
+	// during its commit and requests a draw right there, while a passive
+	// `useEffect` runs only AFTER paint. That ordering left one frame in which
+	// the node had `filters` set and no cache — Konva skips filtering entirely
+	// in that state (and warns), so enabling an adjustment flashed the
+	// unfiltered image. `useLayoutEffect` lands the cache before the browser
+	// paints, so the first drawn frame is already filtered.
+	useLayoutEffect(() => {
 		const node = ref.current;
 		if (!node) return;
 		if (active) {
-			node.cache();
+			// `offset` widens the cache canvas beyond the node's own bounds.
+			// Konva filters read and write ONLY the cached bitmap, so a blur with
+			// the default `offset: 0` has nowhere to bleed: the kernel samples
+			// transparent pixels past the edge and the blur is cut off square
+			// instead of fading, which also diverges from the SVG export this
+			// path is supposed to match. Konva's Blur reaches ~`blurRadius` px,
+			// so that is the padding it needs. Costs one extra allocation ring
+			// around the bitmap and nothing when blur is off.
+			// NOTE the deliberate difference from the static GROUP cache, which
+			// K-7 made zoom-aware: this bitmap is left at Konva's default
+			// device-pixel-ratio, so an adjusted image is soft at high zoom the
+			// same way a cached group used to be. Chasing crispness here is not
+			// the same trade — a group cache only rasterises shapes, while this
+			// one re-runs the colour matrix over every pixel of the cache on
+			// each rebuild. At zoom 4 the crisp ratio is 8, i.e. 64× the pixels:
+			// a 2000×2000 photo would mean a quarter-billion-pixel matrix pass,
+			// on a debounce, during zooming. Filter cost scales with the bitmap;
+			// shape-rasterisation cost does not.
+			node.cache(hasBlur ? { offset: Math.ceil(blurRadius) } : undefined);
 		} else {
 			node.clearCache();
 		}
 		node.getLayer()?.batchDraw();
 		// `cropKey` is read for its dependency-tracking effect only — the fit/clip
 		// path that sizes via `crop.width * scale` lives in the caller, not here.
-	}, [active, matrixKey, blurRadius, image, width, height, cropKey]);
+	}, [active, hasBlur, matrixKey, blurRadius, image, width, height, cropKey]);
 	return (
 		<KonvaImage
-			ref={ref}
+			ref={setRef}
 			image={image}
 			{...imageProps}
 			{...(active ? { filters } : {})}
@@ -987,11 +1250,28 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 	// CORS mode (E-1): a cross-origin source (e.g. an Unsplash hotlink the
 	// asset manager stores as-is) otherwise taints the canvas, so
 	// `stage.toDataURL()` throws SecurityError on export/thumbnail/save.
-	const [image, status] = useImage(asset?.uri ?? "", "anonymous");
+	const [image, status] = useAssetImage(asset?.uri ?? "");
 	// FR-170: a toast for the "unresolvable asset reference" case specifically
 	// — NOT the `status === "failed"` (load error) case below, which is a
 	// different, already-visible failure mode.
 	useMissingAssetToast(node.id, !asset, isInteractive);
+	// Memoised (K-3) and hoisted above the early returns below — `crop` is an
+	// OBJECT, and Konva's `_setAttr` never short-circuits on those, so a fresh
+	// one each render re-fired `cropChange` (and, for an ADJUSTED image, also
+	// invalidated the filter cache keyed on the crop). `undefined` until the
+	// image loads; only the `fill`-without-crop arm reads it.
+	const coverCrop = useMemo(
+		() =>
+			image
+				? centerCoverCrop(
+						image.width,
+						image.height,
+						node.bounds.width,
+						node.bounds.height,
+					)
+				: undefined,
+		[image, node.bounds.width, node.bounds.height],
+	);
 	// FR-095: a missing asset or failed load must never disappear silently.
 	// The live editor shows selectable placeholder chrome; export/rasterize
 	// passes (isInteractive false) still emit nothing, matching core's SVG
@@ -1049,8 +1329,7 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 	// framing is achieved by asking Konva to crop straight to the covering
 	// source rect, so the image already draws at exactly width×height with no
 	// clip wrapper needed.
-	if (fitMode === "fill" && !node.crop) {
-		const crop = centerCoverCrop(image.width, image.height, width, height);
+	if (fitMode === "fill" && !node.crop && coverCrop) {
 		return (
 			<AdjustedKonvaImage
 				{...commonProps(node)}
@@ -1058,7 +1337,7 @@ function CanvasImageNodeRenderer({ node }: { node: CanvasImageNode }) {
 				image={image}
 				width={width}
 				height={height}
-				crop={crop}
+				crop={coverCrop}
 			/>
 		);
 	}
@@ -1122,7 +1401,7 @@ function CanvasSvgNodeRenderer({ node }: { node: CanvasSvgNode }) {
 	const t = useCanvasT();
 	const asset = useCanvasAsset(node.assetId);
 	// CORS mode (E-1) — see CanvasImageNodeRenderer above.
-	const [image, status] = useImage(asset?.uri ?? "", "anonymous");
+	const [image, status] = useAssetImage(asset?.uri ?? "");
 	// FR-170: same "unresolvable asset reference" toast the image renderer
 	// fires — shares the module-level batch so a mixed image+svg document
 	// still coalesces into one toast.
@@ -1207,7 +1486,7 @@ function MediaPlaceholderChrome({
 				fill={fill}
 				stroke={stroke}
 				strokeWidth={1}
-				dash={[6, 4]}
+				dash={PLACEHOLDER_DASH}
 			/>
 			<Text
 				x={0}
@@ -1418,7 +1697,7 @@ function CanvasVideoNodeRenderer({ node }: { node: CanvasVideoNode }) {
 	// placeholder does — an empty assetId resolves to `undefined`.
 	const posterAsset = useCanvasAsset(node.poster ?? "");
 	// CORS mode (E-1) — see CanvasImageNodeRenderer above.
-	const [image, status] = useImage(posterAsset?.uri ?? "", "anonymous");
+	const [image, status] = useAssetImage(posterAsset?.uri ?? "");
 	const hasPoster = node.poster !== undefined && status === "loaded" && !!image;
 
 	if (!hasPoster && !isInteractive) {
@@ -1543,7 +1822,7 @@ function CanvasAiPlaceholderNodeRenderer({
 				height={height}
 				stroke={style.stroke}
 				strokeWidth={1}
-				dash={[6, 4]}
+				dash={PLACEHOLDER_DASH}
 				fill={style.fill}
 			/>
 			<Text
@@ -1759,7 +2038,28 @@ function useResolvedGeometry(node: CanvasNode): CanvasNode {
 	}, [node, record]);
 }
 
-export function CanvasNodeRenderer({
+/**
+ * MEMOISED on the `node` prop (K-5). react-konva re-renders its ENTIRE bridged
+ * child tree on every render of the component that owns `<CanvasStage>` —
+ * `StageWrap` calls `updateContainer(<Bridge>{children}</Bridge>)` from a
+ * `useLayoutEffect` with no dependency array — so without a bail-out here a
+ * single-node edit re-ran every node's render function, and every one of them
+ * then handed Konva a fresh gradient/dash/clip object to re-apply (K-3).
+ *
+ * Reference equality on `node` is a SOUND key precisely because the IR is
+ * updated immutably: an edit allocates new objects only along the changed
+ * path, so untouched siblings keep their identity and bail out. The resolved
+ * geometry layer already leans on the same property (see
+ * {@link useResolvedGeometry}).
+ *
+ * What memo does NOT block, and must not: context reads
+ * (`IsolationRenderContext`, brand kit, assets) and the `useSyncExternalStore`
+ * subscriptions inside {@link useFieldPreviewMerge} / {@link useRenderRecord}
+ * still re-render this node on their own when their value changes. So a
+ * resolver re-run, a field preview, or entering isolation all still repaint,
+ * node-by-node, without the whole tree going with them.
+ */
+export const CanvasNodeRenderer = React.memo(function CanvasNodeRenderer({
 	node: irNode,
 }: CanvasNodeRendererProps): React.JSX.Element | null {
 	const node = useResolvedGeometry(useFieldPreviewMerge(irNode));
@@ -1779,7 +2079,7 @@ export function CanvasNodeRenderer({
 		);
 	}
 	return renderNodeByKind(node);
-}
+});
 
 function renderNodeByKind(node: CanvasNode): React.JSX.Element | null {
 	switch (node.type) {

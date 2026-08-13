@@ -21,7 +21,7 @@ import {
 	createVideo,
 } from "@anvilkit/canvas-core";
 import { cleanup, render, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -36,7 +36,16 @@ type KonvaNodeStub = {
 	clearCache: ReturnType<typeof vi.fn>;
 	getLayer: () => null;
 };
-type KonvaNodeRef = { current: KonvaNodeStub | null };
+/**
+ * Real react-konva accepts either form, and the renderer now uses BOTH: the
+ * `commonProps` node-registry ref (K-6) is a callback, while
+ * `AdjustedKonvaImage` keeps an object ref for its filter cache and composes
+ * the two. The mock has to honour whichever it is handed, or the cache handle
+ * silently never arrives.
+ */
+type KonvaNodeRef =
+	| { current: KonvaNodeStub | null }
+	| ((node: KonvaNodeStub | null) => unknown);
 
 type ElementCall = {
 	type: string;
@@ -46,9 +55,10 @@ type ElementCall = {
 };
 const calls: ElementCall[] = [];
 
-// One stub per ref object, so the same instance survives re-renders the way a
-// real Konva node does (and its call counts stay comparable across them).
-const nodeStubs = new WeakMap<KonvaNodeRef, KonvaNodeStub>();
+// One stub per ref, so the same instance survives re-renders the way a real
+// Konva node does (and its call counts stay comparable across them). Callback
+// refs are stable per node id, so they key this map just as well as an object.
+const nodeStubs = new WeakMap<object, KonvaNodeStub>();
 
 function attachNodeStub(ref: KonvaNodeRef): KonvaNodeStub {
 	let stub = nodeStubs.get(ref);
@@ -56,7 +66,8 @@ function attachNodeStub(ref: KonvaNodeRef): KonvaNodeStub {
 		stub = { cache: vi.fn(), clearCache: vi.fn(), getLayer: () => null };
 		nodeStubs.set(ref, stub);
 	}
-	ref.current = stub;
+	if (typeof ref === "function") ref(stub);
+	else ref.current = stub;
 	return stub;
 }
 
@@ -992,6 +1003,231 @@ describe("CanvasNodeRenderer — frame", () => {
 			x: 200,
 			y: 0,
 		});
+	});
+});
+
+/**
+ * K-5 / K-3 — the render-and-reapply budget.
+ *
+ * react-konva re-renders its ENTIRE bridged child tree whenever the component
+ * owning `<CanvasStage>` renders (`StageWrap` calls `updateContainer` from a
+ * `useLayoutEffect` with no dep array), and Konva's `Node._setAttr`
+ * short-circuits on `oldVal === val` for PRIMITIVES ONLY:
+ * `if (oldVal === val && !Util.isObject(val)) return;`. Together those two
+ * facts mean an unmemoised renderer re-applies every object-valued attribute
+ * on every commit anywhere in the document — and a gradient fill drops
+ * Konva's cached `CanvasGradient` each time it does.
+ *
+ * Both halves are invisible to a props-value assertion (the VALUES are always
+ * correct), so they are pinned here by identity instead.
+ */
+describe("CanvasNodeRenderer — re-render budget (K-5, K-3)", () => {
+	beforeEachReset();
+	afterEach(() => {
+		cleanup();
+	});
+
+	const LINEAR_FILL = {
+		kind: "linear" as const,
+		from: { x: 0, y: 0 },
+		to: { x: 1, y: 0 },
+		stops: [
+			{ offset: 0, color: "#000" },
+			{ offset: 1, color: "#fff" },
+		],
+	};
+
+	/**
+	 * Move a node the way the IR actually does it — `updateNode` spreads the
+	 * node and replaces only `transform`, so `bounds`, `fill` and the stroke
+	 * fields keep their identity. Rebuilding the fixture with `createRect`
+	 * instead would allocate a fresh `bounds` and defeat the very memo under
+	 * test, so these assertions would pass for the wrong reason.
+	 */
+	const movedTo = <T extends { transform: { x: number; y: number } }>(
+		node: T,
+		x: number,
+	): T => ({ ...node, transform: { ...node.transform, x } });
+
+	it("does not re-render a sibling whose node reference is unchanged", () => {
+		const a = createRect({ id: "a", bounds: { width: 10, height: 10 } });
+		const b1 = createRect({ id: "b", bounds: { width: 10, height: 10 } });
+		const tree = (b: typeof b1) => (
+			<>
+				<CanvasNodeRenderer node={a} />
+				<CanvasNodeRenderer node={b} />
+			</>
+		);
+		const { rerender } = render(tree(b1));
+		expect(callsOfType("Rect")).toHaveLength(2);
+
+		// Edit ONLY b. The IR is updated immutably, so `a` keeps its identity —
+		// which is exactly what makes reference equality a sound memo key.
+		const b2 = createRect({
+			id: "b",
+			bounds: { width: 10, height: 10 },
+			transform: { x: 99, y: 0 },
+		});
+		rerender(tree(b2));
+
+		const rects = callsOfType("Rect");
+		// One further render: b. Not two.
+		expect(rects).toHaveLength(3);
+		expect(rects[2]?.props.id).toBe("b");
+		expect(rects[2]?.props.x).toBe(99);
+	});
+
+	it("keeps the gradient stop array reference stable when a node only moves", () => {
+		// Same `fill` object across both renders — the immutable-update shape a
+		// drag produces (new node, new transform, untouched fill/bounds).
+		const first = createRect({
+			id: "grad",
+			bounds: { width: 100, height: 50 },
+			fill: LINEAR_FILL as Parameters<typeof createRect>[0]["fill"],
+		});
+		const { rerender } = render(<CanvasNodeRenderer node={first} />);
+		const before = callsOfType("Rect").at(-1)?.props;
+		expect(before?.fillLinearGradientColorStops).toEqual([0, "#000", 1, "#fff"]);
+
+		const moved = movedTo(first, 40);
+		// Sanity: the node really is a different object, so memo cannot bail out
+		// and the component genuinely re-rendered.
+		expect(moved).not.toBe(first);
+		rerender(<CanvasNodeRenderer node={moved} />);
+		const after = callsOfType("Rect").at(-1)?.props;
+		expect(after?.x).toBe(40);
+
+		// Identity, not equality: a fresh-but-equal array still trips Konva's
+		// `fillLinearGradientColorStopsChange`, which is what drops the cached
+		// CanvasGradient and forces it to be rebuilt.
+		expect(
+			Object.is(
+				before?.fillLinearGradientColorStops,
+				after?.fillLinearGradientColorStops,
+			),
+		).toBe(true);
+		expect(
+			Object.is(
+				before?.fillLinearGradientStartPoint,
+				after?.fillLinearGradientStartPoint,
+			),
+		).toBe(true);
+	});
+
+	it("keeps the dash array reference stable when a node only moves", () => {
+		// `strokeDash` is not a `createRect` option, so it is attached directly.
+		const first = {
+			...createRect({
+				id: "dashed",
+				bounds: { width: 10, height: 10 },
+				stroke: "#f00",
+				strokeWidth: 2,
+			}),
+			strokeDash: [4, 2],
+		};
+		const { rerender } = render(<CanvasNodeRenderer node={first} />);
+		const before = callsOfType("Rect").at(-1)?.props;
+		expect(before?.dash).toEqual([4, 2]);
+
+		rerender(<CanvasNodeRenderer node={movedTo(first, 7)} />);
+		const after = callsOfType("Rect").at(-1)?.props;
+		expect(after?.x).toBe(7);
+		expect(Object.is(before?.dash, after?.dash)).toBe(true);
+	});
+
+	// K-16. Rich text is one `<Text>` per RUN, so a styled paragraph is dozens
+	// of Konva nodes. Rebuilding that element list on every render also rebuilt
+	// every run's `fillProps` object; the run list is memoised on the measured
+	// layout (itself cached on `node.paragraphs`), so a move re-renders the
+	// block without rebuilding a single run.
+	it("does not rebuild rich-text runs when the block only moves", () => {
+		const first = createRichText({
+			id: "rt",
+			bounds: { width: 300, height: 60 },
+			paragraphs: [
+				{ spans: [{ text: "Hello " }, { text: "World", fontWeight: "700" }] },
+			],
+		});
+		const { rerender } = render(<CanvasNodeRenderer node={first} />);
+		const afterFirst = callsOfType("Text").length;
+		expect(afterFirst).toBeGreaterThan(0);
+
+		// A real move keeps `paragraphs` (and so the measured layout) identical.
+		rerender(<CanvasNodeRenderer node={movedTo(first, 40)} />);
+
+		// The Group moved…
+		expect(callsOfType("Group").at(-1)?.props.x).toBe(40);
+		// …and not one run re-rendered: React reuses the memoised elements, so
+		// the mock is never called for them again.
+		expect(callsOfType("Text")).toHaveLength(afterFirst);
+	});
+
+	// K-16 (hit graph). Konva rasterises a listening `Text` into the hit canvas
+	// glyph by glyph on every layer redraw. Collapsing a block's hit geometry to
+	// one rect is the cheapest hit shape there is, and it is what the user
+	// actually clicks.
+	it("gives rich text one block hit rect and stops the runs listening", () => {
+		const node = createRichText({
+			id: "rt-hit",
+			bounds: { width: 300, height: 80 },
+			height: 80,
+			paragraphs: [{ spans: [{ text: "Hello " }, { text: "World" }] }],
+		});
+		render(<CanvasNodeRenderer node={node} />);
+
+		const runs = callsOfType("Text");
+		expect(runs.length).toBeGreaterThan(1);
+		for (const run of runs) expect(run.props.listening).toBe(false);
+
+		const hit = callsOfType("Rect");
+		expect(hit).toHaveLength(1);
+		expect(hit[0]?.props).toMatchObject({
+			x: 0,
+			y: 0,
+			width: 300,
+			fill: "transparent",
+		});
+		// Sized to the declared box here (text is shorter than 80).
+		expect(hit[0]?.props.height).toBe(80);
+	});
+
+	it("sizes the hit rect to the text when it overflows the declared box", () => {
+		// `overflow: visible` (the default) paints past the box, so a hit rect
+		// clamped to the box would leave those lines unclickable.
+		const node = createRichText({
+			id: "rt-overflow",
+			bounds: { width: 60, height: 4 },
+			height: 4,
+			paragraphs: [
+				{
+					spans: [
+						{ text: "wrapping text that is definitely taller than four px" },
+					],
+				},
+			],
+		});
+		render(<CanvasNodeRenderer node={node} />);
+		const hit = callsOfType("Rect")[0]?.props;
+		expect(hit?.height).toBeGreaterThan(4);
+	});
+
+	it("keeps a frame's clipFunc reference stable when the frame only moves", () => {
+		const first = createFrame({
+			id: "f",
+			bounds: { width: 100, height: 100 },
+			clip: true,
+			radius: 8,
+			children: [],
+		});
+		const { rerender } = render(<CanvasNodeRenderer node={first} />);
+		const before = callsOfType("Group").at(-1)?.props;
+		expect(typeof before?.clipFunc).toBe("function");
+
+		rerender(<CanvasNodeRenderer node={movedTo(first, 30)} />);
+		const after = callsOfType("Group").at(-1)?.props;
+		expect(after?.x).toBe(30);
+		// A `clipFunc` is a function, so Konva never short-circuits it either.
+		expect(Object.is(before?.clipFunc, after?.clipFunc)).toBe(true);
 	});
 });
 
@@ -2227,5 +2463,70 @@ describe("CanvasNodeRenderer — adjusted image filter cache (E-11)", () => {
 			height: 50,
 		});
 		expect(stub?.cache).toHaveBeenCalledTimes(2);
+	});
+
+	// K-7. Konva filters read and write ONLY the cached bitmap, so a blur cached
+	// at the default `offset: 0` has nowhere to bleed — the kernel samples
+	// transparent pixels past the node's own bounds and the blur is cut off
+	// square instead of fading, which also diverges from the SVG export this
+	// path is meant to match.
+	it("pads the cache by the blur radius when a blur is active", () => {
+		useImageMock.mockReturnValue([fakeImg, "loaded"]);
+		render(tree(adjusted({ adjustments: { blur: 3 } })));
+		expect(lastImage()?.node?.cache).toHaveBeenCalledWith({ offset: 3 });
+	});
+
+	it("rounds a fractional blur radius up to a whole-pixel pad", () => {
+		useImageMock.mockReturnValue([fakeImg, "loaded"]);
+		render(tree(adjusted({ adjustments: { blur: 2.4 } })));
+		expect(lastImage()?.node?.cache).toHaveBeenCalledWith({ offset: 3 });
+	});
+
+	it("caches unpadded when the adjustment carries no blur", () => {
+		useImageMock.mockReturnValue([fakeImg, "loaded"]);
+		// Colour-only adjustment: still filtered (so still cached), but a pad
+		// would just waste bitmap around every adjusted image.
+		render(tree(adjusted({ adjustments: { brightness: 0.2 } })));
+		expect(lastImage()?.node?.cache).toHaveBeenCalledWith(undefined);
+	});
+
+	// K-11. react-konva applies the `filters` prop during ITS commit and asks
+	// for a draw right there, so the cache has to exist by the end of that same
+	// commit — Konva skips filtering entirely on a node that has `filters` and
+	// no cache, so building it in a passive effect left one painted frame
+	// showing the unfiltered image.
+	//
+	// The discriminator is PHASE, not wall-clock: React runs every layout
+	// effect during the commit, before any passive effect anywhere in the tree.
+	// So a passive probe mounted as an EARLIER sibling runs before the image's
+	// own passive effect but after every layout effect — which pins the phase
+	// from the outside, without reaching into React internals. `vi.fn()`
+	// records a global `invocationCallOrder`, so the two are directly
+	// comparable.
+	it("builds the cache in the layout phase, before any passive effect", () => {
+		useImageMock.mockReturnValue([fakeImg, "loaded"]);
+		const probePassive = vi.fn();
+		function PassiveProbe() {
+			useEffect(() => {
+				probePassive();
+			}, []);
+			return null;
+		}
+		render(
+			<CanvasAssetsContext.Provider value={assets}>
+				<PassiveProbe />
+				<CanvasNodeRenderer node={adjusted()} />
+			</CanvasAssetsContext.Provider>,
+		);
+
+		const cacheFn = lastImage()?.node?.cache;
+		const cacheOrder = cacheFn?.mock.invocationCallOrder[0];
+		const probeOrder = probePassive.mock.invocationCallOrder[0];
+		expect(cacheOrder).toBeDefined();
+		expect(probeOrder).toBeDefined();
+		// Layout phase precedes the passive phase. Demote the cache effect to
+		// `useEffect` and this flips: the probe is the earlier sibling, so its
+		// passive effect would run first.
+		expect(cacheOrder as number).toBeLessThan(probeOrder as number);
 	});
 });
