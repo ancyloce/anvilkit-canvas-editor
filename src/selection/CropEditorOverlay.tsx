@@ -19,6 +19,7 @@ import {
 } from "../context/canvas-studio-context.js";
 import { resolveNodeWorldPosition } from "../stage/node-world-position.js";
 import { resolvedNodeWorldPosition } from "../stage/resolved-page-space.js";
+import { pageToClientPoint } from "../stage/viewport-point.js";
 import type { CropRect, CropStoreApi } from "../stores/crop-store.js";
 
 const overlayBase: CSSProperties = { position: "fixed", zIndex: 9999 };
@@ -126,15 +127,6 @@ function CropEditorOverlayInner({
 	if (!cropNodeId || !node || !draft || !stage) return null;
 
 	const vp = viewportStore.getState();
-	// Call `container()` AS A METHOD on the stage. Konva's `container()`
-	// delegates to `this.getContainer()`, so extracting it to a local
-	// (`const fn = stage.container; fn()`) drops the `this` binding and crashes
-	// with "Cannot read properties of undefined (reading 'getContainer')"
-	// against a real Konva stage. Unit tests miss it because their fake
-	// `container` is a plain `this`-less function.
-	const container =
-		typeof stage.container === "function" ? stage.container() : null;
-	const cr = container?.getBoundingClientRect?.();
 	// Ancestor-composed (E-10), the same anchoring `TextEditorOverlay` and
 	// `RichTextToolbar` already use: `node.transform.x/y` is relative to the
 	// IMMEDIATE PARENT, so an image nested inside a frame — which every image
@@ -149,8 +141,16 @@ function CropEditorOverlayInner({
 			: null) ??
 		resolveNodeWorldPosition(ir, node.id) ??
 		node.transform;
-	const boxLeft = (cr?.left ?? 0) + worldPosition.x * vp.zoom + vp.panX;
-	const boxTop = (cr?.top ?? 0) + worldPosition.y * vp.zoom + vp.panY;
+	// K-1: footprint-anchored shared mapping (see TextEditorOverlay). Only
+	// the ORIGIN moves through it — box size and the screen→natural drag
+	// inverse below are pure scale and unaffected by windowing.
+	const anchor = pageToClientPoint(
+		{ stage, viewportStore },
+		worldPosition.x,
+		worldPosition.y,
+	);
+	const boxLeft = anchor?.x ?? worldPosition.x * vp.zoom + vp.panX;
+	const boxTop = anchor?.y ?? worldPosition.y * vp.zoom + vp.panY;
 	const boxW = node.bounds.width * vp.zoom;
 	const boxH = node.bounds.height * vp.zoom;
 	const sxPerNat = naturalW > 0 ? boxW / naturalW : 1;

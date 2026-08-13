@@ -1,7 +1,8 @@
 "use client";
 
 import { type CanvasNode, findNode } from "@anvilkit/canvas-core";
-import Konva from "konva";
+import type Konva from "konva";
+import KonvaRuntime from "../stage/konva.js";
 import * as React from "react";
 import {
 	useCallback,
@@ -12,7 +13,7 @@ import {
 } from "react";
 import { Label, Tag, Text, Transformer } from "react-konva";
 import { useCanvasStudio } from "../context/canvas-studio-context.js";
-import { draggedIdsKey } from "../perf/active-nodes.js";
+import { useContentHitGraphSuspension } from "../perf/hit-graph.js";
 import { findNodeById } from "../stage/find-node-by-id.js";
 import { isFiniteBox, sanitizeBox } from "../stage/finite-geometry.js";
 import {
@@ -169,7 +170,7 @@ function useRotateIcon(
 			return;
 		let g = rotateIconRef.current;
 		if (!g) {
-			const path = new Konva.Path({
+			const path = new KonvaRuntime.Path({
 				data: ROTATE_ICON_PATH,
 				stroke: themeRef.current.onSurface,
 				strokeWidth: 1.8,
@@ -183,9 +184,9 @@ function useRotateIcon(
 				offsetY: 12,
 				listening: false,
 			});
-			g = new Konva.Group({ listening: false, visible: false });
+			g = new KonvaRuntime.Group({ listening: false, visible: false });
 			g.add(path);
-			Konva.Group.prototype.add.call(tr, g);
+			KonvaRuntime.Group.prototype.add.call(tr, g);
 			rotateIconRef.current = g;
 		}
 		// Re-apply stroke when the theme changes.
@@ -287,26 +288,33 @@ function useTransformBadges(
 
 /**
  * Keep the Transformer pointed at the live Konva nodes for the current
- * selection — across drag-layer promote/demote remounts and viewport moves.
+ * selection, and re-measure its chrome after a viewport move.
+ *
+ * This used to carry two further mechanisms — a draft-store subscription that
+ * re-pointed the Transformer on EVERY pointermove, and a
+ * `requestAnimationFrame` deferral to survive the demote race on drag end.
+ * Both existed for one reason: the drag layer was expressed in JSX, so
+ * promoting a node destroyed its Konva instance and built a new one, leaving
+ * this binding pointing at a detached node. K-4 moved that promotion to
+ * `node.moveTo`, which keeps the instance for the whole gesture, so a binding
+ * made here stays valid across a drag and both mechanisms are gone.
+ *
+ * The Transformer still TRACKS the node through the drag without any of this:
+ * `nodes()` subscribes to each node's `absoluteTransformChange`, which the
+ * tool's imperative `position()` fires.
  */
 function useTransformerNodeSync({
 	transformerRef,
 	stage,
 	selectedIds,
-	draggedKey,
 	viewportKey,
 	croppingId,
-	selectionStore,
-	draftStore,
 }: {
 	transformerRef: React.RefObject<Konva.Transformer | null>;
 	stage: Konva.Stage | null;
 	selectedIds: readonly string[];
-	draggedKey: string;
 	viewportKey: string;
 	croppingId: string | null;
-	selectionStore: StudioCtx["selectionStore"];
-	draftStore: StudioCtx["draftStore"];
 }): void {
 	useEffect(() => {
 		const tr = transformerRef.current;
@@ -318,7 +326,7 @@ function useTransformerNodeSync({
 		}
 		tr.nodes(nodes);
 		tr.getLayer?.()?.batchDraw?.();
-	}, [stage, selectedIds, draggedKey, transformerRef]);
+	}, [stage, selectedIds, transformerRef]);
 
 	// Re-sync the chrome to the canvas after a pan/zoom. The Transformer doesn't
 	// re-run on viewport changes, so its screen-space handles and the rotate icon
@@ -331,56 +339,6 @@ function useTransformerNodeSync({
 		transformerRef.current?.update?.();
 	}, [viewportKey, selectedIds, croppingId, transformerRef]);
 
-	// During a move drag the dragged node is promoted onto the drag layer, which
-	// remounts its Konva node as a NEW instance. The drag runs on raw Konva
-	// pointer events (outside React's event system), so the rebind effect above
-	// fires asynchronously and gets starved by the move loop — leaving the
-	// Transformer bound to the stale (destroyed) node, so the selection box stops
-	// tracking the element (it stays at the original position). Subscribe to the
-	// draft store and re-point the Transformer at the live nodes *synchronously*
-	// on every move. This runs in the same tick as the node mutation (no React
-	// re-render, so the per-move drag-layer optimization is preserved).
-	//
-	// On move END the node DEMOTES back to the objects layer — another instance
-	// swap. The passive rebind effect above is meant to catch it, but it races
-	// react-konva's reconciler and can land on the just-detached drag-layer node,
-	// so a resize/rotate immediately after a move silently no-ops. Re-point once
-	// more on the next frame, after react-konva has committed the demote.
-	useEffect(() => {
-		if (!stage) return;
-		let raf = 0;
-		const repoint = () => {
-			const tr = transformerRef.current;
-			if (!tr) return;
-			const nodes: Konva.Node[] = [];
-			for (const id of selectionStore.getState().selectedIds) {
-				const n = findNodeById(stage, id);
-				if (n) nodes.push(n);
-			}
-			tr.nodes(nodes);
-			tr.getLayer?.()?.batchDraw?.();
-		};
-		const sync = () => {
-			const draft = draftStore.getState().draft;
-			if (draft && draft.type === "move") {
-				repoint();
-				return;
-			}
-			// Draft cleared (or non-move): defer one frame so the demoted node has
-			// re-mounted on the objects layer before we re-point at the live node.
-			if (typeof requestAnimationFrame === "function") {
-				cancelAnimationFrame(raf);
-				raf = requestAnimationFrame(repoint);
-			} else {
-				repoint();
-			}
-		};
-		const unsubscribe = draftStore.subscribe(sync);
-		return () => {
-			if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf);
-			unsubscribe();
-		};
-	}, [stage, draftStore, selectionStore, transformerRef]);
 }
 
 /**
@@ -455,7 +413,6 @@ export function CanvasTransformer(): React.JSX.Element | null {
 	const {
 		stage,
 		selectionStore,
-		draftStore,
 		cropStore,
 		viewportStore,
 		getIR,
@@ -475,14 +432,6 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		selectionStore.subscribe,
 		() => selectionStore.getState().selectedIds,
 		() => selectionStore.getState().selectedIds,
-	);
-	// I2-5: dragging promotes a node into the drag layer, which remounts its
-	// Konva node. Re-bind when the dragged set changes (start/end) so the
-	// Transformer points at the live node, not the unmounted one.
-	const draggedKey = useSyncExternalStore(
-		draftStore.subscribe,
-		() => draggedIdsKey(draftStore.getState().draft),
-		() => draggedIdsKey(draftStore.getState().draft),
 	);
 	// Canvas zoom/pan snapshot. The Transformer lays its handles out in screen
 	// space (it ignores the stage zoom), but it only re-runs on selection/
@@ -505,6 +454,10 @@ export function CanvasTransformer(): React.JSX.Element | null {
 	// dragger except the one under the cursor.
 	const transformingRef = useRef(false);
 
+	const {
+		suspend: suspendContentHitGraph,
+		resume: resumeContentHitGraph,
+	} = useContentHitGraphSuspension(stage);
 	const { theme, themeRef } = useChromeTheme(stage, selectedIds);
 	const syncRotateIcon = useRotateIcon(transformerRef, stage, theme, themeRef);
 	const { sizeLabelRef, sizeTextRef, refreshSizeBadge, refreshAngleBadge } =
@@ -513,11 +466,8 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		transformerRef,
 		stage,
 		selectedIds,
-		draggedKey,
 		viewportKey,
 		croppingId,
-		selectionStore,
-		draftStore,
 	});
 	const hoveredAnchorRef = useAnchorHoverHighlight({
 		transformerRef,
@@ -602,6 +552,9 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		const tr = transformerRef.current;
 		if (!tr) return;
 		transformingRef.current = true;
+		// K-15: the content layer's hit graph is re-rendered on every frame of
+		// the gesture and read by nobody until release.
+		suspendContentHitGraph();
 		// `_movingAnchorName` is set before `transformstart` fires. The same badge
 		// node shows the live size while resizing and the live angle while rotating.
 		const active = activeAnchorName(tr);
@@ -612,7 +565,12 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		sizeLabelRef.current?.visible(true);
 		if (active === "rotater") refreshAngleBadge();
 		else refreshSizeBadge();
-	}, [refreshAngleBadge, refreshSizeBadge, sizeLabelRef]);
+	}, [
+		refreshAngleBadge,
+		refreshSizeBadge,
+		sizeLabelRef,
+		suspendContentHitGraph,
+	]);
 
 	const onTransform = useCallback(() => {
 		if (!transformingRef.current || !sizeLabelRef.current?.visible()) return;
@@ -655,6 +613,9 @@ export function CanvasTransformer(): React.JSX.Element | null {
 	]);
 
 	const onTransformEnd = useCallback(() => {
+		// FIRST, ahead of every early return below — the content layer must never
+		// be left unclickable because a gesture ended without a commit (K-15).
+		resumeContentHitGraph();
 		// Leave transform mode first: drop the size badge and restore every
 		// dragger (anchorStyleFunc keys off `transformingRef`, so a synchronous
 		// update() un-hides them even though Konva clears `_movingAnchorName`
@@ -720,6 +681,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		sizeLabelRef,
 		fieldPreviewStore,
 		resolvedDocumentStore,
+		resumeContentHitGraph,
 	]);
 
 	if (croppingId) return null;

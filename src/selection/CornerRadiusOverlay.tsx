@@ -1,11 +1,16 @@
 "use client";
 
 import { findNode } from "@anvilkit/canvas-core";
+import * as React from "react";
 import { type CSSProperties, useRef, useSyncExternalStore } from "react";
 import {
 	useCanvasStudio,
 	useCanvasT,
+	useResolvedDocument,
 } from "../context/canvas-studio-context.js";
+import { resolveNodeWorldPosition } from "../stage/node-world-position.js";
+import { resolvedNodeWorldPosition } from "../stage/resolved-page-space.js";
+import { pageToClientPoint } from "../stage/viewport-point.js";
 import {
 	computeCornerRadiusDrag,
 	isRoundable,
@@ -57,6 +62,8 @@ export function CornerRadiusOverlay(): React.JSX.Element | null {
 		() => editingStore.getState().editingNodeId,
 		() => editingStore.getState().editingNodeId,
 	);
+	// Resolved geometry for the E-10 world-position anchor below.
+	const resolvedDocument = useResolvedDocument();
 
 	const dragRef = useRef<{
 		startRadius: number;
@@ -77,11 +84,25 @@ export function CornerRadiusOverlay(): React.JSX.Element | null {
 	const max = maxCornerRadius(node);
 
 	const vp = viewportStore.getState();
-	const container =
-		typeof stage.container === "function" ? stage.container() : null;
-	const cr = container?.getBoundingClientRect?.();
-	const boxLeft = (cr?.left ?? 0) + node.transform.x * vp.zoom + vp.panX;
-	const boxTop = (cr?.top ?? 0) + node.transform.y * vp.zoom + vp.panY;
+	// Ancestor-composed world position (E-10) — this overlay used the RAW
+	// `node.transform.x/y` before, so a roundable node nested inside a
+	// moved group placed the handle at the group-local offset (pre-existing;
+	// flagged as part of the K-1 pass, A6 in the coordinate inventory). Now
+	// the same contract as TextEditorOverlay/CropEditorOverlay.
+	const worldPosition =
+		(resolvedDocument
+			? resolvedNodeWorldPosition(resolvedDocument, node.id)
+			: null) ??
+		resolveNodeWorldPosition(ctx.getIR(), node.id) ??
+		node.transform;
+	// K-1: footprint-anchored shared mapping (see TextEditorOverlay).
+	const anchor = pageToClientPoint(
+		{ stage, viewportStore },
+		worldPosition.x,
+		worldPosition.y,
+	);
+	const boxLeft = anchor?.x ?? worldPosition.x * vp.zoom + vp.panX;
+	const boxTop = anchor?.y ?? worldPosition.y * vp.zoom + vp.panY;
 	const inset = Math.max(MIN_INSET, radius * vp.zoom);
 
 	const beginDrag = (e: React.PointerEvent) => {

@@ -408,21 +408,18 @@ describe("CanvasTransformer", () => {
 		expect(box).toEqual({ x: 10, y: 10, width: 130, height: 80 });
 	});
 
-	it("re-points the transformer at the live node on a move-draft change (selection follows the drag)", () => {
+	// K-4. The Transformer used to carry a draft-store subscription that
+	// re-pointed it on EVERY pointermove, plus a rAF deferral for drag end.
+	// Both existed because the drag layer was expressed in JSX, so promoting a
+	// node destroyed its Konva instance and built a new one under the
+	// Transformer. `node.moveTo` keeps the instance, so the binding made at
+	// selection time stays valid for the whole gesture — and the per-move
+	// rebind (one `findNodeById` per selected node per move) is gone.
+	it("keeps its binding across a move drag without re-pointing per move", () => {
 		transformerCalls.length = 0;
 		const ir = fixtureIR();
 		const nodeA = makeNode({ x: 10, y: 20 });
-		// Mutable node map: simulate the drag-layer optimization swapping the
-		// Konva node instance out from under the transformer mid-drag.
-		const nodeMap: Record<string, Konva.Node> = { rectA: nodeA };
-		const stage = {
-			findOne: (selector: (node: { id(): string }) => boolean) => {
-				for (const [id, node] of Object.entries(nodeMap)) {
-					if (selector({ id: () => id, ...node })) return node;
-				}
-				return null;
-			},
-		} as unknown as Konva.Stage;
+		const stage = makeFakeStage({ rectA: nodeA });
 		const { ctx } = makeCtx(stage, ir);
 		ctx.selectionStore.getState().setSelection(["rectA"]);
 		render(
@@ -430,8 +427,11 @@ describe("CanvasTransformer", () => {
 				<CanvasTransformer />
 			</CanvasStudioContext.Provider>,
 		);
-		// Begin a drag: nodeStarts changes draggedKey → the rebind effect runs
-		// and re-renders (the mock builds a fresh transformer each render).
+		const liveTr = transformerCalls.at(-1)?.ref?.current as {
+			nodes: ReturnType<typeof vi.fn>;
+		};
+		expect(liveTr.nodes.mock.calls.at(-1)?.[0]).toEqual([nodeA]);
+
 		act(() => {
 			ctx.draftStore.getState().setDraft({
 				type: "move",
@@ -442,33 +442,77 @@ describe("CanvasTransformer", () => {
 				nodeStarts: [{ id: "rectA", x: 10, y: 20 }],
 			});
 		});
-		// The transformer ref points at the latest mounted instance; the draft
-		// subscription reads `transformerRef.current` fresh on each move.
-		const liveTr = transformerCalls.at(-1)?.ref?.current as {
-			nodes: ReturnType<typeof vi.fn>;
-		};
 		const callsAfterStart = liveTr.nodes.mock.calls.length;
 
-		// The drag-layer remount swaps the node instance; the next pointermove
-		// (currentX/Y only) does NOT change draggedKey, so it triggers no React
-		// re-render — only the synchronous draft subscription can re-point.
-		const nodeB = makeNode({ x: 10, y: 20 });
-		nodeMap.rectA = nodeB;
-		act(() => {
-			ctx.draftStore.getState().setDraft({
-				type: "move",
-				startX: 0,
-				startY: 0,
-				currentX: 25,
-				currentY: 40,
-				nodeStarts: [{ id: "rectA", x: 10, y: 20 }],
+		// Several pointermoves. The node instance is stable now, so none of
+		// these should touch the binding.
+		for (const [currentX, currentY] of [
+			[8, 12],
+			[25, 40],
+			[60, 90],
+		]) {
+			act(() => {
+				ctx.draftStore.getState().setDraft({
+					type: "move",
+					startX: 0,
+					startY: 0,
+					currentX,
+					currentY,
+					nodeStarts: [{ id: "rectA", x: 10, y: 20 }],
+				});
 			});
-		});
+		}
 
-		// Without the fix, no further .nodes() call happens on a move and the
-		// transformer stays bound to the stale nodeA. With the fix it re-points.
-		expect(liveTr.nodes.mock.calls.length).toBeGreaterThan(callsAfterStart);
-		expect(liveTr.nodes.mock.calls.at(-1)?.[0]).toEqual([nodeB]);
+		expect(liveTr.nodes.mock.calls.length).toBe(callsAfterStart);
+		// …and it is still pointed at the one live instance.
+		expect(liveTr.nodes.mock.calls.at(-1)?.[0]).toEqual([nodeA]);
+	});
+
+	// K-15. Konva redraws a layer's scene AND hit canvases together, and skips
+	// the hit pass only for a Konva DD drag — which a Transformer gesture is
+	// not. So every frame of a resize re-rendered every content shape into a
+	// hit canvas nothing reads until release.
+	it("suspends the content layer's hit graph for the duration of a transform", () => {
+		transformerCalls.length = 0;
+		const ir = fixtureIR();
+		let listening = true;
+		const contentLayer = {
+			name: () => "content",
+			listening: (next?: boolean) => {
+				if (next === undefined) return listening;
+				listening = next;
+				return undefined;
+			},
+			batchDraw: vi.fn(),
+		};
+		const stage = {
+			...makeFakeStage({ rectA: makeNode({ x: 10, y: 20 }) }),
+			getLayers: () => [contentLayer],
+		} as unknown as Konva.Stage;
+		const { ctx } = makeCtx(stage, ir);
+		ctx.selectionStore.getState().setSelection(["rectA"]);
+		render(
+			<CanvasStudioContext.Provider value={ctx}>
+				<CanvasTransformer />
+			</CanvasStudioContext.Provider>,
+		);
+		const props = transformerCalls.at(-1)?.props as {
+			onTransformStart: () => void;
+			onTransformEnd: () => void;
+		};
+
+		expect(listening).toBe(true);
+		act(() => {
+			props.onTransformStart();
+		});
+		expect(listening).toBe(false);
+
+		act(() => {
+			props.onTransformEnd();
+		});
+		expect(listening).toBe(true);
+		// The hit canvas is cleared while suspended, so it must be repainted.
+		expect(contentLayer.batchDraw).toHaveBeenCalled();
 	});
 
 	it("transformend with scale ≠ 1 commits a node.resize", () => {
