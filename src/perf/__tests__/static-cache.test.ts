@@ -53,6 +53,56 @@ describe("selectStaticGroupIds", () => {
 		expect(selectStaticGroupIds(ir, "p1", NO_ACTIVE)).toEqual(["g1"]);
 	});
 
+	it("excludes a group holding a node whose shadow is ghost-drawn (K-10)", () => {
+		// `cache()` sizes its bitmap from getClientRect, which grows for a NATIVE
+		// shadow but cannot see one painted inside a sceneFunc — so caching such a
+		// group crops the shadow away completely.
+		const withSpread = createRect({
+			id: "r-spread",
+			bounds: { width: 10, height: 10 },
+		});
+		(withSpread as { effects?: unknown }).effects = [
+			{
+				type: "drop-shadow",
+				color: "#000000",
+				blur: 4,
+				offsetX: 1,
+				offsetY: 1,
+				spread: 3,
+			},
+		];
+		const group = createGroup({
+			id: "g-spread",
+			bounds: { width: 100, height: 100 },
+			children: [withSpread],
+		});
+		expect(selectStaticGroupIds(irWith([group]), "p1", NO_ACTIVE)).toEqual([]);
+	});
+
+	it("still caches a group whose shadow Konva renders natively (K-10)", () => {
+		const plain = createRect({
+			id: "r-plain",
+			bounds: { width: 10, height: 10 },
+		});
+		(plain as { effects?: unknown }).effects = [
+			{
+				type: "drop-shadow",
+				color: "#000000",
+				blur: 4,
+				offsetX: 1,
+				offsetY: 1,
+			},
+		];
+		const group = createGroup({
+			id: "g-plain",
+			bounds: { width: 100, height: 100 },
+			children: [plain],
+		});
+		expect(selectStaticGroupIds(irWith([group]), "p1", NO_ACTIVE)).toEqual([
+			"g-plain",
+		]);
+	});
+
 	it("excludes a group whose descendant is selected / editing / dragged", () => {
 		const ir = irWith([shapeGroup("g1", "r1")]);
 		expect(
@@ -284,7 +334,10 @@ describe("cachePixelRatio", () => {
 	it("never comes out worse than the argument-less cache it replaces", () => {
 		// A full-page group cannot afford the crisp ratio, but must not be
 		// rasterised BELOW the DPR the old code used.
-		const ratio = cachePixelRatio(1080 * 1920, { zoom: 4, devicePixelRatio: 2 });
+		const ratio = cachePixelRatio(1080 * 1920, {
+			zoom: 4,
+			devicePixelRatio: 2,
+		});
 		expect(ratio).toBe(2);
 	});
 

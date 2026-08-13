@@ -1,14 +1,18 @@
 "use client";
 
 import {
+	type CanvasEffect,
 	type CanvasIR,
 	type CanvasNode,
+	type CanvasShadow,
 	isContainerNode,
 	isFrameNode,
+	resolveNodeEffects,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import { useEffect, useRef } from "react";
 import { findNodeById } from "../stage/find-node-by-id.js";
+import { ghostDropShadows } from "../stage/shadow-ghosts.js";
 import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
 import type { SelectionStoreApi } from "../stores/selection-store.js";
@@ -51,7 +55,33 @@ function isCacheableSubtree(node: CanvasNode): boolean {
 		if (node.children.length === 0) return false;
 		return node.children.every(isCacheableSubtree);
 	}
+	if (castsGhostShadow(node)) return false;
 	return CACHEABLE_LEAF_TYPES.has(node.type);
+}
+
+/**
+ * K-10: a node whose shadows are drawn by `shadow-ghosts.ts` rather than by
+ * Konva's native `shadow*` props.
+ *
+ * Such a subtree must NOT be cached. `Node.cache()` sizes its bitmap from
+ * `getClientRect()`, which grows to fit a NATIVE shadow (`Shape.getClientRect`
+ * adds `|shadowOffset| + blur`) but knows nothing about one painted inside a
+ * `sceneFunc` — deliberately so, since that invisibility is what keeps ghosts
+ * out of selection boxes. The bitmap would therefore be sized to the shape
+ * alone and crop the shadow away entirely; measured in headless Chrome, the
+ * cached group rendered its body and NO shadow at all.
+ *
+ * Skipping the cache for these nodes trades an optimisation for correctness on
+ * documents that were being rendered wrong anyway, and it is narrow: only a
+ * shadow STACK or a `spread` takes this path.
+ */
+function castsGhostShadow(node: CanvasNode): boolean {
+	const source = node as {
+		effects?: CanvasEffect[];
+		shadow?: CanvasShadow;
+	};
+	if (source.effects === undefined && source.shadow === undefined) return false;
+	return ghostDropShadows(resolveNodeEffects(source)) !== null;
 }
 
 export interface ActiveNodeIds {
