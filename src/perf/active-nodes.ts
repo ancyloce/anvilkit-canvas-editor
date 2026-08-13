@@ -5,6 +5,14 @@ import type { DrawDraft } from "../stores/draft-store.js";
  * actual drag. Mirrors `MIN_MOVE_DISTANCE` in `select-tool.ts`: a gesture that
  * stays under this threshold commits no move, so it must not promote nodes onto
  * the drag layer either.
+ *
+ * This gate originally existed because promoting was a REMOUNT (see K-4 in
+ * `perf/drag-layer.ts`), which a plain selection click must never trigger.
+ * Promotion is `node.moveTo` now, so the stakes are lower — but the threshold
+ * stays, for two reasons that outlive the remount: it is the shared definition
+ * of "actively dragging" that the static-group cache also reads (so both agree
+ * on which nodes are off-limits for caching), and it still keeps a click from
+ * shuffling the scene graph for no reason.
  */
 const MIN_DRAG_DISTANCE = 0.5;
 

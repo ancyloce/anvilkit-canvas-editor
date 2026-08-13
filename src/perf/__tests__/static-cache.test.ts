@@ -13,9 +13,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createDraftStore } from "@/stores/draft-store.js";
 import { createEditingStore } from "@/stores/editing-store.js";
 import { createSelectionStore } from "@/stores/selection-store.js";
+import { createViewportStore } from "@/stores/viewport-store.js";
 import { draggedIdsKey, selectDraggedIds } from "../active-nodes.js";
 import {
 	applyGroupCache,
+	cachePixelRatio,
 	selectStaticGroupIds,
 	useStaticGroupCache,
 } from "../static-cache.js";
@@ -219,16 +221,17 @@ function fakeStage(ids: readonly string[] = []) {
 describe("applyGroupCache", () => {
 	it("caches entering ids and clears leaving ids, leaving stable ids untouched", () => {
 		const { stage, node } = fakeStage(["a", "b", "c"]);
-		let prev = applyGroupCache(stage, ["a", "b"], new Set());
+		const view = { zoom: 1, devicePixelRatio: 1 };
+		let prev = applyGroupCache(stage, ["a", "b"], new Map(), view);
 		expect(node("a").cache).toHaveBeenCalledTimes(1);
 		expect(node("b").cache).toHaveBeenCalledTimes(1);
 
 		// "a" stays, "b" leaves, "c" enters.
-		prev = applyGroupCache(stage, ["a", "c"], prev);
+		prev = applyGroupCache(stage, ["a", "c"], prev, view);
 		expect(node("a").cache).toHaveBeenCalledTimes(1); // untouched
 		expect(node("b").clearCache).toHaveBeenCalledTimes(1);
 		expect(node("c").cache).toHaveBeenCalledTimes(1);
-		expect(prev).toEqual(new Set(["a", "c"]));
+		expect([...prev.keys()].sort()).toEqual(["a", "c"]);
 	});
 
 	it("does not throw when a node is missing or lacks cache()", () => {
@@ -237,8 +240,98 @@ describe("applyGroupCache", () => {
 				selector({ id: () => "has" }) ? {} : null,
 		} as unknown as Konva.Stage;
 		expect(() =>
-			applyGroupCache(stage, ["has", "missing"], new Set()),
+			applyGroupCache(stage, ["has", "missing"], new Map(), {
+				zoom: 1,
+				devicePixelRatio: 1,
+			}),
 		).not.toThrow();
+	});
+});
+
+/**
+ * K-7 item 1. `node.cache()` with no config rasterises at `devicePixelRatio`,
+ * and Konva then blits that bitmap through the node's absolute transform —
+ * which includes the stage's `scaleX/Y = zoom`. So a group cached at DPR 2 and
+ * viewed at zoom 4 is an 8× upscale of a 2× bitmap: soft exactly where the
+ * user zoomed in to look closely.
+ */
+describe("cachePixelRatio", () => {
+	it("matches one bitmap pixel to one device pixel", () => {
+		expect(cachePixelRatio(null, { zoom: 4, devicePixelRatio: 2 })).toBe(8);
+		expect(cachePixelRatio(null, { zoom: 1, devicePixelRatio: 2 })).toBe(2);
+	});
+
+	it("follows the zoom down rather than over-allocating when zoomed out", () => {
+		// Below 1:1 the DPR baseline would rasterise more pixels than the view
+		// can show; the floor tracks the target instead.
+		expect(cachePixelRatio(null, { zoom: 0.5, devicePixelRatio: 2 })).toBe(1);
+	});
+
+	it("gives a small group full crispness at maximum zoom", () => {
+		// 200×200 at ratio 8 is 2.6 Mpx — inside the budget.
+		expect(cachePixelRatio(200 * 200, { zoom: 4, devicePixelRatio: 2 })).toBe(
+			8,
+		);
+	});
+
+	it("caps a mid-size group below the crisp ratio but above the old default", () => {
+		// 500×500 at ratio 8 would be 16 Mpx; the budget allows ratio 4 — still
+		// twice the resolution the argument-less cache() produced.
+		const ratio = cachePixelRatio(500 * 500, { zoom: 4, devicePixelRatio: 2 });
+		expect(ratio).toBeCloseTo(4, 5);
+	});
+
+	it("never comes out worse than the argument-less cache it replaces", () => {
+		// A full-page group cannot afford the crisp ratio, but must not be
+		// rasterised BELOW the DPR the old code used.
+		const ratio = cachePixelRatio(1080 * 1920, { zoom: 4, devicePixelRatio: 2 });
+		expect(ratio).toBe(2);
+	});
+
+	it("falls back to DPR for a degenerate zoom", () => {
+		expect(cachePixelRatio(100, { zoom: 0, devicePixelRatio: 3 })).toBe(3);
+		expect(
+			cachePixelRatio(100, { zoom: Number.NaN, devicePixelRatio: 3 }),
+		).toBe(3);
+	});
+});
+
+describe("applyGroupCache — resolution reconciliation (K-7)", () => {
+	it("rasterises at the zoom-aware ratio", () => {
+		const { stage, node } = fakeStage(["a"]);
+		applyGroupCache(stage, ["a"], new Map(), {
+			zoom: 3,
+			devicePixelRatio: 2,
+		});
+		expect(node("a").cache).toHaveBeenCalledWith({ pixelRatio: 6 });
+	});
+
+	it("re-rasterises a still-static group after a real zoom change", () => {
+		const { stage, node } = fakeStage(["a"]);
+		let prev = applyGroupCache(stage, ["a"], new Map(), {
+			zoom: 1,
+			devicePixelRatio: 2,
+		});
+		expect(node("a").cache).toHaveBeenCalledTimes(1);
+
+		prev = applyGroupCache(stage, ["a"], prev, {
+			zoom: 4,
+			devicePixelRatio: 2,
+		});
+		// Membership did not change — only the resolution did, which is exactly
+		// the case the old membership-only diff could not see.
+		expect(node("a").cache).toHaveBeenCalledTimes(2);
+		expect(node("a").cache).toHaveBeenLastCalledWith({ pixelRatio: 8 });
+	});
+
+	it("ignores a zoom nudge too small to be worth re-rasterising", () => {
+		const { stage, node } = fakeStage(["a"]);
+		const prev = applyGroupCache(stage, ["a"], new Map(), {
+			zoom: 1,
+			devicePixelRatio: 2,
+		});
+		applyGroupCache(stage, ["a"], prev, { zoom: 1.05, devicePixelRatio: 2 });
+		expect(node("a").cache).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -250,6 +343,7 @@ describe("useStaticGroupCache", () => {
 		const selectionStore = createSelectionStore();
 		const editingStore = createEditingStore();
 		const draftStore = createDraftStore();
+		const viewportStore = createViewportStore();
 
 		renderHook(() =>
 			useStaticGroupCache({
@@ -260,6 +354,7 @@ describe("useStaticGroupCache", () => {
 				selectionStore,
 				editingStore,
 				draftStore,
+				viewportStore,
 			}),
 		);
 
@@ -271,12 +366,100 @@ describe("useStaticGroupCache", () => {
 		expect(node("g1").clearCache).toHaveBeenCalledTimes(1);
 	});
 
+	// K-7 item 2. A cached bitmap is the wrong resolution the moment the zoom
+	// moves, and nothing used to re-rasterise it — the group stayed soft for
+	// the rest of the session, or until it happened to become active again.
+	it("re-caches after the zoom settles, and not once per wheel tick", async () => {
+		const { renderHook, act } = await import("@testing-library/react");
+		vi.useFakeTimers();
+		try {
+			const { stage, node } = fakeStage(["g1"]);
+			const ir = irWith([shapeGroup("g1", "r1")]);
+			const selectionStore = createSelectionStore();
+			const editingStore = createEditingStore();
+			const draftStore = createDraftStore();
+			const viewportStore = createViewportStore();
+
+			renderHook(() =>
+				useStaticGroupCache({
+					stage,
+					getIR: () => ir,
+					activePageId: "p1",
+					ir,
+					selectionStore,
+					editingStore,
+					draftStore,
+					viewportStore,
+				}),
+			);
+			expect(node("g1").cache).toHaveBeenCalledTimes(1);
+
+			// A wheel zoom emits a burst. Re-rasterising each intermediate value
+			// would cost far more than the momentary blur it fixes.
+			act(() => {
+				for (const z of [1.2, 1.6, 2.1, 2.8, 3.4, 4]) {
+					viewportStore.getState().setZoom(z);
+				}
+			});
+			expect(node("g1").cache).toHaveBeenCalledTimes(1);
+
+			act(() => {
+				vi.advanceTimersByTime(500);
+			});
+			// Exactly one re-cache for the whole gesture, at the settled zoom.
+			expect(node("g1").cache).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("does not re-cache on pan, which cannot change resolution", async () => {
+		const { renderHook, act } = await import("@testing-library/react");
+		vi.useFakeTimers();
+		try {
+			const { stage, node } = fakeStage(["g1"]);
+			const ir = irWith([shapeGroup("g1", "r1")]);
+			const selectionStore = createSelectionStore();
+			const editingStore = createEditingStore();
+			const draftStore = createDraftStore();
+			const viewportStore = createViewportStore();
+
+			renderHook(() =>
+				useStaticGroupCache({
+					stage,
+					getIR: () => ir,
+					activePageId: "p1",
+					ir,
+					selectionStore,
+					editingStore,
+					draftStore,
+					viewportStore,
+				}),
+			);
+			expect(node("g1").cache).toHaveBeenCalledTimes(1);
+
+			// `viewportStore` carries pan too, and a hand-drag writes it every
+			// frame — none of which affects the cache resolution.
+			act(() => {
+				viewportStore.getState().setPan(40, 40);
+				viewportStore.getState().setPan(80, 90);
+			});
+			act(() => {
+				vi.advanceTimersByTime(500);
+			});
+			expect(node("g1").cache).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("re-caches a group whose content changed via IR update, even though it stayed static (E-7)", async () => {
 		const { renderHook } = await import("@testing-library/react");
 		const { stage, node } = fakeStage(["g1"]);
 		const selectionStore = createSelectionStore();
 		const editingStore = createEditingStore();
 		const draftStore = createDraftStore();
+		const viewportStore = createViewportStore();
 		const ir1 = irWith([shapeGroup("g1", "r1")]);
 
 		const { rerender } = renderHook(
@@ -291,6 +474,7 @@ describe("useStaticGroupCache", () => {
 					selectionStore,
 					editingStore,
 					draftStore,
+					viewportStore,
 				},
 			},
 		);
@@ -308,6 +492,7 @@ describe("useStaticGroupCache", () => {
 			selectionStore,
 			editingStore,
 			draftStore,
+			viewportStore,
 		});
 		// Before the fix, applyGroupCache saw "g1" as membership-unchanged
 		// and never refreshed its now-stale bitmap.
@@ -320,6 +505,7 @@ describe("useStaticGroupCache", () => {
 		const selectionStore = createSelectionStore();
 		const editingStore = createEditingStore();
 		const draftStore = createDraftStore();
+		const viewportStore = createViewportStore();
 		const ir = irWith([shapeGroup("g1", "r1")]);
 
 		renderHook(() =>
@@ -331,6 +517,7 @@ describe("useStaticGroupCache", () => {
 				selectionStore,
 				editingStore,
 				draftStore,
+				viewportStore,
 			}),
 		);
 		expect(node("g1").cache).toHaveBeenCalledTimes(1);
