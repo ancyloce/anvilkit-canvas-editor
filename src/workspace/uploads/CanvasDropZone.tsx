@@ -265,7 +265,7 @@ export function CanvasDropZone({
 		clientX: number,
 		clientY: number,
 	): void => {
-		const entry = draggedElementEntry(entryId);
+		const entry = draggedElementEntry(ctx, entryId);
 		endElementDrag();
 		if (!entry) return;
 		const point = clientPointToPage(ctx, clientX, clientY);

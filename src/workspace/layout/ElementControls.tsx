@@ -19,6 +19,9 @@ import {
 import { cn } from "@anvilkit/ui/lib/utils";
 import type Konva from "konva";
 import { Copy, Lock, LockOpen, MoreHorizontal, Trash2 } from "lucide-react";
+// Required binding: this package builds CLASSIC JSX, so `dist` throws "React
+// is not defined" at runtime without it and typecheck does not catch that.
+import * as React from "react";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import {
 	type CanvasDistributeAxis,
@@ -29,6 +32,7 @@ import {
 	useCanvasT,
 } from "@/context/canvas-studio-context.js";
 import { findNodeById } from "@/stage/find-node-by-id.js";
+import { CANVAS_STAGE_FOOTPRINT_ATTRIBUTE } from "@/stage/viewport-point.js";
 
 export type AlignDirection =
 	| "left"
@@ -146,7 +150,26 @@ function measureSelection(
 		if (r.x + r.width > maxX) maxX = r.x + r.width;
 		found = true;
 	}
-	return found ? { centerX: (minX + maxX) / 2, top: minY } : null;
+	if (!found) return null;
+	// `getClientRect` is STAGE-CONTAINER-relative, while this toolbar is
+	// positioned against the page card (its offsetParent wrapper, whose box
+	// equals the K-1 footprint). Pre-K-1 the two origins coincided, so the
+	// raw values worked by coincidence; under the windowed stage the
+	// container sits at the window origin INSIDE the footprint, and this
+	// delta bridges the two frames. Zero when the stage is not windowed.
+	let dx = 0;
+	let dy = 0;
+	const container =
+		typeof stage.container === "function" ? stage.container() : null;
+	const containerRect = container?.getBoundingClientRect?.();
+	const footprintRect = container
+		?.closest?.(`[${CANVAS_STAGE_FOOTPRINT_ATTRIBUTE}]`)
+		?.getBoundingClientRect?.();
+	if (containerRect && footprintRect) {
+		dx = containerRect.left - footprintRect.left;
+		dy = containerRect.top - footprintRect.top;
+	}
+	return { centerX: (minX + maxX) / 2 + dx, top: minY + dy };
 }
 
 /**

@@ -180,7 +180,7 @@ function fire(
 describe("CanvasDropZone — element drops (cp3-004)", () => {
 	it("drops the element at the cursor, as ONE node.create, selected", () => {
 		const h = setup();
-		beginElementDrag(entry());
+		beginElementDrag(h.ctx, entry());
 		fire("drop", { clientX: 200, clientY: 150 }, elementTransfer("square"));
 
 		expect(h.commits).toHaveLength(1);
@@ -201,7 +201,7 @@ describe("CanvasDropZone — element drops (cp3-004)", () => {
 
 	it("a drop OVER A FRAME lands inside the frame", () => {
 		const h = setup();
-		beginElementDrag(entry());
+		beginElementDrag(h.ctx, entry());
 		// The frame is at (400,300), 200×200.
 		fire("drop", { clientX: 450, clientY: 340 }, elementTransfer("square"));
 
@@ -212,7 +212,7 @@ describe("CanvasDropZone — element drops (cp3-004)", () => {
 
 	it("clears the payload, so a second drop with no drag inserts nothing", () => {
 		const h = setup();
-		beginElementDrag(entry());
+		beginElementDrag(h.ctx, entry());
 		fire("drop", { clientX: 200, clientY: 150 }, elementTransfer("square"));
 		fire("drop", { clientX: 300, clientY: 150 }, elementTransfer("square"));
 		expect(h.commits).toHaveLength(1);
@@ -225,8 +225,8 @@ describe("CanvasDropZone — element drops (cp3-004)", () => {
 	});
 
 	it("an element dragover is ACCEPTED but shows no replace affordance", () => {
-		setup();
-		beginElementDrag(entry());
+		const h = setup();
+		beginElementDrag(h.ctx, entry());
 		// Straight over the rect, where an asset drag WOULD offer to replace.
 		fire("dragOver", { clientX: 60, clientY: 60 }, elementTransfer("square"));
 
