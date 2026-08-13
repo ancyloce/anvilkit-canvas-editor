@@ -292,9 +292,9 @@ describe("insertCanvasElement — undo/redo is ONE step (cp3-004)", () => {
 		expect(h.commands).toHaveLength(1);
 		const created = findNode(h.current(), id ?? "")?.node;
 		expect(created?.type).toBe("group");
-		expect((created as { children: readonly CanvasNode[] }).children).toHaveLength(
-			2,
-		);
+		expect(
+			(created as { children: readonly CanvasNode[] }).children,
+		).toHaveLength(2);
 
 		h.undo();
 		expect(findNode(h.current(), id ?? "")).toBeNull();
@@ -339,7 +339,7 @@ describe("insertElementAtPoint — frame targeting (cp3-004)", () => {
 	it("never targets a locked or hidden frame", () => {
 		for (const over of [{ locked: true }, { visible: false }]) {
 			const h = liveHarness(frameIr(over as Partial<CanvasNode>));
-				insertElementAtPoint(h.ctx, entry(), { x: 150, y: 160 });
+			insertElementAtPoint(h.ctx, entry(), { x: 150, y: 160 });
 			expect(h.commands[0]?.parentId).toBeUndefined();
 		}
 	});
@@ -466,6 +466,27 @@ describe("insertElementAtViewportCenter (cp3-004)", () => {
 		expect(h.commands[0]?.node.transform).toMatchObject({ x: 370, y: 230 });
 	});
 
+	it("falls back to the page centre when ONE dimension is zero, not just both", () => {
+		// A container measured mid-layout as 800x0 is not a measurement. The guard
+		// used to require BOTH dimensions to be zero, so this rect passed it; the
+		// host intersection then could not satisfy `bottom > top`, the centre
+		// collapsed onto `rect.top`, and the element landed at the top edge —
+		// off-page once half its own height was subtracted. Worse, because a point
+		// WAS returned, the documented page-centre fallback never ran.
+		const h = liveHarness(pageIr());
+		h.ctx.stage = makeStage({ left: 0, top: 0, width: 800, height: 0 });
+		insertCanvasElementViaCenter(h);
+		// Page centre for the 800x600 page and a 60x40 element.
+		expect(h.commands[0]?.node.transform).toMatchObject({ x: 370, y: 280 });
+	});
+
+	it("falls back to the page centre when the WIDTH is zero", () => {
+		const h = liveHarness(pageIr());
+		h.ctx.stage = makeStage({ left: 0, top: 0, width: 0, height: 600 });
+		insertCanvasElementViaCenter(h);
+		expect(h.commands[0]?.node.transform).toMatchObject({ x: 370, y: 280 });
+	});
+
 	it("falls back to the page centre when the stage is unmeasurable (jsdom / headless)", () => {
 		const h = liveHarness(pageIr());
 		// The harness's fake stage has a zero-by-zero rect.
@@ -503,15 +524,31 @@ function insertCanvasElementViaCenter(h: ReturnType<typeof liveHarness>): void {
 
 describe("the drag payload handoff (cp3-004)", () => {
 	it("resolves only the id it was begun with, and only until dragend", () => {
+		const ctx = makeHarness().studioCtx;
 		const dragged = entry({ id: "square" });
-		expect(draggedElementEntry("square")).toBeUndefined();
+		expect(draggedElementEntry(ctx, "square")).toBeUndefined();
 
-		beginElementDrag(dragged);
-		expect(draggedElementEntry("square")).toBe(dragged);
+		beginElementDrag(ctx, dragged);
+		expect(draggedElementEntry(ctx, "square")).toBe(dragged);
 		// A stale slot must not be applied to somebody else's drag.
-		expect(draggedElementEntry("other")).toBeUndefined();
+		expect(draggedElementEntry(ctx, "other")).toBeUndefined();
 
 		endElementDrag();
-		expect(draggedElementEntry("square")).toBeUndefined();
+		expect(draggedElementEntry(ctx, "square")).toBeUndefined();
+	});
+
+	it("does NOT hand a drag begun in one studio to a drop on another", () => {
+		// Two `<CanvasStudio>` mounts on one page — a side-by-side compare view, a
+		// docs page with two live editors — share this module. The id check cannot
+		// tell them apart: it is the same entry, so the ids match. Only the owning
+		// studio can.
+		const studioA = makeHarness().studioCtx;
+		const studioB = makeHarness().studioCtx;
+		const dragged = entry({ id: "square" });
+
+		beginElementDrag(studioA, dragged);
+
+		expect(draggedElementEntry(studioA, "square")).toBe(dragged);
+		expect(draggedElementEntry(studioB, "square")).toBeUndefined();
 	});
 });

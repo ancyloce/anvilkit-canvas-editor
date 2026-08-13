@@ -246,17 +246,37 @@ export const ELEMENT_DRAG_MIME = "application/x-anvilkit-canvas-element";
  * which may be a host's `elementProvider`, is reachable only from `panels/`,
  * and is `async`, splitting the insert away from the drop event.
  *
- * A drag is singular by construction (one pointer, one payload), so a single
- * slot is the whole state machine. `dragend` always fires — including on a
- * cancelled drag — so the slot cannot outlive its gesture; a drop with no
- * live payload (a drag from another window, or a stale `dataTransfer` type)
- * inserts nothing rather than guessing.
+ * WHY THE SLOT IS KEYED BY STUDIO.
+ *
+ * A drag is singular per POINTER, not per module. Two `<CanvasStudio>` mounts on
+ * one page — a side-by-side compare view, a docs page with two live editors —
+ * share this module, so an unkeyed slot lets a drag begun in studio A be applied
+ * by a drop on studio B. The `id` check alone cannot see that: both sides are
+ * looking at the same entry, and the ids match.
+ *
+ * The key is the studio's `selectionStore`: allocated once per `<CanvasStudio>`,
+ * REQUIRED on the context (so it is never `undefined`, which would make two
+ * mounts compare equal and defeat the whole check), and the store this drag ends
+ * up writing to — a completed drop selects what it inserted.
+ *
+ * `dragend` always fires — including on a cancelled drag — so the slot cannot
+ * outlive its gesture; a drop with no live payload (a drag from another window,
+ * another studio, or a stale `dataTransfer` type) inserts nothing rather than
+ * guessing.
  */
-let draggedElement: CanvasElementEntry | undefined;
+let draggedElement:
+	| {
+			readonly owner: CanvasStudioContextValue["selectionStore"];
+			readonly entry: CanvasElementEntry;
+	  }
+	| undefined;
 
-/** Publish `entry` as the payload of the in-flight drag. */
-export function beginElementDrag(entry: CanvasElementEntry): void {
-	draggedElement = entry;
+/** Publish `entry` as the payload of a drag begun in `ctx`'s studio. */
+export function beginElementDrag(
+	ctx: CanvasStudioContextValue,
+	entry: CanvasElementEntry,
+): void {
+	draggedElement = { owner: ctx.selectionStore, entry };
 }
 
 /** Clear the in-flight drag payload (`dragend`, and after a handled drop). */
@@ -265,11 +285,17 @@ export function endElementDrag(): void {
 }
 
 /**
- * The in-flight drag's entry, when it is the one `id` names. The id check is
- * what keeps a stale slot from being applied to somebody else's drag.
+ * The in-flight drag's entry, when it belongs to `ctx`'s studio AND is the one
+ * `id` names. Both checks matter: the owner check rejects another mount's drag,
+ * and the id check keeps a stale slot from being applied to a later drag of a
+ * different entry.
  */
 export function draggedElementEntry(
+	ctx: CanvasStudioContextValue,
 	id: string,
 ): CanvasElementEntry | undefined {
-	return draggedElement?.id === id ? draggedElement : undefined;
+	if (!draggedElement || draggedElement.owner !== ctx.selectionStore) {
+		return undefined;
+	}
+	return draggedElement.entry.id === id ? draggedElement.entry : undefined;
 }
