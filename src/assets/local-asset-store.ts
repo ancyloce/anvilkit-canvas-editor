@@ -354,11 +354,26 @@ export function createLocalAssetStore(
 		}
 	}
 
-	/** Failure mode 3: give up on IndexedDB for the rest of this connection. */
+	/**
+	 * Failure mode 3: give up on IndexedDB for the rest of this connection.
+	 *
+	 * The index is pruned to what the MEMORY backend can actually answer for.
+	 * `metaIndex` is hydrated from IndexedDB, but once `get` is reading
+	 * `memoryBlobs` those entries name bytes nothing can return — leaving them in
+	 * place makes `has()` say yes, `list()` enumerate them and `usage()` charge
+	 * for them while every `get` resolves `undefined`. Downstream that is worse
+	 * than losing them: `scanLocalAssets` treats `list()` as the authority, so it
+	 * files them under `stored` instead of `missingIds` and the exporter throws
+	 * "no longer stored" per image rather than the store having said up front
+	 * that they are gone.
+	 */
 	function degrade(message: string, cause?: unknown): Connection {
 		closeDb();
 		connection = { kind: "memory" };
 		connecting = null;
+		for (const id of [...metaIndex.keys()]) {
+			if (!memoryBlobs.has(id)) metaIndex.delete(id);
+		}
 		warnOnce(message, cause);
 		return connection;
 	}
@@ -398,8 +413,6 @@ export function createLocalAssetStore(
 			}
 		};
 		const opened: Connection = { kind: "indexeddb", db };
-		connection = opened;
-		connecting = null;
 		try {
 			const tx = db.transaction(META_STORE, "readonly");
 			const done = transactionDone(tx);
@@ -419,6 +432,16 @@ export function createLocalAssetStore(
 				cause,
 			);
 		}
+		// Published only now that `metaIndex` is hydrated. Assigning before the two
+		// awaits above made `ensure()` resolve immediately for everyone else while
+		// the index was still empty, which broke the store two ways at once: a
+		// `put` in that window ran `enforceCaps` against an empty index (so the
+		// total cap was evaluated as if nothing were stored, admitting an
+		// over-cap write), and its `metaIndex.set` was then erased by the
+		// `metaIndex.clear()` above — leaving bytes in IndexedDB that `has`,
+		// `list` and `usage` all denied for the rest of the connection.
+		connection = opened;
+		connecting = null;
 		return opened;
 	}
 
@@ -516,6 +539,12 @@ export function createLocalAssetStore(
 				},
 				() => {
 					memoryBlobs.set(id, blob);
+					// Re-asserted, not redundant: when it is THIS write that fails,
+					// `withDb` degrades before calling us, and `degrade` prunes every
+					// index entry with no bytes in `memoryBlobs` — which at that
+					// instant includes the record set above. Writing the bytes and
+					// the meta together here is what keeps the pair consistent.
+					metaIndex.set(id, record);
 				},
 				"IndexedDB write failed (the origin's storage quota is the usual cause); local assets are kept in memory and will not survive a reload.",
 			);

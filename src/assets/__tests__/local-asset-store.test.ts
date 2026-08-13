@@ -184,6 +184,118 @@ function createFakeIndexedDB(overrides: Partial<FakeControls> = {}) {
 	return { factory: factory as unknown as IDBFactory, fake };
 }
 
+/**
+ * A fake whose META hydration `getAll` is held open until released.
+ *
+ * This is what makes the `connect()` publish-order regression testable at all:
+ * the window it opened lives entirely INSIDE `connect()`, between the
+ * `connection` assignment and the `metaIndex` fill, so no amount of racing from
+ * outside can land in it reliably. Gating the hydration read holds the window
+ * open for as long as the test needs.
+ */
+function gatedHydrationIndexedDB() {
+	const { factory, fake } = createFakeIndexedDB();
+	let release: (() => void) | undefined;
+	const gate = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	// Armed explicitly, so a store used to SEED the database hydrates normally
+	// and only the store under test is held open.
+	let gated = false;
+
+	type AnyRequest = {
+		result: unknown;
+		error: Error | null;
+		onsuccess: (() => void) | null;
+		onerror: (() => void) | null;
+	};
+
+	const wrapDatabase = (db: IDBDatabase): IDBDatabase => {
+		const real = db as unknown as {
+			transaction: (names: unknown, mode?: unknown) => unknown;
+		};
+		return new Proxy(db, {
+			get(target, prop, receiver) {
+				if (prop !== "transaction") return Reflect.get(target, prop, receiver);
+				return (names: unknown, mode?: unknown) => {
+					const tx = real.transaction(names, mode) as {
+						objectStore: (name: string) => { getAll: () => AnyRequest };
+					};
+					// Only the FIRST read is gated: that is the hydration one.
+					if (!gated) return tx;
+					gated = false;
+					return new Proxy(tx, {
+						get(txTarget, txProp, txReceiver) {
+							if (txProp !== "objectStore") {
+								return Reflect.get(txTarget, txProp, txReceiver);
+							}
+							return (name: string) => {
+								const os = tx.objectStore(name);
+								return {
+									...os,
+									getAll: () => {
+										const inner = os.getAll();
+										const proxied: AnyRequest = {
+											result: undefined,
+											error: null,
+											onsuccess: null,
+											onerror: null,
+										};
+										inner.onsuccess = () => {
+											void gate.then(() => {
+												proxied.result = inner.result;
+												proxied.onsuccess?.();
+											});
+										};
+										inner.onerror = () => {
+											void gate.then(() => {
+												proxied.error = inner.error;
+												proxied.onerror?.();
+											});
+										};
+										return proxied;
+									},
+								};
+							};
+						},
+					});
+				};
+			},
+		});
+	};
+
+	const gatedFactory = {
+		open(name: string) {
+			const request = (
+				factory as unknown as {
+					open: (n: string) => {
+						result: unknown;
+						onsuccess: (() => void) | null;
+					};
+				}
+			).open(name);
+			return new Proxy(request, {
+				get(target, prop, receiver) {
+					if (prop !== "result") return Reflect.get(target, prop, receiver);
+					const db = Reflect.get(target, prop, receiver) as
+						| IDBDatabase
+						| undefined;
+					return db ? wrapDatabase(db) : db;
+				},
+			});
+		},
+	};
+
+	return {
+		factory: gatedFactory as unknown as IDBFactory,
+		fake,
+		armHydration: () => {
+			gated = true;
+		},
+		releaseHydration: () => release?.(),
+	};
+}
+
 const blobOf = (bytes: number, type = "image/png"): Blob =>
 	new Blob(["x".repeat(bytes)], { type });
 
@@ -566,5 +678,119 @@ describe("getSharedLocalAssetStore (cp1-004 single-instance wiring)", () => {
 		expect(
 			getSharedLocalAssetStore({ indexedDB: null, warn: silent }),
 		).not.toBe(first);
+	});
+});
+
+/**
+ * `metaIndex` coherence — the index must never vouch for bytes the store cannot
+ * return, and must never lose bytes it does hold.
+ *
+ * Both defects below shared a consequence: `scanLocalAssets` treats `list()` as
+ * the authority, so an index that disagrees with the bytes makes an export
+ * either drop an image that is present or throw "no longer stored" per image
+ * for one that is not.
+ */
+describe("createLocalAssetStore — metaIndex coherence", () => {
+	it("hydrates the index BEFORE the connection is published to other callers", async () => {
+		const { factory, armHydration, releaseHydration } =
+			gatedHydrationIndexedDB();
+		const seed = createLocalAssetStore({ indexedDB: factory, warn: silent });
+		await seed.put("existing", blobOf(10));
+		seed.close();
+		armHydration();
+
+		// A fresh store, with the meta hydration held open. `connection` used to
+		// be published two awaits BEFORE the index was filled, so anything that
+		// called `ensure()` in this window got an immediately-resolved connection
+		// over an EMPTY index — and then had its own write erased by the
+		// `metaIndex.clear()` that hydration ends with.
+		const store = createLocalAssetStore({ indexedDB: factory, warn: silent });
+		// Warm-up call: this is what triggers `connect()`. Draining the microtask
+		// queue then parks it on the gated hydration read — which is exactly where
+		// the old code had ALREADY published `connection`.
+		const warm = store.backend();
+		for (let i = 0; i < 20; i += 1) await Promise.resolve();
+
+		// Issued INSIDE the window. `ensure()` used to resolve immediately here,
+		// handing this write an empty index to check its caps against and to
+		// register itself in — and the hydration below then cleared it.
+		const racing = store.put("racing", blobOf(20));
+		for (let i = 0; i < 20; i += 1) await Promise.resolve();
+		releaseHydration();
+		await Promise.all([warm, racing]);
+
+		expect(await store.has("racing")).toBe(true);
+		expect(await store.has("existing")).toBe(true);
+		expect((await store.list()).map((m) => m.id).sort()).toEqual([
+			"existing",
+			"racing",
+		]);
+		expect(await store.get("racing")).toBeDefined();
+		expect((await store.usage()).totalBytes).toBe(30);
+	});
+
+	it("enforces the total cap against the hydrated index, not an empty one", async () => {
+		const { factory, armHydration, releaseHydration } =
+			gatedHydrationIndexedDB();
+		const seed = createLocalAssetStore({ indexedDB: factory, warn: silent });
+		await seed.put("big", blobOf(80));
+		seed.close();
+		armHydration();
+
+		const store = createLocalAssetStore({
+			indexedDB: factory,
+			warn: silent,
+			maxTotalBytes: 100,
+		});
+		const warm = store.backend();
+		for (let i = 0; i < 20; i += 1) await Promise.resolve();
+
+		// 80 already stored + 40 more is over the 100-byte cap. Issued inside the
+		// window, this used to be checked against an empty index and admitted.
+		const over = store.put("more", blobOf(40));
+		for (let i = 0; i < 20; i += 1) await Promise.resolve();
+		releaseHydration();
+		await expect(over).rejects.toThrow(LocalAssetStoreError);
+		await warm;
+	});
+
+	it("drops index entries whose bytes it can no longer return when it degrades", async () => {
+		const { factory, fake } = createFakeIndexedDB();
+		const store = createLocalAssetStore({ indexedDB: factory, warn: silent });
+		await store.put("a1", blobOf(4));
+		await store.put("a2", blobOf(4));
+		expect(await store.has("a1")).toBe(true);
+
+		// A later transaction fails — quota exhaustion, a force-closed connection —
+		// and the store falls back to memory, where those bytes do not exist.
+		fake.failTransaction = true;
+		expect(await store.get("a1")).toBeUndefined();
+		expect(await store.backend()).toBe("memory");
+
+		// It must now report them MISSING rather than claiming to hold them: a
+		// `has()`/`list()` that says yes while `get()` returns undefined is what
+		// made the exporter throw per image instead of reporting them up front.
+		expect(await store.has("a1")).toBe(false);
+		expect(await store.has("a2")).toBe(false);
+		expect(await store.list()).toEqual([]);
+		expect((await store.usage()).totalBytes).toBe(0);
+	});
+
+	it("keeps bytes and meta together for a write that degrades mid-flight", async () => {
+		const { factory, fake } = createFakeIndexedDB();
+		const store = createLocalAssetStore({ indexedDB: factory, warn: silent });
+		await store.put("a1", blobOf(4));
+
+		// This write is the one that fails, so the degrade happens between the
+		// index update and the in-memory fallback write.
+		fake.failTransaction = true;
+		const blob = blobOf(6);
+		await store.put("a2", blob);
+
+		expect(await store.backend()).toBe("memory");
+		expect(await store.get("a2")).toBe(blob);
+		// The pair stays consistent: the bytes are reachable, so the meta stands.
+		expect(await store.has("a2")).toBe(true);
+		expect((await store.list()).map((m) => m.id)).toEqual(["a2"]);
 	});
 });
