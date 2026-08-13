@@ -251,26 +251,24 @@ describe("CanvasNodeRenderer", () => {
 	 * onto every selected node's `rotation`/`scaleX`/… The IR only requires
 	 * `d.length >= 1`, so `"Z"` and friends are valid documents.
 	 */
-	it.each([
-		"",
-		"Z",
-		"M",
-		"garbage",
-	])("draws no Path for unmeasurable path data %o", (d) => {
-		render(
-			<CanvasNodeRenderer
-				node={{
-					id: "p-bad",
-					type: "path" as const,
-					transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-					bounds: { width: 50, height: 50 },
-					zIndex: 0,
-					d,
-				}}
-			/>,
-		);
-		expect(callsOfType("Path")).toHaveLength(0);
-	});
+	it.each(["", "Z", "M", "garbage"])(
+		"draws no Path for unmeasurable path data %o",
+		(d) => {
+			render(
+				<CanvasNodeRenderer
+					node={{
+						id: "p-bad",
+						type: "path" as const,
+						transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+						bounds: { width: 50, height: 50 },
+						zIndex: 0,
+						d,
+					}}
+				/>,
+			);
+			expect(callsOfType("Path")).toHaveLength(0);
+		},
+	);
 
 	/**
 	 * Undrawable is not the same as absent. Every geometry lookup goes through
@@ -280,36 +278,34 @@ describe("CanvasNodeRenderer", () => {
 	 * it) unselectable and untransformable, with no selection border or handles
 	 * even when picked from the LayerPanel and no diagnostic anywhere.
 	 */
-	it.each([
-		"",
-		"Z",
-		"M",
-		"garbage",
-	])("keeps an unmeasurable path ADDRESSABLE via a placeholder %o", (d) => {
-		render(
-			<CanvasNodeRenderer
-				node={{
-					id: "p-bad",
-					type: "path" as const,
-					transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-					bounds: { width: 50, height: 50 },
-					zIndex: 0,
-					d,
-				}}
-			/>,
-		);
-		const placeholder = callsOfType("Rect").find(
-			(c) => c.props.id === "p-bad",
-		)?.props;
-		expect(placeholder).toBeDefined();
-		// `name` is what `findHitNodeId`/`findNodeById` walk up to.
-		expect(placeholder?.name).toBe("p-bad");
-		expect(placeholder?.width).toBe(50);
-		expect(placeholder?.height).toBe(50);
-		// Nothing is painted, so it must not swallow clicks meant for what is
-		// underneath it.
-		expect(placeholder?.listening).toBe(false);
-	});
+	it.each(["", "Z", "M", "garbage"])(
+		"keeps an unmeasurable path ADDRESSABLE via a placeholder %o",
+		(d) => {
+			render(
+				<CanvasNodeRenderer
+					node={{
+						id: "p-bad",
+						type: "path" as const,
+						transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+						bounds: { width: 50, height: 50 },
+						zIndex: 0,
+						d,
+					}}
+				/>,
+			);
+			const placeholder = callsOfType("Rect").find(
+				(c) => c.props.id === "p-bad",
+			)?.props;
+			expect(placeholder).toBeDefined();
+			// `name` is what `findHitNodeId`/`findNodeById` walk up to.
+			expect(placeholder?.name).toBe("p-bad");
+			expect(placeholder?.width).toBe(50);
+			expect(placeholder?.height).toBe(50);
+			// Nothing is painted, so it must not swallow clicks meant for what is
+			// underneath it.
+			expect(placeholder?.listening).toBe(false);
+		},
+	);
 
 	it("never hands Konva a non-finite transform or bounds", () => {
 		render(
@@ -1087,7 +1083,12 @@ describe("CanvasNodeRenderer — re-render budget (K-5, K-3)", () => {
 		});
 		const { rerender } = render(<CanvasNodeRenderer node={first} />);
 		const before = callsOfType("Rect").at(-1)?.props;
-		expect(before?.fillLinearGradientColorStops).toEqual([0, "#000", 1, "#fff"]);
+		expect(before?.fillLinearGradientColorStops).toEqual([
+			0,
+			"#000",
+			1,
+			"#fff",
+		]);
 
 		const moved = movedTo(first, 40);
 		// Sanity: the node really is a different object, so memo cannot bail out
@@ -2005,7 +2006,7 @@ describe("effects → Konva shadow props (C-03)", () => {
 		});
 	});
 
-	it("effects win over legacy shadow; spread widens the blur (live-canvas approximation)", () => {
+	it("effects win over legacy shadow; a spread routes to the ghost draw, never to a widened blur (K-10)", () => {
 		const rect = createRect({ id: "r-fx", bounds: { width: 10, height: 10 } });
 		(rect as { shadow?: unknown; effects?: unknown }).shadow = {
 			color: "#000000",
@@ -2024,10 +2025,65 @@ describe("effects → Konva shadow props (C-03)", () => {
 			},
 		];
 		render(<CanvasNodeRenderer node={rect} />);
-		expect(callsOfType("Rect")[0]?.props).toMatchObject({
-			shadowColor: "#ff0000",
-			shadowBlur: 7,
+		const props = callsOfType("Rect")[0]?.props as Record<string, unknown>;
+		// `spread` used to be faked by drawing a blur of 4 + 3 = 7, which is not
+		// what the SVG serializer renders. It is now a real dilation drawn by
+		// `shadow-ghosts.ts`, so Konva's native shadow props must be ABSENT —
+		// leaving one behind would paint the shadow twice.
+		expect(props.sceneFunc).toBeTypeOf("function");
+		expect(props.hitFunc).toBeTypeOf("function");
+		expect(props.shadowBlur).toBeUndefined();
+		expect(props.shadowColor).toBeUndefined();
+	});
+
+	it("a single spread-less shadow keeps Konva's native props, with the blur unwidened (K-10)", () => {
+		const rect = createRect({
+			id: "r-native",
+			bounds: { width: 10, height: 10 },
 		});
+		(rect as { effects?: unknown }).effects = [
+			{
+				type: "drop-shadow",
+				color: "#00ff00",
+				blur: 5,
+				offsetX: 2,
+				offsetY: 2,
+			},
+		];
+		render(<CanvasNodeRenderer node={rect} />);
+		const props = callsOfType("Rect")[0]?.props as Record<string, unknown>;
+		// Konva expresses this one exactly, so it must NOT pay for the ghost path.
+		expect(props.shadowBlur).toBe(5);
+		expect(props.shadowColor).toBe("#00ff00");
+		expect(props.sceneFunc).toBeUndefined();
+		expect(props.hitFunc).toBeUndefined();
+	});
+
+	it("a shadow STACK routes to the ghost draw — the live canvas no longer drops all but the first (K-10)", () => {
+		const rect = createRect({
+			id: "r-stack",
+			bounds: { width: 10, height: 10 },
+		});
+		(rect as { effects?: unknown }).effects = [
+			{
+				type: "drop-shadow",
+				color: "#ff0000",
+				blur: 2,
+				offsetX: 1,
+				offsetY: 1,
+			},
+			{
+				type: "drop-shadow",
+				color: "#0000ff",
+				blur: 6,
+				offsetX: 4,
+				offsetY: 4,
+			},
+		];
+		render(<CanvasNodeRenderer node={rect} />);
+		const props = callsOfType("Rect")[0]?.props as Record<string, unknown>;
+		expect(props.sceneFunc).toBeTypeOf("function");
+		expect(props.shadowColor).toBeUndefined();
 	});
 
 	it("effects: [] suppresses the legacy shadow entirely", () => {

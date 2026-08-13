@@ -40,7 +40,6 @@ import {
 	toResolvedNodeId,
 } from "@anvilkit/canvas-core";
 import type Konva from "konva";
-import { BlurFilter } from "./konva.js";
 import * as React from "react";
 import {
 	use,
@@ -100,7 +99,9 @@ import {
 	ISOLATION_DIM_OPACITY,
 	IsolationRenderContext,
 } from "./isolation-render-context.js";
+import { BlurFilter } from "./konva.js";
 import { aspectFitScaleY, nodeRenderOffset } from "./node-render-offset.js";
+import { createShadowGhostFuncs, ghostDropShadows } from "./shadow-ghosts.js";
 
 export interface CanvasNodeRendererProps {
 	node: CanvasNode;
@@ -233,20 +234,29 @@ function strokeStyleProps(
 
 /**
  * Map a node's resolved effects (C-03 — `effects` wins over legacy `shadow`,
- * via core's ONE resolver) to Konva shadow props. Konva renders a single
- * shadow with no spread primitive, so the live canvas shows the FIRST drop
- * shadow and approximates `spread` by widening the blur; SVG/PDF exports
- * render spread and shadow stacks exactly.
+ * via core's ONE resolver) to Konva props.
+ *
+ * K-10 (review 0036): a Konva shape carries ONE `shadow*` set and has no spread
+ * primitive, so anything richer than that — a shadow stack, or any `spread` —
+ * is drawn by hand in `shadow-ghosts.ts` instead, which renders the same model
+ * the SVG serializer does. Nodes that Konva CAN express exactly (no shadow, or
+ * one spread-less shadow) keep the native props and are untouched by this;
+ * `spread` is guaranteed 0 on that branch, which is why the blur is now passed
+ * through unwidened.
  */
 function shadowProps(node: {
 	effects?: CanvasEffect[];
 	shadow?: CanvasShadow;
+	strokeWidth?: number;
 }): Konva.ShapeConfig {
-	const shadow = firstDropShadow(resolveNodeEffects(node));
+	const effects = resolveNodeEffects(node);
+	const ghosts = ghostDropShadows(effects);
+	if (ghosts) return createShadowGhostFuncs(ghosts, node.strokeWidth ?? 0);
+	const shadow = firstDropShadow(effects);
 	if (!shadow) return {};
 	return {
 		shadowColor: shadow.color,
-		shadowBlur: shadow.blur + (shadow.spread ?? 0),
+		shadowBlur: shadow.blur,
 		shadowOffsetX: shadow.offsetX,
 		shadowOffsetY: shadow.offsetY,
 		...(shadow.opacity !== undefined ? { shadowOpacity: shadow.opacity } : {}),
@@ -304,7 +314,10 @@ function useShapeStyleProps(
 	return useMemo(
 		() => ({
 			...fillProps(fill, bounds, brandKit),
-			...shadowProps({ effects, shadow }),
+			// `strokeWidth` rides along because a spread dilation widens the
+			// node's OWN outline — the ring has to start from the stroke the
+			// shape already draws, not from zero.
+			...shadowProps({ effects, shadow, strokeWidth }),
 			...strokeStyleProps({
 				stroke,
 				strokeWidth,
@@ -808,9 +821,7 @@ function CanvasLineNodeRenderer({ node }: { node: CanvasLineNode }) {
 			/>
 		);
 	}
-	return (
-		<Line {...commonProps(node)} points={node.points} {...strokeProps} />
-	);
+	return <Line {...commonProps(node)} points={node.points} {...strokeProps} />;
 }
 
 function CanvasPathNodeRenderer({ node }: { node: CanvasPathNode }) {
@@ -842,9 +853,7 @@ function CanvasPathNodeRenderer({ node }: { node: CanvasPathNode }) {
 			/>
 		);
 	}
-	return (
-		<Path {...commonProps(node)} data={node.d} {...style} />
-	);
+	return <Path {...commonProps(node)} data={node.d} {...style} />;
 }
 
 function CanvasTextNodeRenderer({ node }: { node: CanvasTextNode }) {
@@ -1052,23 +1061,23 @@ function CanvasRichTextNodeRenderer({ node }: { node: CanvasRichTextNode }) {
 								.filter(Boolean)
 								.join(" ")}
 							{...fillProps(
-									style.fill,
-									{
-										width: run.width,
-										height: line.height,
-									},
-									brandKit,
-								)}
-								// K-16: the block's hit area is ONE rect (below), not N
-								// glyph runs. Konva renders a listening Text into the hit
-								// canvas glyph by glyph, on every frame the layer redraws
-								// — the most expensive hit geometry in the scene, for a
-								// shape the user only ever clicks as a block.
-								listening={false}
-							/>
-						);
-					}),
-				),
+								style.fill,
+								{
+									width: run.width,
+									height: line.height,
+								},
+								brandKit,
+							)}
+							// K-16: the block's hit area is ONE rect (below), not N
+							// glyph runs. Konva renders a listening Text into the hit
+							// canvas glyph by glyph, on every frame the layer redraws
+							// — the most expensive hit geometry in the scene, for a
+							// shape the user only ever clicks as a block.
+							listening={false}
+						/>
+					);
+				}),
+			),
 		[measured, node.paragraphs, brandKit, verticalOffset],
 	);
 
