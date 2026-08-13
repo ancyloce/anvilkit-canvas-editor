@@ -12,6 +12,7 @@ import {
 import type Konva from "konva";
 import { useEffect, useRef } from "react";
 import { findNodeById } from "../stage/find-node-by-id.js";
+import { nodeBlurRadius } from "../stage/node-blur.js";
 import { ghostDropShadows } from "../stage/shadow-ghosts.js";
 import type { DraftStoreApi } from "../stores/draft-store.js";
 import type { EditingStoreApi } from "../stores/editing-store.js";
@@ -55,33 +56,37 @@ function isCacheableSubtree(node: CanvasNode): boolean {
 		if (node.children.length === 0) return false;
 		return node.children.every(isCacheableSubtree);
 	}
-	if (castsGhostShadow(node)) return false;
+	if (drawsOutsideItsClientRect(node)) return false;
 	return CACHEABLE_LEAF_TYPES.has(node.type);
 }
 
 /**
- * K-10: a node whose shadows are drawn by `shadow-ghosts.ts` rather than by
- * Konva's native `shadow*` props.
+ * A node that paints beyond what `getClientRect()` reports, so wrapping it in a
+ * group cache would CROP the part that sticks out.
  *
- * Such a subtree must NOT be cached. `Node.cache()` sizes its bitmap from
- * `getClientRect()`, which grows to fit a NATIVE shadow (`Shape.getClientRect`
- * adds `|shadowOffset| + blur`) but knows nothing about one painted inside a
- * `sceneFunc` — deliberately so, since that invisibility is what keeps ghosts
- * out of selection boxes. The bitmap would therefore be sized to the shape
- * alone and crop the shadow away entirely; measured in headless Chrome, the
- * cached group rendered its body and NO shadow at all.
+ * `Node.cache()` sizes its bitmap from `getClientRect()`. That grows to fit a
+ * NATIVE Konva shadow (`Shape.getClientRect` adds `|shadowOffset| + blur`) but
+ * knows nothing about:
  *
- * Skipping the cache for these nodes trades an optimisation for correctness on
- * documents that were being rendered wrong anyway, and it is narrow: only a
- * shadow STACK or a `spread` takes this path.
+ *  - a K-10 ghost shadow, painted inside `sceneFunc` — deliberately invisible to
+ *    the rect, since that is what keeps ghosts out of selection boxes. Measured
+ *    in headless Chrome: a cached group rendered its body and NO shadow at all.
+ *  - a K-18 node blur, whose own cache is padded past the node's bounds so the
+ *    kernel has bleed room. An enclosing group cache sized to the bare rect
+ *    would slice that bleed back off, squaring off the blur it exists to soften.
+ *
+ * Skipping the group cache for these trades an optimisation for correctness, and
+ * it is narrow: only a shadow STACK, a `spread`, or a blur reaches it.
  */
-function castsGhostShadow(node: CanvasNode): boolean {
+function drawsOutsideItsClientRect(node: CanvasNode): boolean {
 	const source = node as {
 		effects?: CanvasEffect[];
 		shadow?: CanvasShadow;
 	};
 	if (source.effects === undefined && source.shadow === undefined) return false;
-	return ghostDropShadows(resolveNodeEffects(source)) !== null;
+	const effects = resolveNodeEffects(source);
+	if (nodeBlurRadius(effects) > 0) return true;
+	return ghostDropShadows(effects) !== null;
 }
 
 export interface ActiveNodeIds {

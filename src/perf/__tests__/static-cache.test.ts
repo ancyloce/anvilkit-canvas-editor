@@ -79,6 +79,23 @@ describe("selectStaticGroupIds", () => {
 		expect(selectStaticGroupIds(irWith([group]), "p1", NO_ACTIVE)).toEqual([]);
 	});
 
+	it("excludes a group holding a BLURRED node (K-18)", () => {
+		// The node's own cache is padded past its bounds to give the blur kernel
+		// bleed room; an enclosing group cache sized to the bare client rect would
+		// slice that bleed straight back off.
+		const blurred = createRect({
+			id: "r-blur",
+			bounds: { width: 10, height: 10 },
+		});
+		(blurred as { effects?: unknown }).effects = [{ type: "blur", radius: 5 }];
+		const group = createGroup({
+			id: "g-blur",
+			bounds: { width: 100, height: 100 },
+			children: [blurred],
+		});
+		expect(selectStaticGroupIds(irWith([group]), "p1", NO_ACTIVE)).toEqual([]);
+	});
+
 	it("still caches a group whose shadow Konva renders natively (K-10)", () => {
 		const plain = createRect({
 			id: "r-plain",
