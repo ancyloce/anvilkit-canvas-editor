@@ -2,6 +2,7 @@ import {
 	type CanvasFill,
 	type CanvasNode,
 	CanvasNodeSchema,
+	canvasInvariantErrors,
 	createCanvasIR,
 	createGroup,
 	createPage,
@@ -174,7 +175,12 @@ export function checkElementEntry(
 		add("schema-invalid", parsed.error.issues.map((i) => i.message).join("; "));
 	}
 
-	for (const issue of validateCanvasIRInvariants(documentAround(node))) {
+	// Errors only. A `"warning"` issue describes a document that renders in a
+	// degraded way, not a catalog entry that is wrong to ship — failing an audit
+	// on one would reject entries this build can insert and draw perfectly well.
+	for (const issue of canvasInvariantErrors(
+		validateCanvasIRInvariants(documentAround(node)),
+	)) {
 		add("ir-invariant", `${issue.code}: ${issue.message}`);
 	}
 

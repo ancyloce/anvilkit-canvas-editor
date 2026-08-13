@@ -15,6 +15,7 @@ vi.mock("react-konva", () => {
 		scaleY?: number;
 		x?: number;
 		y?: number;
+		akSurfaceSize?: { width: number; height: number };
 	};
 	const Stage = (props: StageProps) => {
 		const inst = {
@@ -25,6 +26,7 @@ vi.mock("react-konva", () => {
 			scaleY: props.scaleY,
 			x: props.x,
 			y: props.y,
+			akSurfaceSize: props.akSurfaceSize,
 		};
 		stageInstances.push(inst);
 		if (props.ref && "current" in props.ref) {
@@ -120,5 +122,25 @@ describe("CanvasStage", () => {
 		);
 		expect(onReady).toHaveBeenCalledTimes(1);
 		expect(onReady.mock.calls[0]?.[0]).toMatchObject({ width: 100 });
+	});
+});
+
+describe("CanvasStage — K-1 surface attr", () => {
+	it("forwards surfaceSize as the akSurfaceSize Stage attr", () => {
+		stageInstances.length = 0;
+		render(
+			<CanvasStage
+				width={1024}
+				height={640}
+				zoom={2}
+				surfaceSize={{ width: 800, height: 600 }}
+			>
+				<div />
+			</CanvasStage>,
+		);
+		const stage = stageInstances.at(-1) as unknown as {
+			akSurfaceSize?: { width: number; height: number };
+		};
+		expect(stage?.akSurfaceSize).toEqual({ width: 800, height: 600 });
 	});
 });

@@ -73,8 +73,12 @@ import type {
 	CanvasKindInspector,
 	CanvasKindRenderer,
 } from "./extensions/editor-extension.js";
+// The leaf, NOT `header/exporters.js` — that module statically imports the
+// stage rasterizer and the layout measurer, which must not reach this eager
+// chunk.
+import { downloadCanvasArtifact } from "./header/download-artifact.js";
 import { PageNavigator } from "./pages/PageNavigator.js";
-import { draggedIdsKey } from "./perf/active-nodes.js";
+import { useDragLayerPromotion } from "./perf/drag-layer.js";
 import { useStaticGroupCache } from "./perf/static-cache.js";
 import {
 	isDocumentCapabilityReadOnly,
@@ -112,6 +116,9 @@ import { IsolationRenderContext } from "./stage/isolation-render-context.js";
 import { RemoteCursors } from "./stage/RemoteCursors.js";
 import { RemoteSelections } from "./stage/RemoteSelections.js";
 import { RenderLayer } from "./stage/RenderLayer.js";
+import { useStageWindow } from "./stage/stage-window.js";
+import { ViewportCullingController } from "./stage/ViewportCullingController.js";
+import { CANVAS_STAGE_FOOTPRINT_ATTRIBUTE } from "./stage/viewport-point.js";
 import { createAiJobStore } from "./stores/ai-job-store.js";
 import { createComponentScopeStore } from "./stores/component-scope-store.js";
 import { createCropStore } from "./stores/crop-store.js";
@@ -962,7 +969,6 @@ function EditorStage({
 	onExportRecovery,
 	renderErrorDetails,
 	onStageReady,
-	draggedIds,
 	dimmedIds,
 	toolRegistry,
 }: {
@@ -990,19 +996,44 @@ function EditorStage({
 		| ((info: CanvasErrorDetailsInfo) => React.ReactNode)
 		| undefined;
 	onStageReady: (stage: Konva.Stage | null) => void;
-	draggedIds: ReadonlySet<string>;
 	/** C-09 exterior-dim set while isolated; null = no isolation. */
 	dimmedIds: ReadonlySet<string> | null;
 	toolRegistry: ToolRegistry | undefined;
 }): React.JSX.Element {
-	// The stage box scales with zoom so the page grows/shrinks as a whole and
-	// Konva pointer mapping stays correct (scaleX=zoom over a zoom-sized box).
-	// At zoom = 1 this is the page's natural pixel size (unchanged). This is
-	// what lets the multi-page workspace scale every page uniformly via zoom.
-	// Editing a Source sizes the surface to the Source root instead.
+	// The FOOTPRINT box scales with zoom so the page grows/shrinks as a whole
+	// and the multi-page workspace scales every page uniformly. At zoom = 1
+	// this is the page's natural pixel size (unchanged). Editing a Source
+	// sizes the surface to the Source root instead.
+	//
+	// K-1 (review 0036): the footprint is a plain in-flow <div>, and the Konva
+	// stage inside it is a WINDOW — sized to the footprint's intersection with
+	// the workspace scroll viewport (padded + quantized, see stage-window.ts)
+	// and absolutely positioned at the window origin. The stage's Konva
+	// position compensates (`stage.x = pan − window.x`), so world coordinates,
+	// pointer mapping (`getStagePointer` inverts the full stage transform) and
+	// every footprint-anchored overlay are unchanged. Without a workspace
+	// scroll ancestor (bare hosts, jsdom) `useStageWindow` returns null and
+	// the stage fills the footprint exactly as before — canvas cost is then
+	// what it always was, page × zoom; WITH the workspace it is O(viewport),
+	// independent of zoom and page size.
 	const surfaceSize = sourceRoot ? sourceRoot.bounds : activePage.size;
-	const stageWidth = (width ?? surfaceSize.width) * zoom;
-	const stageHeight = (height ?? surfaceSize.height) * zoom;
+	const surfaceWidth = width ?? surfaceSize.width;
+	const surfaceHeight = height ?? surfaceSize.height;
+	const footprintWidth = surfaceWidth * zoom;
+	const footprintHeight = surfaceHeight * zoom;
+	const footprintRef = useRef<HTMLDivElement>(null);
+	const stageWindow = useStageWindow(footprintRef);
+	const stageWidth = stageWindow?.width ?? footprintWidth;
+	const stageHeight = stageWindow?.height ?? footprintHeight;
+	const stagePanX = panX - (stageWindow?.x ?? 0);
+	const stagePanY = panY - (stageWindow?.y ?? 0);
+	// The unscaled surface size, attached to the stage as an attr so the
+	// export path can bound its capture to the page without deriving it from
+	// `stage.width()` — which under K-1 is the window size, not the page.
+	const exportSurfaceSize = useMemo(
+		() => ({ width: surfaceWidth, height: surfaceHeight }),
+		[surfaceWidth, surfaceHeight],
+	);
 	// What the object layers paint. A Source root that is not a container has no
 	// children to draw — it renders as its own single node instead.
 	const surfaceChildren: readonly CanvasNode[] = sourceRoot
@@ -1034,69 +1065,106 @@ function EditorStage({
 					{/* C-09 (FR-055): exterior-dim set for isolation mode. Only the
 				    LIVE stage provides it — rasterize/export paths never do. */}
 					<IsolationRenderContext.Provider value={dimmedIds}>
-						<CanvasStage
-							width={stageWidth}
-							height={stageHeight}
-							zoom={zoom}
-							panX={panX}
-							panY={panY}
-							onReady={onStageReady}
+						{/* K-1: the in-flow footprint keeps the page-card layout (rulers,
+					    thumbnails, scroll range, wheel-zoom anchoring all measure this
+					    box); the inner div is the stage WINDOW. When `stageWindow` is
+					    null both divs collapse to the pre-K-1 geometry. */}
+						<div
+							ref={footprintRef}
+							{...{ [CANVAS_STAGE_FOOTPRINT_ATTRIBUTE]: "" }}
+							style={{
+								position: "relative",
+								width: footprintWidth,
+								height: footprintHeight,
+							}}
 						>
-							{/* Konva warns above 5 physical layers ("recommended maximum
+							<div
+								style={
+									stageWindow
+										? {
+												position: "absolute",
+												left: stageWindow.x,
+												top: stageWindow.y,
+												width: stageWindow.width,
+												height: stageWindow.height,
+											}
+										: undefined
+								}
+							>
+								<CanvasStage
+									width={stageWidth}
+									height={stageHeight}
+									zoom={zoom}
+									panX={stagePanX}
+									panY={stagePanY}
+									surfaceSize={exportSurfaceSize}
+									onReady={onStageReady}
+								>
+									{/* Konva warns above 5 physical layers ("recommended maximum
 					    number of layers is 3-5"); this stage used to mount 6 (one per
 					    RenderLayer). Semantically distinct chrome that doesn't need its
 					    own redraw isolation is now grouped into fewer physical layers
 					    via named <Group>s — paint order is unchanged, only the layer
 					    boundaries moved. */}
-							<RenderLayer name="content">
-								<Group name="background" listening={false}>
-									<DesignBackground />
-									<Grid />
-								</Group>
-								<Group name="objects">
-									{surfaceChildren.flatMap((node) =>
-										draggedIds.has(node.id)
-											? []
-											: [<CanvasNodeRenderer key={node.id} node={node} />],
-									)}
-								</Group>
-							</RenderLayer>
-							{/* I2-5: dragged nodes float on their own layer so only it
+									<RenderLayer name="content">
+										<Group name="background" listening={false}>
+											<DesignBackground />
+											<Grid />
+										</Group>
+										<Group name="objects">
+											{surfaceChildren.map((node) => (
+												<CanvasNodeRenderer key={node.id} node={node} />
+											))}
+										</Group>
+									</RenderLayer>
+									{/* I2-5: dragged nodes float on their own layer so only it
 					    redraws during a drag; the (cached) content layer stays put.
 					    Kept as its own physical layer — the one redraw isolation this
-					    consolidation must not give up. */}
-							<RenderLayer name="drag">
-								{surfaceChildren.flatMap((node) =>
-									draggedIds.has(node.id)
-										? [<CanvasNodeRenderer key={node.id} node={node} />]
-										: [],
-								)}
-							</RenderLayer>
-							{/* C-02: persistent guides + layout aids, merged with the
+					    consolidation must not give up.
+
+					    Deliberately EMPTY in JSX: `useDragLayerPromotion` moves the
+					    Konva nodes here with `moveTo` for the duration of a gesture
+					    and puts them back after. Expressing it as a React child list
+					    instead made every promote/demote an unmount+mount, which
+					    destroyed and rebuilt the Konva node — see K-4 in
+					    `perf/drag-layer.ts` for the defects that caused. */}
+									<RenderLayer name="drag" />
+									{/* C-02: persistent guides + layout aids, merged with the
 					    selection chrome below into one "overlay" layer. Both only
 					    redraw during active interaction and both are editor-only
 					    chrome excluded from export (see CHROME_LAYER_NAMES in
 					    export-stage.ts) — sharing a layer costs nothing there. Guides
 					    stay below selection in paint order. */}
-							<RenderLayer name="overlay">
-								<Group name="guides">
-									<GuideLayoutOverlay />
-								</Group>
-								<Group name="selection">
-									<DraftRenderer />
-									<SmartGuideOverlay />
-									<PenPreview />
-									<PathEditOverlay />
-									<CanvasTransformer />
-									<CanvasFocusRing />
-								</Group>
-							</RenderLayer>
-							<RenderLayer name="presence" listening={false}>
-								<RemoteCursors />
-								<RemoteSelections />
-							</RenderLayer>
-						</CanvasStage>
+									<RenderLayer name="overlay">
+										<Group name="guides">
+											<GuideLayoutOverlay />
+										</Group>
+										<Group name="selection">
+											<DraftRenderer />
+											<SmartGuideOverlay />
+											<PenPreview />
+											<PathEditOverlay />
+											<CanvasTransformer />
+											<CanvasFocusRing />
+										</Group>
+									</RenderLayer>
+									<RenderLayer name="presence" listening={false}>
+										<RemoteCursors />
+										<RemoteSelections />
+									</RenderLayer>
+								</CanvasStage>
+							</div>
+						</div>
 					</IsolationRenderContext.Provider>
+					{/* K-12: culls top-level nodes outside the stage window's world
+				    rect. Renders nothing; inert while `stageWindow` is null. */}
+					<ViewportCullingController
+						stageWindow={stageWindow}
+						zoom={zoom}
+						panX={panX}
+						panY={panY}
+						surfaceChildren={surfaceChildren}
+					/>
 					<ToolInteractionLayer registry={toolRegistry} />
 					<TextEditorOverlay />
 					<RichTextToolbar />
@@ -1645,20 +1713,15 @@ export function CanvasStudio({
 		selectionStore,
 		editingStore,
 		draftStore,
+		viewportStore,
 	});
 
-	// I2-5 drag-layer: a string key for the dragged-node SET. Stable across
-	// pointermoves (a `move` draft mutates only currentX/Y), so subscribing here
-	// re-renders <CanvasStudio> only on drag start/end — not per move (MVP-7).
-	const draggedKey = useSyncExternalStore(
-		draftStore.subscribe,
-		() => draggedIdsKey(draftStore.getState().draft),
-		() => draggedIdsKey(draftStore.getState().draft),
-	);
-	const draggedIds = useMemo(
-		() => new Set(draggedKey ? draggedKey.split(",") : []),
-		[draggedKey],
-	);
+	// I2-5 drag-layer, now driven imperatively (K-4). This subscribes to the
+	// draft store OUTSIDE React, so a drag no longer re-renders <CanvasStudio>
+	// at all — previously the dragged-id set was React state, so every gesture
+	// cost two full renders of the whole surface (start and end) on top of
+	// destroying and rebuilding the dragged nodes.
+	useDragLayerPromotion(stage, draftStore);
 
 	// Area 1: index extension renderers/inspectors by node kind for
 	// <CanvasNodeRenderer> (and the inspector). Stable — rebuilt only on change.
@@ -1898,15 +1961,17 @@ export function CanvasStudio({
 	}, [replaceDocument, getIR]);
 	const exportRecovery = useCallback(() => {
 		const doc = getIR();
-		const blob = new Blob([JSON.stringify(doc, null, "\t")], {
-			type: "application/json",
+		// Through `downloadCanvasArtifact`, not a second hand-rolled anchor: it
+		// owns `toBlob`, the `sanitizeExportFilename` pass, and the
+		// appendChild-before-click that browsers requiring an attached anchor
+		// need. Hand-rolling this skipped all three — and `doc.id` is
+		// document-controlled, so an id carrying path separators or control
+		// characters reached `a.download` unsanitized.
+		downloadCanvasArtifact({
+			filename: `canvas-recovery-${doc.id}.json`,
+			mimeType: "application/json",
+			data: JSON.stringify(doc, null, "\t"),
 		});
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = `canvas-recovery-${doc.id}.json`;
-		a.click();
-		URL.revokeObjectURL(url);
 	}, [getIR]);
 
 	// Plan 0023 M5-03: the Source being edited, if any. Read from the live scope
@@ -1953,7 +2018,6 @@ export function CanvasStudio({
 			onExportRecovery={exportRecovery}
 			renderErrorDetails={renderErrorDetails}
 			onStageReady={handleStageReady}
-			draggedIds={draggedIds}
 			dimmedIds={dimmedIds}
 			toolRegistry={effectiveToolRegistry}
 		/>

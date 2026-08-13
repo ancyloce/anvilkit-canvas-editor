@@ -49,6 +49,7 @@ vi.mock("react-konva", () => {
 		Rect: makeMock("Rect"),
 		Ellipse: makeMock("Ellipse"),
 		Line: makeMock("Line"),
+		Shape: makeMock("Shape"),
 		Path: makeMock("Path"),
 		Text: makeMock("Text"),
 		Image: makeMock("Image"),

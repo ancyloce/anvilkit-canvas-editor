@@ -64,6 +64,7 @@ vi.mock("react-konva", () => {
 		Rect: makeMock("Rect"),
 		Ellipse: makeMock("Ellipse"),
 		Line: makeMock("Line"),
+		Shape: makeMock("Shape"),
 		Path: makeMock("Path"),
 		Text: makeMock("Text"),
 		Image: makeMock("Image"),
@@ -180,11 +181,16 @@ describe("CanvasStudio integration", () => {
 		);
 	});
 
-	it("routes a dragged node into the drag layer, leaving the rest in objects (I2-5)", () => {
-		// Probe tool that opens a *moved* `move` draft for r1 on activation, so the
-		// drag-layer partition can be exercised through a live <CanvasStudio>. The
-		// pointer must have travelled (currentX/Y past the drag threshold) for the
-		// node to promote — a zero-distance draft is just a selection click.
+	// K-4. The drag layer is no longer a REACT partition — every child renders
+	// in `objects` for the whole gesture and `useDragLayerPromotion` moves the
+	// Konva nodes with `moveTo`. That is what keeps the instance alive, and
+	// therefore what lets the Transformer, `useImage` and any node cache survive
+	// a drag. The move itself is imperative and so invisible to this DOM mock;
+	// it is covered in `perf/__tests__/drag-layer.test.ts`. What this pins is
+	// the invariant that makes it safe: the React child list does NOT change
+	// when a drag starts, so react-konva never reconciles the objects group
+	// mid-gesture.
+	it("keeps every node in the objects group across a drag (I2-5, K-4)", () => {
 		const dragProbe: Tool = {
 			id: "select",
 			cursor: "default",
@@ -226,10 +232,12 @@ describe("CanvasStudio integration", () => {
 		);
 		const dragLayer = container.querySelector('[data-layer-name="drag"]');
 		const objectsLayer = container.querySelector('[data-layer-name="objects"]');
-		// r1 (dragging) floats in the drag layer; r2 stays in objects.
-		expect(dragLayer?.querySelector('[data-id="r1"]')).not.toBeNull();
-		expect(objectsLayer?.querySelector('[data-id="r1"]')).toBeNull();
+		// Both nodes stay put in the React tree even though r1 is mid-drag…
+		expect(objectsLayer?.querySelector('[data-id="r1"]')).not.toBeNull();
 		expect(objectsLayer?.querySelector('[data-id="r2"]')).not.toBeNull();
+		// …and the drag layer is mounted but owns no React children of its own.
+		expect(dragLayer).not.toBeNull();
+		expect(dragLayer?.querySelector("[data-id]")).toBeNull();
 	});
 
 	it("activates a custom tool contributed via extensions", () => {
