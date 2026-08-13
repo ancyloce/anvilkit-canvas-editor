@@ -121,14 +121,18 @@ function options(): HTMLElement[] {
 }
 
 describe("ElementsPanel — content browser (cp3-003)", () => {
-	it("renders a tab per category plus All, from CANVAS_ELEMENT_CATEGORIES", async () => {
+	it("renders a toggle button per category plus All, from CANVAS_ELEMENT_CATEGORIES", async () => {
 		renderPanel(createStaticElementProvider(CATALOG));
 		await screen.findByTestId("elements-grid");
 
-		const tabs = within(screen.getByTestId("elements-categories")).getAllByRole(
-			"tab",
-		);
-		expect(tabs.map((tab) => tab.getAttribute("data-testid"))).toEqual([
+		// A `group` of toggle buttons, NOT a `tablist`: nothing here controls a
+		// `tabpanel`, and the buttons are each individually tabbable rather than
+		// sharing one tab stop, so the tab roles promised behaviour the markup
+		// does not have. `aria-pressed` is the state a toggle button carries.
+		const strip = screen.getByTestId("elements-categories");
+		expect(strip).toHaveAttribute("role", "group");
+		const filters = within(strip).getAllByRole("button");
+		expect(filters.map((f) => f.getAttribute("data-testid"))).toEqual([
 			"elements-category-all",
 			"elements-category-shape",
 			"elements-category-icon",
@@ -137,7 +141,7 @@ describe("ElementsPanel — content browser (cp3-003)", () => {
 			"elements-category-sticker",
 		]);
 		expect(screen.getByTestId("elements-category-all")).toHaveAttribute(
-			"aria-selected",
+			"aria-pressed",
 			"true",
 		);
 	});
@@ -218,7 +222,7 @@ describe("ElementsPanel — content browser (cp3-003)", () => {
 			options().map((option) => option.getAttribute("data-category")),
 		).toEqual(["sticker", "sticker"]);
 		expect(screen.getByTestId("elements-category-sticker")).toHaveAttribute(
-			"aria-selected",
+			"aria-pressed",
 			"true",
 		);
 		expect(search).toHaveBeenLastCalledWith({ category: "sticker" });
@@ -515,5 +519,132 @@ describe("ElementsPanel — the drawing tools are GONE (cp3-009)", () => {
 		await screen.findByTestId("elements-grid");
 		expect(options()).toHaveLength(CATALOG.length);
 		expect(screen.queryByTestId("elements-tool-my-ext-tool")).toBeNull();
+	});
+});
+
+/**
+ * A host-supplied `preview.src` is untrusted input: `elementProvider` is an open
+ * extension point, so the URI comes from whatever backend serves the catalog.
+ * It goes through core's ONE allowlist (`normalizeUri`) like every other URI
+ * ingress in this package, rather than straight into an `<img src>`.
+ */
+describe("ElementsPanel — thumbnail URI safety", () => {
+	const withSrc = (id: string, src: string): CanvasElementEntry =>
+		entry({ id, name: id, preview: { kind: "image", src } });
+
+	it("renders http(s), data: image and blob: thumbnails", async () => {
+		renderPanel(
+			createStaticElementProvider([
+				withSrc("remote", "https://cdn.example/icon.png"),
+				withSrc("inline", "data:image/png;base64,iVBORw0KGgo="),
+				withSrc("local", "blob:https://app.example/9f2c-4c1a"),
+			]),
+		);
+		await screen.findByTestId("elements-grid");
+
+		for (const id of ["remote", "inline", "local"]) {
+			const preview = screen.getByTestId(`elements-preview-${id}`);
+			expect(preview.tagName.toLowerCase(), id).toBe("img");
+			expect(preview.getAttribute("src"), id).toBeTruthy();
+		}
+	});
+
+	it("renders an empty well instead of requesting a blocked scheme", async () => {
+		renderPanel(
+			createStaticElementProvider([
+				withSrc("js", "javascript:alert(1)"),
+				withSrc("file", "file:///etc/passwd"),
+				// A `data:` payload that is not an image the allowlist knows.
+				withSrc("svgdata", "data:image/svg+xml,<svg onload='alert(1)'/>"),
+			]),
+		);
+		await screen.findByTestId("elements-grid");
+
+		for (const id of ["js", "file", "svgdata"]) {
+			const preview = screen.getByTestId(`elements-preview-${id}`);
+			// Not an <img> at all: nothing is requested, and no src attribute
+			// carrying the hostile URI reaches the DOM.
+			expect(preview.tagName.toLowerCase(), id).not.toBe("img");
+			expect(preview.getAttribute("data-preview-blocked"), id).toBe("true");
+			expect(preview.getAttribute("src"), id).toBeNull();
+		}
+		// The cells themselves are untouched — a bad thumbnail is not a bad entry.
+		expect(options()).toHaveLength(3);
+	});
+});
+
+describe("ElementsPanel — preview aspect ratio from the viewBox", () => {
+	const withViewBox = (id: string, viewBox: string): CanvasElementEntry =>
+		entry({
+			id,
+			name: id,
+			preview: { kind: "path", d: "M0 0H24V24H0Z", viewBox },
+			defaultSize: { width: 100, height: 100 },
+		});
+
+	function ratioOf(id: string): string | null {
+		return screen
+			.getByTestId(`elements-preview-${id}`)
+			.getAttribute("style");
+	}
+
+	it("reads width/height by POSITION, not from a filtered list", async () => {
+		// A leading space is legal SVG. Splitting yields a leading "" whose
+		// `Number("")` is a perfectly finite 0, so a "drop the non-numbers" filter
+		// left five entries and shifted every index left — index 2 read the
+		// y-origin and index 3 read the width, turning this 2:1 box into 1:2.
+		renderPanel(
+			createStaticElementProvider([
+				withViewBox("padded", " 0 0 48 24"),
+				withViewBox("plain", "0 0 48 24"),
+			]),
+		);
+		await screen.findByTestId("elements-grid");
+
+		expect(ratioOf("padded")).toContain("aspect-ratio: 2");
+		expect(ratioOf("padded")).toBe(ratioOf("plain"));
+	});
+
+	it("falls back to the 24x24 default when a token is not a number", async () => {
+		renderPanel(
+			createStaticElementProvider([
+				withViewBox("junk", "0 0 wide 24"),
+				withViewBox("short", "0 0 48"),
+			]),
+		);
+		await screen.findByTestId("elements-grid");
+
+		// Square, from the documented 24x24 fallback — never a half-parsed box.
+		expect(ratioOf("junk")).toContain("aspect-ratio: 1");
+		expect(ratioOf("short")).toContain("aspect-ratio: 1");
+	});
+});
+
+describe("ElementsPanel — a new query replaces the old results", () => {
+	it("clears stale entries and resets the roving tabindex on a category change", async () => {
+		const provider = createStaticElementProvider(CATALOG);
+		renderPanel(provider);
+		await screen.findByTestId("elements-grid");
+
+		// Focus a cell that is NOT the first, so a surviving `activeIndex` is
+		// visible in the next result set.
+		const before = options();
+		expect(before.length).toBeGreaterThan(2);
+		fireEvent.focus(before[2] as HTMLElement);
+		expect(before[2]?.getAttribute("tabindex")).toBe("0");
+
+		fireEvent.click(screen.getByTestId("elements-category-sticker"));
+
+		// The previous query's cells are gone immediately — they used to stay on
+		// screen with no loading affordance until the new promise resolved,
+		// because the skeleton branch only fires on an EMPTY grid.
+		expect(screen.queryByTestId("elements-item-square")).toBeNull();
+		expect(screen.getByTestId("elements-loading")).toBeTruthy();
+
+		await waitFor(() => expect(options()).toHaveLength(2));
+		// And the roving tabindex is back on the first cell rather than clamped to
+		// whatever index the old one happened to land on.
+		expect(options()[0]?.getAttribute("tabindex")).toBe("0");
+		expect(options()[0]?.getAttribute("aria-selected")).toBe("true");
 	});
 });

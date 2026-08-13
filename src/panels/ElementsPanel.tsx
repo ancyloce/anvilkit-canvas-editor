@@ -47,6 +47,7 @@
  * `__tests__/ElementsPanel.lazy-catalog.test.tsx`.
  */
 
+import { isLocalObjectUri, normalizeUri } from "@anvilkit/canvas-core";
 import { Button } from "@anvilkit/ui/button";
 import { cn } from "@anvilkit/ui/lib/utils";
 import * as React from "react";
@@ -140,20 +141,27 @@ function defaultElementProvider(): CanvasElementProvider {
 	return sharedDefaultProvider;
 }
 
-/** `"0 0 24 24"` → `{ width: 24, height: 24 }`, total and never zero. */
+/**
+ * `"0 0 24 24"` → `{ width: 24, height: 24 }`, total and never zero.
+ *
+ * The four tokens are read BY POSITION from the raw split, never from a
+ * filtered list. Filtering first shifts every later token left, and the shift is
+ * silent: `" 0 0 48 24"` (a leading space is legal SVG) splits to
+ * `["", "0", "0", "48", "24"]`, and since `Number("")` is a perfectly finite
+ * `0`, a "drop the non-numbers" filter leaves five entries — so index 2 reads
+ * the y-origin and index 3 reads the width, and a 2:1 box renders at 1:2.
+ * Any token that is not a real number disqualifies the whole viewBox instead.
+ */
 function viewBoxSize(viewBox: string): {
 	readonly width: number;
 	readonly height: number;
 } {
-	const parts = viewBox
-		.split(/[\s,]+/)
-		.map(Number)
-		.filter((n) => Number.isFinite(n));
-	const width = parts[2];
-	const height = parts[3];
+	const parts = viewBox.trim().split(/[\s,]+/);
+	const width = parts.length === 4 ? Number(parts[2]) : Number.NaN;
+	const height = parts.length === 4 ? Number(parts[3]) : Number.NaN;
 	return {
-		width: width !== undefined && width > 0 ? width : 24,
-		height: height !== undefined && height > 0 ? height : 24,
+		width: Number.isFinite(width) && width > 0 ? width : 24,
+		height: Number.isFinite(height) && height > 0 ? height : 24,
 	};
 }
 
@@ -175,6 +183,28 @@ function previewAspectRatio(entry: CanvasElementEntry): number {
 }
 
 /**
+ * A thumbnail URI this panel is willing to put in an `<img src>`, or
+ * `undefined`.
+ *
+ * `elementProvider` is an open host extension point, so `preview.src` is
+ * untrusted input from whatever backend serves the catalog — the same class of
+ * input `core/src/uri.ts` exists to give this package ONE answer about. Every
+ * other URI ingress here routes through it (the SVG serializer for `<image
+ * href>`, `component-libraries/` for Provider thumbnails); this one did not, so
+ * a compromised or misconfigured catalog could point thumbnails at arbitrary
+ * schemes and at off-origin trackers that fire the moment the panel opens.
+ *
+ * `blob:`/`filesystem:` are admitted alongside http(s) and safe raster `data:`
+ * URIs — unlike the serializer, nothing here is being written into a portable
+ * artifact, and a browser-local handle is a legitimate source for a thumbnail a
+ * host generated in this session.
+ */
+function previewImageSrc(src: string): string | undefined {
+	if (isLocalObjectUri(src)) return src;
+	return normalizeUri(src, { allowSafeDataImage: true });
+}
+
+/**
  * A catalog thumbnail: attribute-only SVG, never `dangerouslySetInnerHTML`.
  *
  * Filled or stroked by {@link CanvasElementEntry.recolor} — see
@@ -191,13 +221,25 @@ function ElementPreview({
 		aspectRatio: `${previewAspectRatio(entry)}`,
 	};
 	if (entry.preview.kind === "image") {
-		return (
+		const src = previewImageSrc(entry.preview.src);
+		// A rejected URI renders the empty well rather than a broken image: the
+		// cell still has its name, its size and its keyboard behaviour, and the
+		// panel never requests the resource.
+		return src ? (
 			<img
 				aria-hidden
 				alt=""
 				data-testid={`elements-preview-${entry.id}`}
-				src={entry.preview.src}
+				src={src}
 				className="max-h-full max-w-full object-contain"
+				style={style}
+			/>
+		) : (
+			<span
+				aria-hidden
+				data-testid={`elements-preview-${entry.id}`}
+				data-preview-blocked="true"
+				className="max-h-full max-w-full rounded-sm bg-muted"
 				style={style}
 			/>
 		);
@@ -338,7 +380,19 @@ export function ElementsPanel({
 
 	useEffect(() => {
 		const seq = ++requestSeq.current;
-		setResult((prev) => ({ ...prev, loading: true, error: false }));
+		// A NEW query, so the previous query's results are dropped rather than left
+		// on screen. Keeping them (the skeleton branch only fires on an empty grid)
+		// painted 20 stale icons with no loading affordance for as long as the
+		// shapes request took — which for the lazy default provider includes the
+		// first chunk fetch. `activeIndex` resets with them: the roving tabindex
+		// was clamped to the NEW list's last index rather than reset, so
+		// `aria-selected` and `tabIndex={0}` landed on an arbitrary mid-grid cell
+		// that has nothing to do with the cell the user had focused.
+		//
+		// `loadMore` deliberately does NOT come through here: appending a page must
+		// keep what is already on screen and keep the roving index where it is.
+		setResult({ ...INITIAL_SEARCH_STATE });
+		setActiveIndex(0);
 		provider
 			.search({
 				...(debouncedSearch ? { text: debouncedSearch } : {}),
@@ -454,8 +508,17 @@ export function ElementsPanel({
 			data-testid="elements-panel"
 			className={cn("flex flex-col gap-2 p-2", className)}
 		>
+			{/* A GROUP of toggle buttons, not a `tablist`. The roles here used to say
+			    `tablist`/`tab`, which promises a screen-reader user two things this
+			    markup does not deliver: a single tab stop with arrow-key movement
+			    between the tabs (these are plain `Button`s, so every one of them is
+			    tabbable), and an `aria-controls` relationship to a `tabpanel` (there
+			    is none — the grid below is one listbox whose CONTENTS change, not a
+			    panel per tab). Announcing "Shapes tab, 2 of 6" against neither of
+			    those is worse than announcing a pressed filter button, which is
+			    exactly what this is. `aria-pressed` carries the selected state. */}
 			<div
-				role="tablist"
+				role="group"
 				aria-label={t("canvas.elements.categoriesLabel", "Element categories")}
 				data-testid="elements-categories"
 				className="flex flex-wrap gap-1"
@@ -464,8 +527,7 @@ export function ElementsPanel({
 					type="button"
 					size="xs"
 					variant={category === ALL_CATEGORIES ? "secondary" : "ghost"}
-					role="tab"
-					aria-selected={category === ALL_CATEGORIES}
+					aria-pressed={category === ALL_CATEGORIES}
 					data-testid="elements-category-all"
 					onClick={() => setCategory(ALL_CATEGORIES)}
 				>
@@ -477,8 +539,7 @@ export function ElementsPanel({
 						type="button"
 						size="xs"
 						variant={category === value ? "secondary" : "ghost"}
-						role="tab"
-						aria-selected={category === value}
+						aria-pressed={category === value}
 						data-testid={`elements-category-${value}`}
 						onClick={() => setCategory(value)}
 					>
@@ -546,7 +607,7 @@ export function ElementsPanel({
 								// `cp3-004` drag path. The id goes in the `dataTransfer`
 								// (so `CanvasDropZone`'s `dragover` can recognise the drag
 								// from `types` alone, before any data is readable); the
-								// ENTRY goes in the module-scope handoff, because
+								// ENTRY goes in the studio-keyed handoff, because
 								// `entry.build()` is a function and a `DataTransfer`
 								// carries strings. `dragend` always fires, including on a
 								// cancelled drag, so the handoff cannot outlive the gesture.
@@ -554,7 +615,7 @@ export function ElementsPanel({
 								onDragStart={(event) => {
 									event.dataTransfer.setData(ELEMENT_DRAG_MIME, entry.id);
 									event.dataTransfer.effectAllowed = "copy";
-									beginElementDrag(entry);
+									beginElementDrag(ctx, entry);
 								}}
 								onDragEnd={endElementDrag}
 								onFocus={() => setActiveIndex(index)}

@@ -8,6 +8,7 @@ import {
 	ELEMENT_DRAG_MIME,
 	endElementDrag,
 } from "@/actions/element-insert-actions.js";
+import type { CanvasStudioContextValue } from "@/context/canvas-studio-context.js";
 import { CanvasStudioContext } from "@/context/canvas-studio-context.js";
 import type { CanvasElementEntry } from "@/elements/element-entry.js";
 import { createStaticElementProvider } from "@/elements/element-provider.js";
@@ -55,6 +56,8 @@ const ENTRY: CanvasElementEntry = {
 function renderPanel(props: Omit<ElementsPanelProps, "elementProvider"> = {}): {
 	commits: CanvasCommand[];
 	selection: () => readonly string[];
+	/** The mounted studio — the drag payload is keyed by it, not module-global. */
+	ctx: CanvasStudioContextValue;
 } {
 	const harness = makeHarness();
 	render(
@@ -68,6 +71,7 @@ function renderPanel(props: Omit<ElementsPanelProps, "elementProvider"> = {}): {
 	return {
 		commits: harness.commits,
 		selection: () => harness.studioCtx.selectionStore.getState().selectedIds,
+		ctx: harness.studioCtx,
 	};
 }
 
@@ -109,7 +113,7 @@ describe("ElementsPanel — click inserts (cp3-004)", () => {
 
 describe("ElementsPanel — drag publishes a payload (cp3-004)", () => {
 	it("cells are draggable and put the entry id in the dataTransfer", async () => {
-		renderPanel();
+		const h = renderPanel();
 		const option = await cell();
 		expect(option.getAttribute("draggable")).toBe("true");
 
@@ -123,20 +127,22 @@ describe("ElementsPanel — drag publishes a payload (cp3-004)", () => {
 		expect(data.get(ELEMENT_DRAG_MIME)).toBe("square");
 		expect(dataTransfer.effectAllowed).toBe("copy");
 		// The ENTRY itself — `build()` is a function no dataTransfer can carry.
-		expect(draggedElementEntry("square")).toMatchObject({ id: "square" });
+		expect(draggedElementEntry(h.ctx, "square")).toMatchObject({
+			id: "square",
+		});
 	});
 
 	it("dragend clears the payload even when no drop happened", async () => {
-		renderPanel();
+		const h = renderPanel();
 		const option = await cell();
 		fireDrag(option, "dragstart", {
 			setData: () => undefined,
 			effectAllowed: "",
 		});
-		expect(draggedElementEntry("square")).toBeDefined();
+		expect(draggedElementEntry(h.ctx, "square")).toBeDefined();
 
 		fireDrag(option, "dragend", { setData: () => undefined });
-		expect(draggedElementEntry("square")).toBeUndefined();
+		expect(draggedElementEntry(h.ctx, "square")).toBeUndefined();
 	});
 });
 
