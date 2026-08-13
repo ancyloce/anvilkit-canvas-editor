@@ -101,6 +101,7 @@ import {
 } from "./isolation-render-context.js";
 import { BlurFilter } from "./konva.js";
 import { aspectFitScaleY, nodeRenderOffset } from "./node-render-offset.js";
+import { useNodeBlur } from "./node-blur.js";
 import { createShadowGhostFuncs, ghostDropShadows } from "./shadow-ghosts.js";
 
 export interface CanvasNodeRendererProps {
@@ -269,6 +270,8 @@ function shadowProps(node: {
  * one of them is optional in at least one kind.
  */
 type ShapeStyleSource = CanvasStrokeStyle & {
+	/** K-18: the blur cache composes this node's registry ref, so it needs the id. */
+	id: string;
 	fill?: CanvasFill;
 	bounds: { width: number; height: number };
 	stroke?: string;
@@ -311,7 +314,12 @@ function useShapeStyleProps(
 		strokeCap,
 		strokeJoin,
 	} = node;
-	return useMemo(
+	// K-18. Returns `{}` for the overwhelming majority of nodes, which carry no
+	// blur — and with it no cache, no filter and no ref override. Spread LAST so
+	// its composed ref wins over `commonProps`' registry-only one; the composition
+	// keeps the registry registration intact.
+	const blurProps = useNodeBlur(node);
+	const styleProps = useMemo(
 		() => ({
 			...fillProps(fill, bounds, brandKit),
 			// `strokeWidth` rides along because a spread dilation widens the
@@ -340,6 +348,10 @@ function useShapeStyleProps(
 			strokeCap,
 			strokeJoin,
 		],
+	);
+	return useMemo(
+		() => ({ ...styleProps, ...blurProps }),
+		[styleProps, blurProps],
 	);
 }
 

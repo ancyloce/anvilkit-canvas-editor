@@ -74,6 +74,13 @@ export function ghostDropShadows(
 		(e): e is CanvasDropShadowEffect => e.type === "drop-shadow",
 	);
 	if (shadows.length === 0) return null;
+	// K-18: a node blur is rendered by caching the node and filtering the bitmap,
+	// and SVG blurs the shadows WITH the source (`effectsMarkup` merges shadows
+	// under the source, then blurs the result). A shadow only ends up inside that
+	// bitmap if it was painted in `sceneFunc` — Konva applies a native `shadow*`
+	// when the cached bitmap is composited, i.e. after the blur, which is the
+	// wrong order. So any blur forces every shadow onto the ghost path.
+	if (effects.some((e) => e.type === "blur")) return shadows;
 	// One spread-less shadow IS Konva's native model — leave it alone.
 	if (shadows.length === 1 && (shadows[0]?.spread ?? 0) === 0) return null;
 	return shadows;

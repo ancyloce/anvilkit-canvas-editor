@@ -2059,6 +2059,30 @@ describe("effects → Konva shadow props (C-03)", () => {
 		expect(props.hitFunc).toBeUndefined();
 	});
 
+	it("a blur effect reaches Konva as a filter — the canvas used to render it as nothing (K-18)", () => {
+		const rect = createRect({
+			id: "r-blur",
+			bounds: { width: 10, height: 10 },
+		});
+		(rect as { effects?: unknown }).effects = [{ type: "blur", radius: 6 }];
+		render(<CanvasNodeRenderer node={rect} />);
+		const props = callsOfType("Rect")[0]?.props as Record<string, unknown>;
+		expect(Array.isArray(props.filters)).toBe(true);
+		expect((props.filters as unknown[]).length).toBe(1);
+		expect(props.blurRadius).toBeGreaterThan(0);
+	});
+
+	it("leaves an unblurred node with no filters, cache or ref override (K-18)", () => {
+		const rect = createRect({
+			id: "r-sharp",
+			bounds: { width: 10, height: 10 },
+		});
+		render(<CanvasNodeRenderer node={rect} />);
+		const props = callsOfType("Rect")[0]?.props as Record<string, unknown>;
+		expect(props.filters).toBeUndefined();
+		expect(props.blurRadius).toBeUndefined();
+	});
+
 	it("a shadow STACK routes to the ghost draw — the live canvas no longer drops all but the first (K-10)", () => {
 		const rect = createRect({
 			id: "r-stack",

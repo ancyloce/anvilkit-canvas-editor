@@ -57,10 +57,18 @@ describe("ghostDropShadows — what Konva can express natively", () => {
 		expect(ghostDropShadows([SHADOW, second])).toEqual([SHADOW, second]);
 	});
 
-	it("ignores blur effects — they cast nothing", () => {
+	it("a blur alone casts nothing, so there is still nothing to draw", () => {
 		expect(ghostDropShadows([{ type: "blur", radius: 6 }])).toBeNull();
-		// A blur alongside ONE plain shadow still leaves the shadow native.
-		expect(ghostDropShadows([{ type: "blur", radius: 6 }, SHADOW])).toBeNull();
+	});
+
+	it("a blur forces even ONE plain shadow onto the ghost path (K-18)", () => {
+		// The blur is rendered by caching the node and filtering the bitmap, and
+		// SVG blurs the shadows WITH the source. A native Konva shadow is applied
+		// when the cached bitmap is composited — i.e. AFTER the blur — so it has to
+		// move inside `sceneFunc` to be caught by the cache.
+		expect(ghostDropShadows([{ type: "blur", radius: 6 }, SHADOW])).toEqual([
+			SHADOW,
+		]);
 	});
 
 	it("preserves list order, which is the paint order", () => {
