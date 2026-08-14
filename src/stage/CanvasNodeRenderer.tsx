@@ -100,8 +100,8 @@ import {
 	IsolationRenderContext,
 } from "./isolation-render-context.js";
 import { BlurFilter } from "./konva.js";
-import { aspectFitScaleY, nodeRenderOffset } from "./node-render-offset.js";
 import { useNodeBlur } from "./node-blur.js";
+import { aspectFitScaleY, nodeRenderOffset } from "./node-render-offset.js";
 import { createShadowGhostFuncs, ghostDropShadows } from "./shadow-ghosts.js";
 
 export interface CanvasNodeRendererProps {
@@ -278,7 +278,33 @@ type ShapeStyleSource = CanvasStrokeStyle & {
 	strokeWidth?: number;
 	effects?: CanvasEffect[];
 	shadow?: CanvasShadow;
+	fontFamily?: CanvasTextNode["fontFamily"];
 };
+
+/**
+ * Paint inputs that live outside the IR node but still become pixels inside a
+ * blur cache. Brand tokens resolve through context, and a loaded web font
+ * changes glyph pixels without changing `node`; both therefore have to ride
+ * alongside the node-local key used by {@link useNodeBlur}.
+ */
+function blurExternalPaintKey(
+	node: ShapeStyleSource,
+	brandKit: BrandKit,
+): string {
+	const resolvedFill = resolveFillForDisplay(node.fill, brandKit).value;
+	const resolvedFontFamily =
+		node.fontFamily === undefined
+			? undefined
+			: resolveFontFamilyForDisplay(node.fontFamily, brandKit).value;
+	return JSON.stringify({
+		fill: resolvedFill,
+		fontFamily: resolvedFontFamily,
+		// Only text pixels depend on the manifest. Shape-only brand updates keep
+		// their cache when the resolved fill itself is unchanged.
+		fontManifest:
+			node.fontFamily === undefined ? undefined : fontManifestHash(),
+	});
+}
 
 /**
  * Memoised fill + shadow + stroke props (K-3).
@@ -318,7 +344,7 @@ function useShapeStyleProps(
 	// blur — and with it no cache, no filter and no ref override. Spread LAST so
 	// its composed ref wins over `commonProps`' registry-only one; the composition
 	// keeps the registry registration intact.
-	const blurProps = useNodeBlur(node);
+	const blurProps = useNodeBlur(node, blurExternalPaintKey(node, brandKit));
 	const styleProps = useMemo(
 		() => ({
 			...fillProps(fill, bounds, brandKit),

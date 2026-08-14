@@ -84,7 +84,10 @@ export function blurCachePadding(
 }
 
 /**
- * Everything about a node that can change what its cached bitmap looks like.
+ * Everything that can change what a node's cached bitmap looks like. The
+ * caller supplies paint state resolved outside the IR (for example brand
+ * tokens and the font manifest) because those pixels can change while `node`
+ * remains byte-for-byte identical.
  *
  * `transform` is deliberately excluded: `cache()` rasterises the node in its own
  * LOCAL space and Konva draws the bitmap through the live transform afterwards,
@@ -92,9 +95,12 @@ export function blurCachePadding(
  * the difference between re-running the blur kernel once and re-running it on
  * every frame of a drag, since the IR hands us a new node object per frame.
  */
-export function localRenderingKey(node: object): string {
+export function localRenderingKey(
+	node: object,
+	externalPaintState?: unknown,
+): string {
 	const { transform: _transform, ...rest } = node as Record<string, unknown>;
-	return JSON.stringify(rest);
+	return JSON.stringify([rest, externalPaintState]);
 }
 
 /**
@@ -104,10 +110,13 @@ export function localRenderingKey(node: object): string {
  * hook's result is spread onto the shape after `commonProps`, so its `ref` wins,
  * and dropping the registration would strand `findNodeById` for that node.
  */
-export function useNodeBlur(node: {
-	id: string;
-	effects?: CanvasEffect[];
-}): Konva.ShapeConfig {
+export function useNodeBlur(
+	node: {
+		id: string;
+		effects?: CanvasEffect[];
+	},
+	externalPaintState?: unknown,
+): Konva.ShapeConfig {
 	const effects = node.effects;
 	const blurRadius = useMemo(() => nodeBlurRadius(effects ?? []), [effects]);
 	const padding = useMemo(() => {
@@ -123,7 +132,10 @@ export function useNodeBlur(node: {
 		() => (blurRadius > 0 ? [BlurFilter] : undefined),
 		[blurRadius],
 	);
-	const cacheKey = useMemo(() => localRenderingKey(node), [node]);
+	const cacheKey = useMemo(
+		() => localRenderingKey(node, externalPaintState),
+		[node, externalPaintState],
+	);
 
 	const shapeRef = useRef<Konva.Node | null>(null);
 	const registryRef = useMemo(() => canvasNodeRef(node.id), [node.id]);

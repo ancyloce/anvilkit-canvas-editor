@@ -113,6 +113,7 @@ import {
 } from "@/context/toast-context.js";
 import { createAiJobStore } from "@/stores/ai-job-store.js";
 import type { BrandKit } from "../../brand/brand-kit.js";
+import { resetFontStatusesForTests } from "../../text/font-status.js";
 import { CanvasAssetsContext } from "../CanvasAssetsContext.js";
 import { CanvasBrandKitContext } from "../CanvasBrandKitContext.js";
 import {
@@ -1985,6 +1986,19 @@ describe("CanvasNodeRenderer — rich text", () => {
 
 describe("effects → Konva shadow props (C-03)", () => {
 	beforeEachReset();
+	const originalFontsDescriptor = Object.getOwnPropertyDescriptor(
+		document,
+		"fonts",
+	);
+	afterEach(() => {
+		cleanup();
+		resetFontStatusesForTests();
+		if (originalFontsDescriptor) {
+			Object.defineProperty(document, "fonts", originalFontsDescriptor);
+		} else {
+			Reflect.deleteProperty(document, "fonts");
+		}
+	});
 
 	it("legacy shadow still renders (resolver fallback)", () => {
 		const rect = createRect({
@@ -2070,6 +2084,66 @@ describe("effects → Konva shadow props (C-03)", () => {
 		expect(Array.isArray(props.filters)).toBe(true);
 		expect((props.filters as unknown[]).length).toBe(1);
 		expect(props.blurRadius).toBeGreaterThan(0);
+	});
+
+	it("rebuilds a blurred token-fill cache when its resolved brand paint changes", () => {
+		const rect = {
+			...createRect({
+				id: "r-brand-blur",
+				bounds: { width: 10, height: 10 },
+				fill: { type: "brand-token", tokenType: "color", id: "primary" },
+			}),
+			effects: [{ type: "blur" as const, radius: 3 }],
+		};
+		const tree = (value: string) => (
+			<CanvasBrandKitContext.Provider
+				value={{
+					colors: [{ id: "primary", name: "Primary", value }],
+					fonts: [],
+				}}
+			>
+				<CanvasNodeRenderer node={rect} />
+			</CanvasBrandKitContext.Provider>
+		);
+		const view = render(tree("#ff0000"));
+		const stub = callsOfType("Rect").at(-1)?.node;
+		expect(stub?.cache).toHaveBeenCalledTimes(1);
+
+		view.rerender(tree("#0000ff"));
+		expect(callsOfType("Rect").at(-1)?.props.fill).toBe("#0000ff");
+		expect(stub?.cache).toHaveBeenCalledTimes(2);
+	});
+
+	it("rebuilds a blurred text cache when its web font finishes loading", async () => {
+		let resolveLoad: (faces: unknown[]) => void = () => undefined;
+		const load = vi.fn(
+			() =>
+				new Promise<unknown[]>((resolve) => {
+					resolveLoad = resolve;
+				}),
+		);
+		Object.defineProperty(document, "fonts", {
+			configurable: true,
+			value: { check: () => false, load },
+		});
+		const text = {
+			...createText({
+				id: "t-font-blur",
+				bounds: { width: 100, height: 20 },
+				text: "Blurred",
+				fontFamily: "Pending Blur Font",
+			}),
+			effects: [{ type: "blur" as const, radius: 3 }],
+		};
+		render(<CanvasNodeRenderer node={text} />);
+		await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+		const stub = callsOfType("Text").at(-1)?.node;
+		const loadingCacheCount = stub?.cache.mock.calls.length ?? 0;
+
+		resolveLoad([{}]);
+		await waitFor(() =>
+			expect(stub?.cache.mock.calls.length).toBeGreaterThan(loadingCacheCount),
+		);
 	});
 
 	it("leaves an unblurred node with no filters, cache or ref override (K-18)", () => {

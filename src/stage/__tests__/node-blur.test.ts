@@ -89,4 +89,14 @@ describe("localRenderingKey", () => {
 		const recoloured = { id: "n1", fill: "#f00", transform: { x: 0, y: 0 } };
 		expect(localRenderingKey(recoloured)).not.toBe(localRenderingKey(base));
 	});
+
+	it("changes when external paint state changes without an IR edit", () => {
+		const node = { id: "n1", fill: "#fff", transform: { x: 0, y: 0 } };
+		expect(localRenderingKey(node, "brand:#f00")).not.toBe(
+			localRenderingKey(node, "brand:#00f"),
+		);
+		expect(localRenderingKey(node, "font-manifest:1")).not.toBe(
+			localRenderingKey(node, "font-manifest:2"),
+		);
+	});
 });
