@@ -69,7 +69,7 @@
 		"access": "public"
 	},
 	"peerDependencies": {
-		"konva": "^10.3.0",
+		"konva": "^10.3.1",
 		"react": ">=19.0.0",
 		"react-dom": ">=19.0.0",
 		"react-konva": "^19.2.5",
@@ -99,9 +99,9 @@
 	"dependencies": {
 		"@anvilkit/canvas-core": "workspace:*",
 		"@anvilkit/ui": "workspace:*",
-		"lucide-react": "^1.30.0",
+		"lucide-react": "^1.31.0",
 		"use-image": "^1.1.4",
-		"zustand": "^5.0.14"
+		"zustand": "^5.0.15"
 	},
 	"scripts": {
 		"build": "rslib build --lib esm && rslib build --lib cjs --no-clean && pnpm build:css",
@@ -134,15 +134,15 @@
 		"@rsbuild/plugin-react": "^2.1.0",
 		"@rslib/core": "^0.23.2",
 		"@tailwindcss/cli": "^4.3.3",
-		"@testing-library/jest-dom": "^6.9.1",
+		"@testing-library/jest-dom": "^7.0.1",
 		"@testing-library/react": "^16.3.2",
 		"@types/node": "^26.2.0",
 		"@types/react": "^19.2.18",
 		"@types/react-dom": "19.2.4",
-		"axe-core": "4.11.3",
+		"axe-core": "^4.13.0",
 		"esbuild": "^0.28.1",
 		"jsdom": "^30.0.1",
-		"konva": "^10.3.0",
+		"konva": "^10.3.1",
 		"madge": "^8.0.0",
 		"publint": "^0.3.23",
 		"react": "^19.2.8",
