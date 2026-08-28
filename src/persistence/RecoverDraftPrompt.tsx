@@ -1,6 +1,9 @@
 "use client";
 
-import type { CanvasIR } from "@anvilkit/canvas-core";
+import type {
+	CanvasDocumentBudgetPolicy,
+	CanvasIR,
+} from "@anvilkit/canvas-core";
 import * as React from "react";
 import { useEffect, useRef } from "react";
 import {
@@ -35,9 +38,11 @@ import type { CanvasRecoveryAdapter } from "./recovery.js";
  */
 export function RecoverDraftPrompt({
 	adapter,
+	documentBudgetPolicy,
 	onRecoveryError,
 }: {
 	adapter: CanvasRecoveryAdapter;
+	documentBudgetPolicy?: Partial<CanvasDocumentBudgetPolicy>;
 	/** Reports a snapshot that had to be discarded because it failed to load. */
 	onRecoveryError?: (error: Error) => void;
 }): React.JSX.Element | null {
@@ -64,10 +69,10 @@ export function RecoverDraftPrompt({
 				// and leaving it in storage means re-prompting on every mount.
 				let recovered: CanvasIR;
 				try {
-					recovered = loadCanvasDocument(
-						snapshot.ir,
-						stores.runtime ? { runtime: stores.runtime } : {},
-					);
+					recovered = loadCanvasDocument(snapshot.ir, {
+						...(stores.runtime ? { runtime: stores.runtime } : {}),
+						...(documentBudgetPolicy ? { documentBudgetPolicy } : {}),
+					});
 				} catch (error) {
 					await adapter.clear(documentId).catch(() => {
 						// Best-effort, as everywhere else in this path.
@@ -103,7 +108,7 @@ export function RecoverDraftPrompt({
 		return () => {
 			cancelled = true;
 		};
-	}, [adapter, stores, dialogs, t, onRecoveryError]);
+	}, [adapter, stores, dialogs, t, documentBudgetPolicy, onRecoveryError]);
 
 	return null;
 }

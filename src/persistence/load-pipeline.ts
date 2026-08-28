@@ -1,18 +1,20 @@
 import {
+	assertCanvasDocumentBudget,
 	CANVAS_COMPONENTS_LOCAL_CAPABILITY,
 	CANVAS_COMPONENTS_OVERRIDES_CAPABILITY,
 	CANVAS_LAYOUT_AUTO_CAPABILITY,
 	type CanvasComponentIssue,
+	type CanvasDocumentBudgetPolicy,
 	type CanvasIR,
 	type CanvasRuntime,
 	migrateCanvasIR,
 	validateComponentGraph,
 } from "@anvilkit/canvas-core";
-import type { CanvasComponentDiagnostic } from "@anvilkit/canvas-core/component-libraries";
 import {
 	CanvasBrandComponentPolicySchema,
 	validateBrandComponentPolicy,
 } from "@anvilkit/canvas-core/brand-governance";
+import type { CanvasComponentDiagnostic } from "@anvilkit/canvas-core/component-libraries";
 
 import type {
 	LoadVerificationOptions,
@@ -47,7 +49,11 @@ export interface LoadCanvasDocumentOptions {
 	 * schema.
 	 */
 	readonly runtime?: CanvasRuntime;
+	/** Optional host override for the shared document-admission ceilings. */
+	readonly documentBudgetPolicy?: Partial<CanvasDocumentBudgetPolicy>;
 }
+
+const utf8Encoder = new TextEncoder();
 
 /**
  * Parse (when given a string), forward-migrate, then validate an untrusted
@@ -70,10 +76,26 @@ export function loadCanvasDocument(
 	raw: unknown,
 	options: LoadCanvasDocumentOptions = {},
 ): CanvasIR {
-	const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-	return options.runtime
+	const budgetOptions = options.documentBudgetPolicy
+		? { policy: options.documentBudgetPolicy }
+		: {};
+	let parsed = raw;
+	if (typeof raw === "string") {
+		const rawByteLength = utf8Encoder.encode(raw).byteLength;
+		// Reject an oversized transport before JSON.parse allocates its object graph.
+		assertCanvasDocumentBudget(null, { ...budgetOptions, rawByteLength });
+		parsed = JSON.parse(raw);
+		assertCanvasDocumentBudget(parsed, { ...budgetOptions, rawByteLength });
+	} else {
+		assertCanvasDocumentBudget(parsed, budgetOptions);
+	}
+	const migrated = options.runtime
 		? options.runtime.migrate(parsed)
 		: migrateCanvasIR(parsed);
+	// Core enforces the canonical ceiling around migration. Re-apply a host's
+	// stricter policy to the migrated form so normalization cannot cross it.
+	assertCanvasDocumentBudget(migrated, budgetOptions);
+	return migrated;
 }
 
 /**
@@ -203,7 +225,9 @@ export async function loadCanvasDocumentWithDiagnostics(
 		// still parses but now allows editing a property the component no longer
 		// has is caught too — the shape most likely to survive an update.
 		const knownPropertyIds = (definition.properties ?? []).map((p) => p.id);
-		if (validateBrandComponentPolicy(parsed.data, knownPropertyIds).length > 0) {
+		if (
+			validateBrandComponentPolicy(parsed.data, knownPropertyIds).length > 0
+		) {
 			policy.push(componentId);
 		}
 	}
