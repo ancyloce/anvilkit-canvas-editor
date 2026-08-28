@@ -1,10 +1,13 @@
 import {
+	applyCommands,
+	assertCanvasDocumentBudget,
 	CANVAS_CLIPBOARD_VERSION,
 	CANVAS_LAYOUT_AUTO_CAPABILITY,
 	type CanvasAssetRef,
 	CanvasClipboardError,
 	type CanvasClipboardPayload,
 	type CanvasCommand,
+	CanvasDocumentBudgetError,
 	type CanvasNode,
 	findNode,
 	isContainerNode,
@@ -300,6 +303,19 @@ export async function pasteImpl(
 			}),
 		),
 	];
+	try {
+		assertCanvasDocumentBudget(applyCommands(ir, cmds).ir);
+	} catch (error) {
+		if (!(error instanceof CanvasDocumentBudgetError)) throw error;
+		toaster.add({
+			type: "error",
+			title: resolveT(ctx)(
+				"canvas.toast.clipboardBudgetRejected",
+				"Clipboard content exceeds this document's safety limits",
+			),
+		});
+		return [];
+	}
 	ctx.commitBatch(cmds, "Paste");
 	const newIds = nodes.map((n) => n.id);
 	ctx.selectionStore.getState().setSelection(newIds);

@@ -247,6 +247,7 @@ export {
 	jpegExporter,
 	jsonExporter,
 	pdfExporter,
+	pdfPrintExporter,
 	pngExporter,
 	sanitizeExportFilename,
 	svgExporter,

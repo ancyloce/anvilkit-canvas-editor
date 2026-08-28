@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+	CanvasExportDiagnostic,
 	CanvasExportWarning,
 	CanvasIR,
 	CanvasPage,
@@ -90,7 +91,7 @@ export interface CanvasExportResultArtifact {
 	readonly filename: string;
 	readonly blob: Blob;
 	/** Which page this artifact renders. Absent for whole-document formats
-	 * (PDF/JSON), which pack every requested page into ONE artifact. */
+	 * (PDF/print PDF/JSON), which pack every requested page into ONE artifact. */
 	readonly pageId?: string;
 }
 
@@ -98,9 +99,18 @@ export interface CanvasExportResultArtifact {
 export interface CanvasExportResult {
 	/** Mirrors `header/types.ts`'s `CanvasExportFormat` verbatim (duplicated,
 	 * not imported — see {@link CanvasExportResultArtifact}'s layering note). */
-	readonly format: "png" | "jpeg" | "webp" | "svg" | "pdf" | "json";
+	readonly format:
+		| "png"
+		| "jpeg"
+		| "webp"
+		| "svg"
+		| "pdf"
+		| "pdf-print"
+		| "json";
 	readonly artifacts: readonly CanvasExportResultArtifact[];
 	readonly warnings: readonly CanvasExportWarning[];
+	/** Stable failure/warning taxonomy derived from `warnings`. */
+	readonly diagnostics: readonly CanvasExportDiagnostic[];
 }
 
 export interface CanvasStudioContextValue {

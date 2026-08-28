@@ -6,6 +6,7 @@ import {
 	createPage,
 	createRect,
 	insertNode,
+	MAX_DOCUMENT_PAGES,
 } from "@anvilkit/canvas-core";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -307,6 +308,22 @@ describe("loadTemplate", () => {
 });
 
 describe("insertTemplateAsNewPages", () => {
+	it("rejects an application that would exceed the current document budget", () => {
+		const current = createCanvasIR({
+			id: "full",
+			pages: Array.from({ length: MAX_DOCUMENT_PAGES }, (_, index) =>
+				createPage({ id: `page-${index}` }),
+			),
+		});
+		const h = makeHarness({ ir: current });
+
+		const result = insertTemplateAsNewPages(h.studioCtx, entry());
+
+		expect(result.ok).toBe(false);
+		expect(h.studioCtx.commit).not.toHaveBeenCalled();
+		expect(h.studioCtx.getIR()).toBe(current);
+	});
+
 	it("is a no-op for a template whose document fails validation", () => {
 		const h = makeHarness();
 		const tpl = entry({ document: { ...templateDocument(), pages: [] } });

@@ -1,9 +1,11 @@
 "use client";
 
 import {
+	assertCanvasDocumentBudget,
 	type CanvasChange,
 	type CanvasCommand,
 	CanvasCommandError,
+	type CanvasDocumentBudgetPolicy,
 	type CanvasIR,
 	type CanvasNode,
 	type CanvasRuntime,
@@ -178,10 +180,19 @@ export interface CanvasAutoLayoutFlagOptions {
 
 export interface CanvasStudioProps {
 	/**
-	 * Initial IR. Uncontrolled — subsequent prop updates do not replace the
-	 * internal IR. Use `onChange` to mirror state into a host store.
+	 * Initial IR. The TypeScript type is the structural host contract, but the
+	 * value is not trusted for resource use: the shared document-budget
+	 * validator admits it before any editor store or Konva stage is created.
+	 * A rejected value throws `CanvasDocumentBudgetError`. Use
+	 * {@link loadCanvasDocument} for serialized, legacy, or otherwise
+	 * structurally untrusted input that also needs parsing and migration.
+	 *
+	 * Uncontrolled — subsequent prop updates do not replace the internal IR.
+	 * Use `onChange` to mirror state into a host store.
 	 */
 	initialIR: CanvasIR;
+	/** Optional host override for the shared untrusted-document budget. */
+	documentBudgetPolicy?: Partial<CanvasDocumentBudgetPolicy>;
 	/**
 	 * Initial active page id. Defaults to `initialIR.pages[0].id`. Uncontrolled
 	 * — after mount the `pagesStore` owns the active id; switch pages via the
@@ -1179,6 +1190,7 @@ function EditorStage({
 
 export function CanvasStudio({
 	initialIR,
+	documentBudgetPolicy,
 	initialActivePageId,
 	width,
 	height,
@@ -1228,6 +1240,12 @@ export function CanvasStudio({
 	clipboard,
 	children,
 }: CanvasStudioProps): React.JSX.Element {
+	const [admittedInitialIR] = useState(() => {
+		assertCanvasDocumentBudget(initialIR, {
+			...(documentBudgetPolicy ? { policy: documentBudgetPolicy } : {}),
+		});
+		return initialIR;
+	});
 	const {
 		sceneStore,
 		historyStore,
@@ -1250,7 +1268,12 @@ export function CanvasStudio({
 		exportRequestStore,
 		layerRenameStore,
 		resolvedDocumentStore,
-	} = useEditorStores({ initialIR, initialActivePageId, initialTool, runtime });
+	} = useEditorStores({
+		initialIR: admittedInitialIR,
+		initialActivePageId,
+		initialTool,
+		runtime,
+	});
 	const ir = useSyncExternalStore(
 		sceneStore.subscribe,
 		() => sceneStore.getState().ir,
@@ -1376,13 +1399,18 @@ export function CanvasStudio({
 	 * already hangs off it), so wrapping it covers `initial-load`, `document-switch`,
 	 * `template-load`, `remote-update` and `recovery` in one place.
 	 */
-	const [loadedAssets, setLoadedAssets] = useState(() => initialIR.assets);
+	const [loadedAssets, setLoadedAssets] = useState(
+		() => admittedInitialIR.assets,
+	);
 	const replaceDocument = useCallback(
 		(next: CanvasIR, source: DocumentSnapshotSource) => {
+			assertCanvasDocumentBudget(next, {
+				...(documentBudgetPolicy ? { policy: documentBudgetPolicy } : {}),
+			});
 			replaceDocumentIntoStores(next, source);
 			setLoadedAssets(next.assets);
 		},
-		[replaceDocumentIntoStores],
+		[replaceDocumentIntoStores, documentBudgetPolicy],
 	);
 
 	// T-M0-04: host-driven load. `CanvasPersistenceAdapter.load` shipped as an
@@ -1401,7 +1429,7 @@ export function CanvasStudio({
 		(error: Error) => onLoadErrorRef.current?.(error),
 		[onLoadErrorRef],
 	);
-	const initialDocumentId = initialIR.id;
+	const initialDocumentId = admittedInitialIR.id;
 	useEffect(() => {
 		const load = persistenceAdapter?.load;
 		if (!persistenceAdapter || !load) return;
@@ -1414,7 +1442,10 @@ export function CanvasStudio({
 				const raw = await load.call(persistenceAdapter, initialDocumentId);
 				if (cancelled) return;
 				replaceDocument(
-					loadCanvasDocument(raw, runtime ? { runtime } : {}),
+					loadCanvasDocument(raw, {
+						...(runtime ? { runtime } : {}),
+						...(documentBudgetPolicy ? { documentBudgetPolicy } : {}),
+					}),
 					"initial-load",
 				);
 			} catch (error) {
@@ -1434,6 +1465,7 @@ export function CanvasStudio({
 		initialDocumentId,
 		replaceDocument,
 		runtime,
+		documentBudgetPolicy,
 		onLoadErrorRef,
 	]);
 
@@ -2029,6 +2061,7 @@ export function CanvasStudio({
 			{stageNode}
 			<RecoverDraftPrompt
 				adapter={recoveryAdapter}
+				documentBudgetPolicy={documentBudgetPolicy}
 				onRecoveryError={reportLoadError}
 			/>
 		</>

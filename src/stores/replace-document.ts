@@ -1,4 +1,7 @@
-import type { CanvasIR } from "@anvilkit/canvas-core";
+import {
+	assertCanvasDocumentBudget,
+	type CanvasIR,
+} from "@anvilkit/canvas-core";
 import type { AiJobStoreApi } from "./ai-job-store.js";
 import type { CropStoreApi } from "./crop-store.js";
 import type { DraftStoreApi } from "./draft-store.js";
@@ -95,6 +98,9 @@ export function replaceDocumentSnapshot(
 	ir: CanvasIR,
 	options: ReplaceDocumentSnapshotOptions,
 ): void {
+	// Validate before resetting history or transient stores. Rejection must leave
+	// the currently open document and every associated editor state untouched.
+	assertCanvasDocumentBudget(ir);
 	const {
 		sceneStore,
 		historyStore,

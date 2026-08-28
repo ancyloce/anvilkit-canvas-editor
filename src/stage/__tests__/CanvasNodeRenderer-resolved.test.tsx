@@ -6,9 +6,8 @@ import {
 	createRect,
 	insertNode,
 } from "@anvilkit/canvas-core";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 type ElementCall = { type: string; props: Record<string, unknown> };

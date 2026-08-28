@@ -182,6 +182,38 @@ describe("createCanvasYjsBinding", () => {
 		expect(storeB.getState().ir).toBe(before);
 	});
 
+	it("drops an over-budget remote snapshot without mutating the open document", () => {
+		const docA = new YDoc();
+		const docB = new YDoc();
+		linkDocs(docA, docB);
+		const storeA = createSceneStore({ initialIR: createCanvasIR({ id: "a" }) });
+		const storeB = createSceneStore({ initialIR: createCanvasIR({ id: "b" }) });
+		const bindingA = createCanvasYjsBinding({
+			doc: docA,
+			sceneStore: storeA,
+			peer: { id: "alice" },
+		});
+		const bindingB = createCanvasYjsBinding({
+			doc: docB,
+			sceneStore: storeB,
+			peer: { id: "bob" },
+			documentBudgetPolicy: { maxPages: 1 },
+		});
+		const before = storeB.getState().ir;
+
+		storeA.getState().setIR(
+			createCanvasIR({
+				id: "too-many-pages",
+				pages: [createPage({ id: "one" }), createPage({ id: "two" })],
+			}),
+		);
+
+		expect(storeB.getState().ir).toBe(before);
+		expect(bindingB.current()).toBeUndefined();
+		bindingA.destroy();
+		bindingB.destroy();
+	});
+
 	it("destroy() stops applying updates and is idempotent", () => {
 		const docA = new YDoc();
 		const docB = new YDoc();

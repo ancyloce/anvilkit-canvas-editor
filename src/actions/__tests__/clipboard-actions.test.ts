@@ -9,6 +9,7 @@ import {
 	createImage,
 	createPage,
 	createRect,
+	MAX_CHILDREN_PER_CONTAINER,
 } from "@anvilkit/canvas-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanvasToastInput } from "@/context/toast-context.js";
@@ -117,6 +118,38 @@ describe("copySelectionImpl", () => {
 });
 
 describe("pasteImpl", () => {
+	it("rejects a paste whose result exceeds the document budget without committing", async () => {
+		const page = createPage({ id: "p1" });
+		page.root = createGroup({
+			id: "root",
+			children: Array.from({ length: MAX_CHILDREN_PER_CONTAINER }, (_, index) =>
+				createRect({
+					id: `rect-${index}`,
+					bounds: { width: 1, height: 1 },
+				}),
+			),
+		});
+		const ir = createCanvasIR({ id: "wide", pages: [page] });
+		const h = makeHarness({ ir });
+		internalClipboardStore.getState().setPayload({
+			version: 1,
+			sourceDocumentId: "wide",
+			nodes: [createRect({ id: "incoming", bounds: { width: 1, height: 1 } })],
+			assetRefs: {},
+			bounds: { x: 0, y: 0, width: 1, height: 1 },
+		});
+		const toasts: CanvasToastInput[] = [];
+
+		const result = await pasteImpl(h.studioCtx, {
+			add: (input) => toasts.push(input),
+		});
+
+		expect(result).toEqual([]);
+		expect(h.studioCtx.commitBatch).not.toHaveBeenCalled();
+		expect(h.studioCtx.getIR()).toBe(ir);
+		expect(toasts.some((toast) => toast.type === "error")).toBe(true);
+	});
+
 	it("copy → paste round-trips via the internal fallback with fresh ids, offset, and selection", async () => {
 		const { h } = setup();
 		h.studioCtx.selectionStore.getState().setSelection(["a", "g"]);

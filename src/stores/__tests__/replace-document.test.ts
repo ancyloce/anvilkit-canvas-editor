@@ -1,9 +1,11 @@
 import {
+	CanvasDocumentBudgetError,
 	type CanvasIR,
 	createCanvasIR,
 	createGroup,
 	createPage,
 	createRect,
+	MAX_CHILDREN_PER_CONTAINER,
 } from "@anvilkit/canvas-core";
 import { describe, expect, it, vi } from "vitest";
 import { createAiJobStore } from "../ai-job-store.js";
@@ -55,6 +57,33 @@ function makeStores(initialIR: CanvasIR): DocumentStores {
 }
 
 describe("replaceDocumentSnapshot", () => {
+	it("rejects an oversized replacement before mutating any store", () => {
+		const initial = twoPageIR();
+		const stores = makeStores(initial);
+		stores.selectionStore.getState().setSelection(["rectA"]);
+		const page = createPage({ id: "wide-page" });
+		page.root = createGroup({
+			id: "wide-root",
+			children: Array.from(
+				{ length: MAX_CHILDREN_PER_CONTAINER + 1 },
+				(_, index) =>
+					createRect({
+						id: `wide-${index}`,
+						bounds: { width: 1, height: 1 },
+					}),
+			),
+		});
+		const oversized = createCanvasIR({ id: "oversized", pages: [page] });
+
+		expect(() =>
+			replaceDocumentSnapshot(stores, oversized, {
+				source: "document-switch",
+			}),
+		).toThrow(CanvasDocumentBudgetError);
+		expect(stores.sceneStore.getState().ir).toBe(initial);
+		expect(stores.selectionStore.getState().selectedIds).toEqual(["rectA"]);
+	});
+
 	it("swaps the IR", () => {
 		const stores = makeStores(twoPageIR());
 		const next = createCanvasIR({ id: "doc-2" });

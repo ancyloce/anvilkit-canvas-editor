@@ -13,6 +13,7 @@ vi.mock("react-konva", () => {
 		Rect: Leaf,
 		Ellipse: Leaf,
 		Line: Leaf,
+		Shape: Leaf,
 		Path: Leaf,
 		Text: Leaf,
 		Image: Leaf,

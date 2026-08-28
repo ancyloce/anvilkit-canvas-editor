@@ -66,11 +66,24 @@ export interface RasterizePageInput {
 	 * preview-free. Omit for documents without layout intent.
 	 */
 	readonly resolvedDocument?: CanvasResolvedDocument;
+	/** Polled between preload, font, frame, and canvas-encoding phases. */
+	readonly isCancelled?: () => boolean;
 }
 
 export interface RasterizePageResult {
 	readonly url: string;
 	readonly mimeType: string;
+}
+
+export class RasterizePageCancelledError extends Error {
+	constructor(message = "Page rasterization was cancelled.") {
+		super(message);
+		this.name = "RasterizePageCancelledError";
+	}
+}
+
+function throwIfRasterizationCancelled(input: RasterizePageInput): void {
+	if (input.isCancelled?.()) throw new RasterizePageCancelledError();
 }
 
 /**
@@ -89,6 +102,7 @@ export interface RasterizePageResult {
 export async function rasterizePage(
 	input: RasterizePageInput,
 ): Promise<RasterizePageResult> {
+	throwIfRasterizationCancelled(input);
 	const { page } = input;
 	const pixelRatioInput = input.pixelRatio ?? 2;
 	const pixelRatioX =
@@ -109,6 +123,7 @@ export async function rasterizePage(
 		input.resolvedDocument?.source.pages.find((p) => p.id === page.id) ?? page,
 		assets,
 	);
+	throwIfRasterizationCancelled(input);
 
 	const container = document.createElement("div");
 	container.setAttribute("data-rasterize-page", page.id);
@@ -133,32 +148,32 @@ export async function rasterizePage(
 					    function had nothing to wait on — it guessed with two animation
 					    frames, and an image that missed the window exported blank. */}
 					<CanvasDecodedImagesContext.Provider value={decodedImages}>
-					<CanvasAssetsContext.Provider value={assets}>
-						<CanvasBrandKitContext.Provider value={brandKit}>
-							<CanvasStage
-								width={page.size.width}
-								height={page.size.height}
-								onReady={(s) => {
-									stage = s;
-								}}
-							>
-								{includeBackground ? (
-									<RenderLayer name="background" listening={false}>
-										<Rect
-											x={0}
-											y={0}
-											width={page.size.width}
-											height={page.size.height}
-											fill={pageBackgroundFill(page.background)}
-										/>
+						<CanvasAssetsContext.Provider value={assets}>
+							<CanvasBrandKitContext.Provider value={brandKit}>
+								<CanvasStage
+									width={page.size.width}
+									height={page.size.height}
+									onReady={(s) => {
+										stage = s;
+									}}
+								>
+									{includeBackground ? (
+										<RenderLayer name="background" listening={false}>
+											<Rect
+												x={0}
+												y={0}
+												width={page.size.width}
+												height={page.size.height}
+												fill={pageBackgroundFill(page.background)}
+											/>
+										</RenderLayer>
+									) : null}
+									<RenderLayer name="objects" listening={false}>
+										<CanvasNodeRenderer node={page.root} />
 									</RenderLayer>
-								) : null}
-								<RenderLayer name="objects" listening={false}>
-									<CanvasNodeRenderer node={page.root} />
-								</RenderLayer>
-							</CanvasStage>
-						</CanvasBrandKitContext.Provider>
-					</CanvasAssetsContext.Provider>
+								</CanvasStage>
+							</CanvasBrandKitContext.Provider>
+						</CanvasAssetsContext.Provider>
 					</CanvasDecodedImagesContext.Provider>
 				</CanvasResolvedDocumentContext.Provider>,
 			);
@@ -177,6 +192,7 @@ export async function rasterizePage(
 		// yields below then let React flush the re-render each arriving font
 		// triggers, so the serialize sees re-measured text.
 		await waitForFonts();
+		throwIfRasterizationCancelled(input);
 
 		// `useImage` performs async setState after Image.onload. Yield two
 		// frames so those states flush before we serialize. The first frame also
@@ -185,6 +201,7 @@ export async function rasterizePage(
 		// must stay after these awaits.
 		await waitFrame();
 		await waitFrame();
+		throwIfRasterizationCancelled(input);
 
 		if (!stage) {
 			throw new Error("rasterizePage: stage was not initialized");
@@ -204,6 +221,7 @@ export async function rasterizePage(
 		// export cropped to whatever the content happened to span.
 		const { width: pageWidth, height: pageHeight } = page.size;
 		if (pixelRatioX === pixelRatioY) {
+			throwIfRasterizationCancelled(input);
 			url = readyStage.toDataURL({
 				x: 0,
 				y: 0,
@@ -224,6 +242,7 @@ export async function rasterizePage(
 			// transform, so the requested output is `page × per-axis ratio`.
 			readyStage.scaleX(pixelRatioX);
 			readyStage.scaleY(pixelRatioY);
+			throwIfRasterizationCancelled(input);
 			url = readyStage.toDataURL({
 				x: 0,
 				y: 0,
@@ -234,6 +253,7 @@ export async function rasterizePage(
 				quality,
 			});
 		}
+		throwIfRasterizationCancelled(input);
 		return { url, mimeType };
 	} finally {
 		root?.unmount();

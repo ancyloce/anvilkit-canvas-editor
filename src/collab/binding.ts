@@ -1,4 +1,8 @@
-import type { CanvasIR, CanvasRuntime } from "@anvilkit/canvas-core";
+import type {
+	CanvasDocumentBudgetPolicy,
+	CanvasIR,
+	CanvasRuntime,
+} from "@anvilkit/canvas-core";
 import { Awareness } from "y-protocols/awareness";
 import type * as Y from "yjs";
 import {
@@ -46,6 +50,8 @@ export interface CreateCanvasYjsBindingOptions {
 	 * with core's default (built-in-only, but still migration-aware) path.
 	 */
 	readonly runtime?: CanvasRuntime;
+	/** Optional host override for remote snapshot admission limits. */
+	readonly documentBudgetPolicy?: Partial<CanvasDocumentBudgetPolicy>;
 	/**
 	 * The full editor store bundle (P0-9). When supplied, a joined or remote
 	 * snapshot replacement routes through `replaceDocumentSnapshot` — resetting
@@ -135,7 +141,7 @@ export interface CanvasYjsBinding extends CanvasCollabAdapter {
 export function createCanvasYjsBinding(
 	options: CreateCanvasYjsBindingOptions,
 ): CanvasYjsBinding {
-	const { doc, sceneStore, peer, runtime } = options;
+	const { doc, sceneStore, peer, runtime, documentBudgetPolicy } = options;
 	const map = doc.getMap<string>(options.mapName ?? DEFAULT_CANVAS_MAP_NAME);
 	const awareness = options.awareness ?? new Awareness(doc);
 	const presence = createCanvasPresence(awareness, options.presenceRateLimit);
@@ -157,7 +163,7 @@ export function createCanvasYjsBinding(
 		const raw = map.get(CANVAS_IR_KEY);
 		if (typeof raw !== "string") return undefined;
 		try {
-			return decodeCanvasIR(raw, runtime);
+			return decodeCanvasIR(raw, runtime, documentBudgetPolicy);
 		} catch {
 			return undefined;
 		}

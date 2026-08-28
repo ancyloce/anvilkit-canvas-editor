@@ -1,4 +1,9 @@
-import type { CanvasIR, CanvasRuntime } from "@anvilkit/canvas-core";
+import {
+	type CanvasDocumentBudgetPolicy,
+	type CanvasIR,
+	type CanvasRuntime,
+	validateCanvasDocumentBudget,
+} from "@anvilkit/canvas-core";
 import {
 	loadCanvasDocument,
 	unsupportedDeclaredCapabilities,
@@ -33,13 +38,20 @@ export function encodeCanvasIR(ir: CanvasIR): string {
  * OR an unsupported version; callers in observers must wrap this in
  * try/catch (never throw out of a Yjs observer).
  */
-export function decodeCanvasIR(raw: string, runtime?: CanvasRuntime): CanvasIR {
+export function decodeCanvasIR(
+	raw: string,
+	runtime?: CanvasRuntime,
+	documentBudgetPolicy?: Partial<CanvasDocumentBudgetPolicy>,
+): CanvasIR {
 	// Delegates to the editor's one load pipeline (T-M0-04) rather than
 	// repeating parse+migrate+validate here. `persistence/` is rank 1 and
 	// `collab/` is rank 2, so this is the only direction the shared seam can
 	// travel — and it keeps a future IR migration from applying to the collab
 	// path but not the load path, or vice versa.
-	return loadCanvasDocument(raw, runtime ? { runtime } : {});
+	return loadCanvasDocument(raw, {
+		...(runtime ? { runtime } : {}),
+		...(documentBudgetPolicy ? { documentBudgetPolicy } : {}),
+	});
 }
 
 /**
@@ -56,7 +68,19 @@ export function decodeCanvasIR(raw: string, runtime?: CanvasRuntime): CanvasIR {
  * adopt, surface read-only preview". `decodeCanvasIR` stays unchanged for the
  * supported case, so the fast path costs nothing.
  */
-export function unsupportedCapabilitiesOf(raw: string): readonly string[] {
+export function unsupportedCapabilitiesOf(
+	raw: string,
+	documentBudgetPolicy?: Partial<CanvasDocumentBudgetPolicy>,
+): readonly string[] {
+	const rawByteLength = new TextEncoder().encode(raw).byteLength;
+	if (
+		!validateCanvasDocumentBudget(null, {
+			...(documentBudgetPolicy ? { policy: documentBudgetPolicy } : {}),
+			rawByteLength,
+		}).ok
+	) {
+		return [];
+	}
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);

@@ -4,7 +4,11 @@ import type {
 	CanvasIR,
 	InstantiateTemplateWarning,
 } from "@anvilkit/canvas-core";
-import { instantiateTemplate } from "@anvilkit/canvas-core";
+import {
+	applyCommands,
+	assertCanvasDocumentBudget,
+	instantiateTemplate,
+} from "@anvilkit/canvas-core";
 import type { CanvasStudioContextValue } from "../context/canvas-studio-context.js";
 import { switchToPage } from "../pages/page-actions.js";
 import type { CanvasTemplateEntry } from "../templates/template-entry.js";
@@ -42,6 +46,19 @@ function runInstantiation(
 	}
 }
 
+function validateTemplateApplication(
+	ctx: CanvasStudioContextValue,
+	commands: readonly CanvasCommand[],
+): string | null {
+	try {
+		const candidate = applyCommands(ctx.getIR(), commands).ir;
+		assertCanvasDocumentBudget(candidate);
+		return null;
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error);
+	}
+}
+
 /**
  * Replace the current document's pages with a template's pages, as ONE undo
  * entry (canvas-m0-009 / FR-005, upgraded to `instantiateTemplate` in
@@ -63,6 +80,8 @@ export function loadTemplate(
 			(pageId): CanvasCommand => ({ type: "page.delete", pageId }),
 		),
 	];
+	const rejection = validateTemplateApplication(ctx, commands);
+	if (rejection) return { ok: false, message: rejection };
 	ctx.commitBatch(commands, `Load template: ${entry.title}`);
 
 	const firstPage = result.document.pages[0];
@@ -85,6 +104,8 @@ export function insertTemplateAsNewPages(
 	const result = runInstantiation(entry);
 	if ("message" in result) return { ok: false, message: result.message };
 
+	const rejection = validateTemplateApplication(ctx, [result.command]);
+	if (rejection) return { ok: false, message: rejection };
 	ctx.commit(result.command);
 
 	const firstPage = result.document.pages[0];

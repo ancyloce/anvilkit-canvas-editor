@@ -89,7 +89,10 @@ vi.mock("../../stage/CanvasStage.js", () => ({
 	},
 }));
 
-import { rasterizePage } from "../rasterize-page.js";
+import {
+	RasterizePageCancelledError,
+	rasterizePage,
+} from "../rasterize-page.js";
 
 beforeEach(() => {
 	stageInstances.length = 0;
@@ -148,6 +151,15 @@ function buildPage(extraChildren: CanvasGroupNode["children"] = []) {
 }
 
 describe("rasterizePage", () => {
+	it("honors cancellation before allocating an offscreen stage", async () => {
+		await expect(
+			rasterizePage({
+				page: buildPage(),
+				isCancelled: () => true,
+			}),
+		).rejects.toBeInstanceOf(RasterizePageCancelledError);
+		expect(document.querySelector("[data-rasterize-page]")).toBeNull();
+	});
 	it("returns a data URL via stage.toDataURL with the requested options", async () => {
 		const page = buildPage();
 		const result = await rasterizePage({

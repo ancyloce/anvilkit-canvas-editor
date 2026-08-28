@@ -1,4 +1,5 @@
 import {
+	CanvasDocumentBudgetError,
 	type CanvasIR,
 	createCanvasIR,
 	createGroup,
@@ -8,6 +9,8 @@ import {
 import { act, cleanup, render } from "@testing-library/react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const stageMountSpy = vi.hoisted(() => vi.fn());
 
 /**
  * @file T-M0-04 (plan 0022 M0) — host-driven document load.
@@ -30,6 +33,7 @@ function makeMock(type: string) {
 vi.mock("react-konva", () => {
 	type StageProps = { children?: ReactNode; ref?: { current: object | null } };
 	const Stage = (props: StageProps) => {
+		stageMountSpy();
 		if (props.ref && "current" in props.ref) {
 			const container = document.createElement("div");
 			props.ref.current = {
@@ -114,6 +118,19 @@ const noopSave = vi.fn(async (_input: CanvasSaveInput) => ({}));
 afterEach(cleanup);
 
 describe("T-M0-04 host-driven load", () => {
+	it("rejects public initialIR before the stage mounts", () => {
+		stageMountSpy.mockClear();
+		expect(() =>
+			render(
+				<CanvasStudio
+					initialIR={fixtureIR()}
+					documentBudgetPolicy={{ maxChildrenPerContainer: 0 }}
+				/>,
+			),
+		).toThrow(CanvasDocumentBudgetError);
+		expect(stageMountSpy).not.toHaveBeenCalled();
+	});
+
 	it("calls adapter.load and mounts the document it resolves", async () => {
 		const stored = fixtureIR("doc-1", "loaded-rect");
 		const load = vi.fn(async () => stored);
