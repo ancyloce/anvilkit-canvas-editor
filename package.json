@@ -112,6 +112,8 @@
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"test:coverage": "vitest run --coverage",
+		"test:migrations": "vitest run src/persistence/__tests__/load-pipeline.test.ts src/__tests__/CanvasStudio.load.test.tsx src/collab/__tests__/encode.test.ts src/workspace/state/__tests__/workspace-ui-store.test.ts",
+		"test:stress": "vitest run src/collab/__tests__/binding.test.ts src/perf/__tests__/m3-scale.test.ts src/perf/__tests__/preview-throughput.test.ts",
 		"test:watch": "vitest",
 		"publint": "publint",
 		"check:publint": "node ./scripts/check-publint.mjs",
