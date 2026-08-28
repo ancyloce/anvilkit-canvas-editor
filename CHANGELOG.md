@@ -34,6 +34,24 @@ does anything:
 
 ## Unreleased
 
+### Document input safety (PLAN-0039 E1)
+
+- Added document-budget admission to persistence, recovery, import,
+  collaboration, templates, clipboard paste, direct document replacement, and
+  public `initialIR` handling before editor state or the stage can mutate.
+- Added optional host policy overrides, post-migration enforcement, stable
+  diagnostics, and human-readable recovery messages. Rejected replacements
+  leave the open document unchanged.
+- Documented `initialIR` as structurally typed but resource-untrusted and routed
+  raw, legacy, and structurally untrusted payloads through
+  `loadCanvasDocument`.
+
+### Canvas CI accessibility regression fix (PLAN-0039 E0-T5)
+
+- The footer zoom range now has an accessible name on Base UI's focusable
+  nested input, closing the critical axe violation found by the isolated Canvas
+  accessibility gate.
+
 The PRD 0012 delivery (Phases 1a "editing loop", 1b "product chrome", 2
 "professional editing"), plus the PLAN-0035 work called out by its own
 sections. Behavior changes and opt-outs are catalogued in

@@ -82,7 +82,7 @@ as a published npm dependency (`pnpm add`, above) is unaffected.
   fine-grained (per-node CRDT / command-log) adapter can implement as a
   drop-in replacement.
 - **Export** — the FR-150 export dialog (`createCanvasExportPlugin`) with all
-  six formats built in (`png`/`jpeg`/`webp`/`svg`/`pdf`/`json` — no host
+  seven formats built in (`png`/`jpeg`/`webp`/`svg`/`pdf`/`pdf-print`/`json` — no host
   serializer injection needed; SVG/PDF code-split). Page scope covers current
   page, all pages, and the current selection (FR-031/052); options include
   scale presets, custom width/height with aspect lock, quality, transparent /
@@ -355,6 +355,12 @@ schema / command / serializer extensions for the same kinds.
 
 - **IR is uncontrolled.** `initialIR` seeds the editor once; later prop updates
   do **not** replace the internal document. Mirror state out with `onChange`.
+  `initialIR` is structurally trusted through its `CanvasIR` TypeScript type,
+  but it is not trusted for resource use: the shared document budget is checked
+  before editor stores or the Konva stage are created. A rejected value throws
+  `CanvasDocumentBudgetError`. Pass serialized, legacy, or structurally
+  untrusted input through `loadCanvasDocument` first so it is also parsed,
+  migrated, and schema-validated.
   To load a genuinely different, unrelated document IN PLACE (a document
   switch, a template loaded as a new document, crash recovery, or a `./collab`
   remote/joined snapshot), call `useCanvasStudio().replaceDocument(ir, source)`
