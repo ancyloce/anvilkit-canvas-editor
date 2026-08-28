@@ -49,6 +49,11 @@ function mount(selection: string[]) {
 }
 
 describe("WorkspaceFooter selection summary (B-13, FR-131)", () => {
+	it("gives Base UI's nested zoom range input an accessible name", () => {
+		mount([]);
+		expect(screen.getByLabelText("Zoom")).toHaveAttribute("type", "range");
+	});
+
 	it("is absent with no selection", () => {
 		mount([]);
 		expect(screen.queryByTestId("workspace-selection-summary")).toBeNull();

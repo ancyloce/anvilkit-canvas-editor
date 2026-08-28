@@ -88,9 +88,10 @@ export function WorkspaceFooter({
 					<ChromeIcons.zoomOut aria-hidden />
 				</Button>
 				{/* Single-thumb: `value` MUST be an array — the Slider wrapper falls
-				    back to [min, max] (two thumbs) for a bare number. */}
+				    back to [min, max] (two thumbs) for a bare number. Base UI puts
+				    focus on a nested range input, so its label uses getAriaLabel. */}
 				<Slider
-					aria-label={t("canvas.footer.zoom", "Zoom")}
+					getAriaLabel={() => t("canvas.footer.zoom", "Zoom")}
 					data-testid="workspace-zoom-slider"
 					min={Math.round(ZOOM_MIN * 100)}
 					max={Math.round(ZOOM_MAX * 100)}
