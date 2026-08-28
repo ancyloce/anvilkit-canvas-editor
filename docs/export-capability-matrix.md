@@ -19,12 +19,22 @@ one color matrix and effects resolve through one resolver, both in core,
 consumed by both paths. Where Konva lacks infrastructure the live/raster side
 *approximates*; the table is explicit about each case.
 
-**All six formats are built in (FR-151 / AC-010).** `DEFAULT_CANVAS_EXPORTERS`
-ships PNG, JPEG, WebP, SVG (core `serializePageToSvg`), PDF (multi-page
-raster-embed via `rasterizePage` + core `serializeDocumentToPdf`), and JSON —
-no host serializer injection required. Hosts may still override any format via
+**All seven formats are built in (FR-151 / AC-010).** `DEFAULT_CANVAS_EXPORTERS`
+ships PNG, JPEG, WebP, SVG (core `serializePageToSvg`), PDF and print PDF
+(multi-page raster-embed via `rasterizePage` + core
+`serializeDocumentToPdf`), and JSON — no host serializer injection required.
+Hosts may still override any format via
 `createCanvasExportPlugin({ exporters })`. SVG/PDF weight is code-split behind
 a dynamic `import()` so the eager editor bundle is unaffected.
+
+**Execution boundary.** The built-in path stays on the main thread after an
+E2 worker feasibility spike. Cost estimation and print preflight are pure and
+worker-safe, but the expensive rasterizer mounts React-Konva in the DOM, waits
+for browser fonts/frames, and uses the browser canvas encoder. Moving only PDF
+assembly would retain a batch of page rasters and regress the incremental
+release contract. The accepted constraints and the protocol required to
+revisit that choice are recorded in the
+[export worker feasibility decision](./export-worker-feasibility-decision.md).
 
 **Page scope (FR-152).** The dialog exports the current page, all pages, or the
 current selection (FR-031 "Export selection" synthesizes a page framed to the
@@ -44,6 +54,31 @@ transparent/include-background toggle (FR-153) drive the raster path.
 | `pdf` | Konva | Raster-embed | One PDF page per canvas page, sized to physical points, raster drawn to fill. Text is NOT selectable; shapes are not vector (FR-151 fidelity disclosure — the export dialog states this). Missing/undecodable page rasters degrade per page with typed warnings. |
 | `pdf-print` | Konva | Raster-embed | `pdf` plus the print-safety pass (`PRINT_UNSAFE` warnings: bleed/margin/DPI checks). |
 | `json` | — | Lossless | Raw Canvas IR round-trip. Exact by definition, but only *portable* when every asset URI is. Browser-local assets are inlined as `data:` URIs under a cap, and warned about above it — see [Browser-local assets](#browser-local-assets-and-portability). |
+
+### Print-PDF preflight
+
+`pdf-print` runs `preflightCanvasPrint` before layout resolution or raster
+allocation. The pure core pass checks the estimated page DPI, 1/8-inch bleed,
+1/4-inch margins and safe-area containment by default; callers may override
+those thresholds through the print metadata. It also computes each image's
+effective DPI from its intrinsic pixel dimensions and transformed printed
+size, resolves text and rich-text families against the editor font catalog,
+and reports raster-path effects that cannot be verified (legacy image filters
+and standalone node blur). Findings use stable `PRINT_*` codes, name the page
+and node where applicable, and include a corrective action. They are advisory:
+the bounded export may complete, with the findings attached to
+`CanvasExportArtifact.warnings`.
+
+### Standard diagnostics
+
+Every thrown export failure is classified as exactly one of
+`unsupported-format`, `budget-rejection`, `provider-failure`, `cancellation`,
+or `rendering-failure`. Missing-asset and missing-font fidelity warnings map to
+the sibling `missing-asset` and `missing-font` categories. Consumers receive a
+stable `CANVAS_EXPORT_*` code, severity, message, corrective action, and the
+original serializer/limit code when one exists. The dialog and legacy menu pass
+this diagnostic as the third `onError` argument; successful headless/UI
+`CanvasExportResult` values include diagnostics derived from their warnings.
 
 ## Feature fidelity across paths
 
