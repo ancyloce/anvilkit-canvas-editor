@@ -1,8 +1,24 @@
-import { createCanvasIR, createPage } from "@anvilkit/canvas-core";
-import { describe, expect, it, vi } from "vitest";
+import {
+	CanvasExportLimitError,
+	createCanvasIR,
+	createPage,
+} from "@anvilkit/canvas-core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { rasterizePage } from "@/render/rasterize-page.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { createCanvasStudioActions } from "../export-action.js";
 import { CanvasExportEmptyError } from "../types.js";
+
+vi.mock("@/render/rasterize-page.js", () => ({
+	rasterizePage: vi.fn(async () => ({
+		url: "data:image/png;base64,STUB",
+		mimeType: "image/png",
+	})),
+}));
+
+afterEach(() => {
+	vi.clearAllMocks();
+});
 
 const FIXED_TS = "2026-05-20T00:00:00.000Z";
 
@@ -49,6 +65,17 @@ describe("CanvasStudioActions.export() — headless export (§11.2)", () => {
 			(await result.artifacts[0]?.blob.text()) ?? "{}",
 		) as JsonIrShape;
 		expect(parsed.pages.map((p) => p.id)).toEqual(["p1", "p2"]);
+	});
+
+	it("exports print PDF as one default-built-in artifact", async () => {
+		const h = makeHarness({ ir: twoPageIR() });
+		const actions = createCanvasStudioActions(h.studioCtx);
+		const result = await actions.export({ format: "pdf-print", scope: "all" });
+		expect(result.format).toBe("pdf-print");
+		expect(result.artifacts).toHaveLength(1);
+		expect(result.artifacts[0]?.filename).toMatch(/\.print\.pdf$/);
+		expect(result.artifacts[0]?.blob.type).toBe("application/pdf");
+		expect(rasterizePage).toHaveBeenCalledTimes(2);
 	});
 
 	it("scope 'pages' scopes the export to exactly the given page ids (FR-152)", async () => {
@@ -113,5 +140,17 @@ describe("CanvasStudioActions.export() — headless export (§11.2)", () => {
 			actions.export({ format: "json", scope: "selection" }),
 		).rejects.toBeInstanceOf(CanvasExportEmptyError);
 		expect(onExport).not.toHaveBeenCalled();
+	});
+
+	it("rejects an over-budget raster request before invoking the rasterizer", async () => {
+		const h = makeHarness({ ir: twoPageIR() });
+		const actions = createCanvasStudioActions(h.studioCtx);
+		await expect(
+			actions.export({
+				format: "png",
+				exportLimits: { maxPixelsPerPage: 1 },
+			}),
+		).rejects.toBeInstanceOf(CanvasExportLimitError);
+		expect(rasterizePage).not.toHaveBeenCalled();
 	});
 });

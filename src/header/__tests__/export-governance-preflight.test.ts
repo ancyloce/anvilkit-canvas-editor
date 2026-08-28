@@ -163,8 +163,10 @@ describe("the wiring itself (regression guard)", () => {
 		expect(preflight).toBeLessThan(firstRender);
 	});
 
-	it("passes the flatten flag from the format, not a constant", () => {
-		expect(source).toContain("flatten: RASTER_FORMATS.has(format)");
+	it("flattens raster, PDF, and print-PDF formats during preflight", () => {
+		expect(source).toContain("RASTER_FORMATS.has(format)");
+		expect(source).toContain('format === "pdf"');
+		expect(source).toContain('format === "pdf-print"');
 	});
 
 	it("threads the host's quarantined keys through", () => {

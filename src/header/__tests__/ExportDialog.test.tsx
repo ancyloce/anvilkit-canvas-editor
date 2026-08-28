@@ -22,7 +22,7 @@ import { rasterizePage } from "@/render/rasterize-page.js";
 import { createExportRequestStore } from "@/stores/export-request-store.js";
 import { makeHarness } from "@/tools/__tests__/_tool-test-helpers.js";
 import { ExportDialogTrigger } from "../ExportDialogTrigger.js";
-import type { CanvasExporter } from "../types.js";
+import type { CanvasExporter, CanvasExportPluginOptions } from "../types.js";
 import { CanvasExportCancelledError } from "../types.js";
 
 // Bug 1 + Bug 3 raster coverage below drives PNG (the dialog's default
@@ -52,11 +52,14 @@ function twoPageIR(): CanvasIR {
 	});
 }
 
-function setup(exporters: Partial<Record<string, CanvasExporter>> = {}) {
+function setup(
+	exporters: Partial<Record<string, CanvasExporter>> = {},
+	options: Omit<CanvasExportPluginOptions, "exporters"> = {},
+) {
 	const h = makeHarness({ ir: twoPageIR() });
 	render(
 		<CanvasStudioContext.Provider value={h.studioCtx}>
-			<ExportDialogTrigger exporters={exporters} />
+			<ExportDialogTrigger exporters={exporters} {...options} />
 		</CanvasStudioContext.Provider>,
 	);
 	return h;
@@ -68,7 +71,6 @@ async function openDialog(): Promise<void> {
 	// can exceed RTL's default 1 s wait (recurring full-suite flake).
 	await screen.findByTestId("export-dialog", undefined, { timeout: 15_000 });
 }
-
 
 /**
  * A promise the test resolves by hand.
@@ -90,19 +92,35 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe("ExportDialog (B-09, FR-150..154)", () => {
-	it("opens code-split, shows all six built-in formats, pages and scale controls", async () => {
+	it("opens code-split, shows all seven built-in formats, pages and scale controls", async () => {
 		setup();
 		await openDialog();
-		// FR-151 / AC-010: all six formats export with no host wiring.
+		// FR-151 / AC-010: all seven formats export with no host wiring.
 		expect(screen.getByTestId("export-format-png")).toBeTruthy();
 		expect(screen.getByTestId("export-format-json")).toBeTruthy();
 		expect(screen.getByTestId("export-format-svg")).toBeTruthy();
 		expect(screen.getByTestId("export-format-pdf")).toBeTruthy();
+		expect(screen.getByTestId("export-format-pdf-print")).toBeTruthy();
 		expect(screen.getByTestId("export-pages-current")).toBeTruthy();
 		expect(screen.getByTestId("export-pages-all")).toBeTruthy();
 		// FR-153 raster controls appear for the default (PNG) format.
 		expect(screen.getByTestId("export-scale-2")).toBeTruthy();
 		expect(screen.getByTestId("export-filename")).toBeTruthy();
+	});
+
+	it("blocks an over-budget request before invoking the rasterizer", async () => {
+		setup({}, { exportLimits: { maxPixelsPerPage: 1 } });
+		await openDialog();
+		fireEvent.click(screen.getByTestId("export-run"));
+		await waitFor(() => {
+			expect(
+				screen.getByTestId("export-progress").getAttribute("data-phase"),
+			).toBe("failed");
+		});
+		expect(screen.getByTestId("export-progress").textContent).toMatch(
+			/Reduce the export scale/i,
+		);
+		expect(rasterizePage).not.toHaveBeenCalled();
 	});
 
 	it("exports all pages sequentially with an injected exporter and reports progress", async () => {
@@ -184,6 +202,10 @@ describe("ExportDialog (B-09, FR-150..154)", () => {
 		fireEvent.click(screen.getByTestId("export-format-pdf"));
 		expect(screen.getByTestId("export-fidelity-note").textContent).toContain(
 			"not selectable",
+		);
+		fireEvent.click(screen.getByTestId("export-format-pdf-print"));
+		expect(screen.getByTestId("export-fidelity-note").textContent).toContain(
+			"print-safety preflight",
 		);
 	});
 
@@ -787,7 +809,8 @@ describe("export completed/failed toast (FR-170)", () => {
 		expect(toasts).toHaveLength(1);
 		expect(toasts[0]?.type).toBe("error");
 		expect(toasts[0]?.title).toBe("Export failed");
-		expect(toasts[0]?.description).toBe("nope");
+		expect(toasts[0]?.description).toContain("nope");
+		expect(toasts[0]?.description).toContain("provider configuration");
 	});
 
 	it("does not toast on cancellation (only completed/failed)", async () => {

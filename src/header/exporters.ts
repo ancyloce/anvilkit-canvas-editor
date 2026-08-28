@@ -9,7 +9,11 @@ import type {
 	SvgFontFaceDef,
 	SvgResolveBrandToken,
 } from "@anvilkit/canvas-core";
-import { isLocalObjectUri } from "@anvilkit/canvas-core";
+import {
+	assertCanvasExportWithinLimits,
+	estimateCanvasExportCost,
+	isLocalObjectUri,
+} from "@anvilkit/canvas-core";
 import type { LocalAssetStore } from "../assets/local-asset-store.js";
 import { resolveBrandToken } from "../brand/resolve-brand-token.js";
 import { exportStageContentDataURL } from "../render/export-stage.js";
@@ -78,10 +82,29 @@ function rasterExporter(
 	mimeType: "image/png" | "image/jpeg" | "image/webp",
 	ext: string,
 ): CanvasExporter {
-	return ({ ir, stage }, { resolution, quality }) => {
+	return ({ ir, activePageId, stage }, request) => {
+		const { resolution, quality } = request;
 		if (!stage) {
 			throw new Error(`${ext.toUpperCase()} export needs a ready Konva stage.`);
 		}
+		const page =
+			ir.pages.find((candidate) => candidate.id === activePageId) ??
+			ir.pages[0];
+		if (!page) throw new Error("Canvas export has no page to render.");
+		assertCanvasExportWithinLimits({
+			estimate: estimateCanvasExportCost({
+				format:
+					mimeType === "image/png"
+						? "png"
+						: mimeType === "image/jpeg"
+							? "jpeg"
+							: "webp",
+				pages: [page],
+				pixelRatio: 2 * (resolution || 1),
+			}),
+			requestedScale: resolution || 1,
+			...(request.limits ? { limits: request.limits } : {}),
+		});
 		const url = exportStageContentDataURL(stage, {
 			pixelRatio: 2 * (resolution || 1),
 			mimeType,
@@ -365,66 +388,124 @@ export function createSvgExporter(
 /** Built-in SVG exporter reading the shared browser-local asset store. */
 export const svgExporter: CanvasExporter = createSvgExporter();
 
+/** Shared bounded implementation for screen and print PDF. */
+function createPdfExporter(format: "pdf" | "pdf-print"): CanvasExporter {
+	return async ({ ir, brandKit, fontCatalog }, request) => {
+		const rasterPixelRatio = 2 * (request.resolution || 1);
+		assertCanvasExportWithinLimits({
+			estimate: estimateCanvasExportCost({
+				format,
+				pages: ir.pages,
+				pixelRatio: rasterPixelRatio,
+			}),
+			requestedScale: request.resolution || 1,
+			...(request.limits ? { limits: request.limits } : {}),
+		});
+		const [
+			{
+				layoutIssuesToExportWarnings,
+				PdfSerializationCancelledError,
+				preflightCanvasPrint,
+				resolveCanvasLayout,
+				serializeDocumentToPdf,
+			},
+			{ rasterizePage },
+		] = await Promise.all([
+			import("@anvilkit/canvas-core"),
+			import("../render/rasterize-page.js"),
+		]);
+		const print = request.print ?? {
+			capabilities: { raster: true as const, vector: false },
+		};
+		const availableFontFamilies = [
+			...(fontCatalog?.entries.map((entry) => entry.family) ?? []),
+			...(brandKit?.fonts ?? []),
+		];
+		const printPreflight =
+			format === "pdf-print"
+				? preflightCanvasPrint(ir, {
+						print,
+						rasterPixelRatio,
+						...(fontCatalog || brandKit ? { availableFontFamilies } : {}),
+						...(brandKit
+							? {
+									resolveFontFamily: (family) => {
+										if (typeof family === "string") return family;
+										const resolved = resolveBrandToken(family, brandKit);
+										return typeof resolved === "string" ? resolved : undefined;
+									},
+								}
+							: {}),
+					})
+				: undefined;
+		// T-M3-10: ONE resolution of the committed document, shared by every
+		// page's offscreen raster — raster and PDF derive from one resolved stage.
+		const resolved = resolveCanvasLayout(ir, {
+			measurement: createCanvasLayoutMeasurementProvider(),
+		});
+		let pdfResult: Awaited<ReturnType<typeof serializeDocumentToPdf>>;
+		try {
+			pdfResult = await serializeDocumentToPdf(ir, {
+				pages: ir.pages.map((p) => p.id),
+				...(ir.title !== undefined ? { title: ir.title } : {}),
+				...(request.isCancelled ? { isCancelled: request.isCancelled } : {}),
+				...(format === "pdf-print" ? { print } : {}),
+				rasterProvider: async (page) => {
+					if (request.isCancelled?.()) throw new CanvasExportCancelledError();
+					const { url } = await rasterizePage({
+						page,
+						assets: ir.assets,
+						...(brandKit ? { brandKit } : {}),
+						pixelRatio: rasterPixelRatio,
+						resolvedDocument: resolved,
+						...(request.isCancelled
+							? { isCancelled: request.isCancelled }
+							: {}),
+					});
+					if (request.isCancelled?.()) throw new CanvasExportCancelledError();
+					return { pageId: page.id, image: url };
+				},
+			});
+		} catch (error) {
+			if (
+				error instanceof PdfSerializationCancelledError ||
+				request.isCancelled?.()
+			) {
+				throw new CanvasExportCancelledError();
+			}
+			throw error;
+		}
+		const { pdf, warnings } = pdfResult;
+		return {
+			filename: exportFilename(
+				ir,
+				format === "pdf-print" ? "print.pdf" : "pdf",
+			),
+			data: pdf,
+			mimeType: "application/pdf",
+			// T-M3-03: layout diagnostics surface in the PDF result too.
+			warnings: [
+				...(printPreflight?.issues ?? []),
+				...toExportWarnings(warnings),
+				...layoutIssuesToExportWarnings(resolved.diagnostics),
+			],
+		};
+	};
+}
+
 /**
  * Built-in PDF exporter (FR-151/FR-152, AC-010): every page of the given IR
  * is rasterized off-screen (the live stage only holds the active page), then
  * core's raster-embed `serializeDocumentToPdf` packs one PDF page per canvas
- * page — this is what makes multi-page PDF export work (Flow 2). pdf-lib
- * loads via `import()` on first use, never in the eager bundle.
+ * page. pdf-lib loads via `import()` on first use, never in the eager bundle.
  */
-export const pdfExporter: CanvasExporter = async (
-	{ ir, brandKit },
-	request,
-) => {
-	const [
-		{
-			layoutIssuesToExportWarnings,
-			resolveCanvasLayout,
-			serializeDocumentToPdf,
-		},
-		{ rasterizePage },
-	] = await Promise.all([
-		import("@anvilkit/canvas-core"),
-		import("../render/rasterize-page.js"),
-	]);
-	// T-M3-10: ONE resolution of the committed document, shared by every
-	// page's offscreen raster — raster and PDF derive from one resolved stage.
-	const resolved = resolveCanvasLayout(ir, {
-		measurement: createCanvasLayoutMeasurementProvider(),
-	});
-	const rasters = [];
-	for (const page of ir.pages) {
-		// Bug 4 (FR-154): check BETWEEN page iterations, mirroring the check the
-		// dialog's per-page raster/SVG loop already does — a single page's own
-		// rasterization is never interrupted mid-flight.
-		if (request.isCancelled?.()) throw new CanvasExportCancelledError();
-		const { url } = await rasterizePage({
-			page,
-			assets: ir.assets,
-			...(brandKit ? { brandKit } : {}),
-			pixelRatio: 2 * (request.resolution || 1),
-			resolvedDocument: resolved,
-		});
-		rasters.push({ pageId: page.id, image: url });
-	}
-	const { pdf, warnings } = await serializeDocumentToPdf(ir, {
-		rasters,
-		pages: ir.pages.map((p) => p.id),
-		...(ir.title !== undefined ? { title: ir.title } : {}),
-	});
-	return {
-		filename: exportFilename(ir, "pdf"),
-		data: pdf,
-		mimeType: "application/pdf",
-		// T-M3-03: layout diagnostics surface in the PDF result too.
-		warnings: [
-			...toExportWarnings(warnings),
-			...layoutIssuesToExportWarnings(resolved.diagnostics),
-		],
-	};
-};
+export const pdfExporter: CanvasExporter = createPdfExporter("pdf");
 
-/** Formats the editor can export with zero host wiring (AC-010: all six). */
+/** Print-PDF variant: the same incremental raster pipeline plus print metadata
+ * and core print-safety diagnostics. It remains a raster PDF by contract. */
+export const pdfPrintExporter: CanvasExporter = createPdfExporter("pdf-print");
+
+/** Formats the editor can export with zero host wiring (AC-010: all seven). */
 export const DEFAULT_CANVAS_EXPORTERS: Partial<
 	Record<CanvasExportFormat, CanvasExporter>
 > = {
@@ -433,5 +514,6 @@ export const DEFAULT_CANVAS_EXPORTERS: Partial<
 	webp: webpExporter,
 	svg: svgExporter,
 	pdf: pdfExporter,
+	"pdf-print": pdfPrintExporter,
 	json: jsonExporter,
 };

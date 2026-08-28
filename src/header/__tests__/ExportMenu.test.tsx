@@ -104,6 +104,25 @@ describe("ExportMenu — fidelity warnings (FR-041/UX-007, canvas-m3-008)", () =
 });
 
 describe("ExportMenu — quality normalization (E-9)", () => {
+	it("shows print PDF and supplies its print contract", async () => {
+		const printPdfExporter: CanvasExporter = vi.fn(() => ({
+			filename: "design.print.pdf",
+			data: "%PDF",
+			mimeType: "application/pdf",
+		}));
+		const { getByTestId } = renderMenu({ "pdf-print": printPdfExporter });
+		fireEvent.click(getByTestId("canvas-export-trigger"));
+		fireEvent.click(getByTestId("canvas-export-pdf-print"));
+		fireEvent.click(getByTestId("canvas-export-save"));
+		await waitFor(() => expect(printPdfExporter).toHaveBeenCalled());
+		expect(printPdfExporter).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				print: { capabilities: { raster: true, vector: false } },
+			}),
+		);
+	});
+
 	it("normalizes the 0-100 quality slider to 0-1 before calling the exporter", async () => {
 		const pngExporter: CanvasExporter = vi.fn(() => ({
 			filename: "design.png",

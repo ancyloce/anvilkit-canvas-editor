@@ -1,6 +1,7 @@
 "use client";
 
 import type { CanvasExportWarning } from "@anvilkit/canvas-core";
+import { normalizeCanvasExportError } from "@anvilkit/canvas-core";
 import { Button, buttonVariants } from "@anvilkit/ui/button";
 import {
 	Popover,
@@ -62,7 +63,13 @@ const FORMAT_META: Record<CanvasExportFormat, FormatMeta> = {
 	pdf: {
 		label: "PDF",
 		hintKey: "canvas.export.hint.pdf",
-		hint: "Print-ready",
+		hint: "Shareable document",
+		raster: true,
+	},
+	"pdf-print": {
+		label: "Print PDF",
+		hintKey: "canvas.export.hint.pdfPrint",
+		hint: "Print-safety preflight",
 		raster: true,
 	},
 	json: {
@@ -79,6 +86,7 @@ const FORMAT_ORDER: readonly CanvasExportFormat[] = [
 	"webp",
 	"svg",
 	"pdf",
+	"pdf-print",
 	"json",
 ];
 
@@ -102,11 +110,12 @@ function resolutionScale(value: string): number {
  * reference "Export image" panel (format cards · quality · resolution ·
  * metadata toggle · Export). Reads the live stage/IR from
  * {@link useCanvasStudio} and runs the matching exporter, then downloads.
- * PNG/JSON are built in; SVG/PDF (and overrides) arrive via `exporters`.
+ * All seven formats are built in; `exporters` may override any one of them.
  */
 export function ExportMenu({
 	exporters,
 	formats,
+	exportLimits,
 	onError,
 }: CanvasExportPluginOptions): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
@@ -166,6 +175,10 @@ export function ExportMenu({
 					quality: quality / 100,
 					resolution: resolutionScale(resolution),
 					stripMetadata,
+					...(exportLimits ? { limits: exportLimits } : {}),
+					...(activeFormat === "pdf-print"
+						? { print: { capabilities: { raster: true, vector: false } } }
+						: {}),
 				},
 			);
 			downloadCanvasArtifact(artifact);
@@ -175,15 +188,18 @@ export function ExportMenu({
 				setOpen(false);
 			}
 		} catch (err) {
+			const diagnostic = normalizeCanvasExportError(err, {
+				source: exporters?.[activeFormat] ? "provider" : "renderer",
+			});
 			// Host owns reporting when it wired `onError`; otherwise surface the
 			// failure inline (W6) so the user isn't left with a silently dead button.
-			if (onError) onError(err, activeFormat);
+			if (onError) onError(err, activeFormat, diagnostic);
 			else {
 				console.error("canvas export failed", {
 					format: activeFormat,
 					error: err,
 				});
-				setError(err instanceof Error ? err.message : String(err));
+				setError(`${diagnostic.message} ${diagnostic.correctiveAction}`);
 			}
 		} finally {
 			setBusy(false);
@@ -275,6 +291,7 @@ export function ExportMenu({
 							value={[quality]}
 							min={0}
 							max={100}
+							getAriaLabel={() => t("canvas.export.quality", "Quality")}
 							disabled={!meta.raster}
 							onValueChange={(value) =>
 								setQuality(Array.isArray(value) ? (value[0] ?? 0) : value)

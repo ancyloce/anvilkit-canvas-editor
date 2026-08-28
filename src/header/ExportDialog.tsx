@@ -1,9 +1,14 @@
 "use client";
 
 import type {
+	CanvasExportDiagnostic,
 	CanvasExportWarning,
 	CanvasIR,
 	CanvasPage,
+} from "@anvilkit/canvas-core";
+import {
+	canvasExportDiagnosticsForWarnings,
+	normalizeCanvasExportError,
 } from "@anvilkit/canvas-core";
 import { prepareExport } from "@anvilkit/canvas-core/export-preparation";
 import { Button } from "@anvilkit/ui/button";
@@ -31,6 +36,7 @@ import { useCanvasToaster } from "../context/toast-context.js";
 import { createExportStore } from "../stores/export-store.js";
 import { exportPreparationMessage } from "./export-preparation-message.js";
 import {
+	assertExportWithinLimits,
 	isSelectionResult,
 	RASTER_FORMATS,
 	type ResolvedExportPages,
@@ -61,6 +67,7 @@ const FORMAT_ORDER: readonly CanvasExportFormat[] = [
 	"webp",
 	"svg",
 	"pdf",
+	"pdf-print",
 	"json",
 ];
 
@@ -76,7 +83,7 @@ type PageScope = "current" | "all" | "pages" | "selection";
  * The FR-150 export dialog (B-09, extended for FR-151..153 and §14.5) — the
  * `createCanvasExportPlugin` popover's contents graduated into a modal, per
  * PRD 0012 §15.9: same `CanvasExportPluginOptions`, same injected exporters,
- * and now the full built-in format set (PNG/JPEG/WebP/SVG/PDF/JSON) plus
+ * and now the full built-in format set (PNG/JPEG/WebP/SVG/PDF/print PDF/JSON) plus
  * page scope (current/all/selection), scale presets, custom dimensions with
  * aspect lock, quality, transparent / include background, a sanitized file
  * name, FR-154 progress phases with cancellation, and per-format fidelity
@@ -86,6 +93,7 @@ type PageScope = "current" | "all" | "pages" | "selection";
 export default function ExportDialog({
 	onClose,
 	exporters,
+	exportLimits,
 	formats,
 	onError,
 }: ExportDialogProps): React.JSX.Element {
@@ -213,7 +221,10 @@ export default function ExportDialog({
 				...(ctx.quarantinedSnapshotKeys
 					? { quarantinedKeys: ctx.quarantinedSnapshotKeys }
 					: {}),
-				flatten: RASTER_FORMATS.has(format),
+				flatten:
+					RASTER_FORMATS.has(format) ||
+					format === "pdf" ||
+					format === "pdf-print",
 			},
 		);
 		if (!preparation.ok) {
@@ -242,6 +253,10 @@ export default function ExportDialog({
 			quality: quality / 100,
 			resolution,
 			stripMetadata: true,
+			...(exportLimits ? { limits: exportLimits } : {}),
+			...(format === "pdf-print"
+				? { print: { capabilities: { raster: true, vector: false } } }
+				: {}),
 			// Bug 4 (FR-154): poll-based cancellation the built-in multi-page PDF
 			// exporter checks between its own per-page rasterization passes.
 			isCancelled: () => exportStore.getState().cancelRequested,
@@ -270,6 +285,30 @@ export default function ExportDialog({
 				}
 				throw err;
 			}
+			const costPages = isSelectionResult(resolved)
+				? [resolved.page]
+				: resolved.pages;
+			if (costPages.length === 0) {
+				failExport(t("canvas.export.empty", "Nothing to export"));
+				return;
+			}
+			// Establish a visible lifecycle before the budget assertion. A request
+			// rejected here has produced no artifact yet, but it still needs the same
+			// inline failed state and corrective message as a renderer failure.
+			exportStore
+				.getState()
+				.begin(
+					isSelectionResult(resolved) || isWholeDoc ? 1 : costPages.length,
+				);
+			assertExportWithinLimits({
+				format,
+				pages: costPages,
+				pixelRatios: Object.fromEntries(
+					costPages.map((page) => [page.id, pixelRatioFor(page)]),
+				),
+				requestedScale: resolution,
+				...(exportLimits ? { limits: exportLimits } : {}),
+			});
 
 			// FR-031 export-selection: ONE artifact over the synthetic selection
 			// page, properly scoped (Bug 2) for every format — SVG no longer
@@ -308,6 +347,9 @@ export default function ExportDialog({
 						},
 					],
 					warnings: artifact.warnings ?? [],
+					diagnostics: canvasExportDiagnosticsForWarnings(
+						artifact.warnings ?? [],
+					),
 				});
 				exportStore.getState().advance();
 				completeExport();
@@ -315,12 +357,7 @@ export default function ExportDialog({
 			}
 
 			const pages = resolved.pages;
-			if (pages.length === 0) {
-				failExport(t("canvas.export.empty", "Nothing to export"));
-				return;
-			}
-
-			// Whole-document formats (PDF/JSON): one artifact over an IR scoped to
+			// Whole-document formats (PDF/print PDF/JSON): one artifact over an IR scoped to
 			// exactly `pages` (Bug 2/3: `all`/`pages`/`selection` scopes must never
 			// leak the full unscoped document).
 			if (isWholeDoc) {
@@ -366,6 +403,9 @@ export default function ExportDialog({
 						},
 					],
 					warnings: artifact.warnings ?? [],
+					diagnostics: canvasExportDiagnosticsForWarnings(
+						artifact.warnings ?? [],
+					),
 				});
 				exportStore.getState().advance();
 				completeExport();
@@ -379,6 +419,7 @@ export default function ExportDialog({
 			exportStore.getState().begin(pages.length);
 			const resultArtifacts: CanvasExportResultArtifact[] = [];
 			const resultWarnings: CanvasExportWarning[] = [];
+			const resultDiagnostics: CanvasExportDiagnostic[] = [];
 			for (const [index, page] of pages.entries()) {
 				if (exportStore.getState().cancelRequested) {
 					exportStore.getState().markCancelled();
@@ -393,17 +434,24 @@ export default function ExportDialog({
 				);
 				resultArtifacts.push(pageResult.artifact);
 				resultWarnings.push(...pageResult.warnings);
+				resultDiagnostics.push(
+					...canvasExportDiagnosticsForWarnings(pageResult.warnings),
+				);
 				exportStore.getState().advance();
 			}
 			ctx.onExport?.({
 				format,
 				artifacts: resultArtifacts,
 				warnings: resultWarnings,
+				diagnostics: resultDiagnostics,
 			});
 			completeExport();
 		} catch (err) {
-			failExport(err instanceof Error ? err.message : String(err));
-			onError?.(err, format);
+			const diagnostic = normalizeCanvasExportError(err, {
+				source: isHostOverride ? "provider" : "renderer",
+			});
+			failExport(`${diagnostic.message} ${diagnostic.correctiveAction}`);
+			onError?.(err, format, diagnostic);
 		}
 	}
 
@@ -479,20 +527,25 @@ export default function ExportDialog({
 								aria-pressed={format === f}
 								onClick={() => setFormat(f)}
 							>
-								{f.toUpperCase()}
+								{f === "pdf-print" ? "PRINT PDF" : f.toUpperCase()}
 							</Button>
 						))}
 					</div>
 
-					{format === "pdf" ? (
+					{format === "pdf" || format === "pdf-print" ? (
 						<p
 							data-testid="export-fidelity-note"
 							className="rounded-md bg-muted px-2 py-1.5 text-xs text-muted-foreground"
 						>
-							{t(
-								"canvas.export.pdfFidelity",
-								"PDF embeds rasterized pages — text is not selectable.",
-							)}
+							{format === "pdf-print"
+								? t(
+										"canvas.export.pdfPrintFidelity",
+										"Print PDF runs print-safety preflight and embeds rasterized pages — text is not selectable.",
+									)
+								: t(
+										"canvas.export.pdfFidelity",
+										"PDF embeds rasterized pages — text is not selectable.",
+									)}
 						</p>
 					) : null}
 
@@ -637,6 +690,7 @@ export default function ExportDialog({
 										max={100}
 										data-testid="export-quality"
 										aria-label={t("canvas.export.quality", "Quality")}
+										getAriaLabel={() => t("canvas.export.quality", "Quality")}
 										className="w-32"
 										value={[quality]}
 										onValueChange={(value) => {

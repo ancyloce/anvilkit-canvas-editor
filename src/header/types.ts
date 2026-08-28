@@ -1,4 +1,10 @@
-import type { CanvasExportWarning, CanvasIR } from "@anvilkit/canvas-core";
+import type {
+	CanvasExportDiagnostic,
+	CanvasExportLimits,
+	CanvasExportWarning,
+	CanvasIR,
+	CanvasPrintPdfMetadata,
+} from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { ReactNode } from "react";
 import type { BrandKit } from "../brand/brand-kit.js";
@@ -15,15 +21,15 @@ export interface CanvasHeaderPlugin {
 	readonly render: () => ReactNode;
 }
 
-/** Built-in export formats (AC-010). PNG/JPEG/WebP/JSON ship with the
- * editor; SVG/PDF are host-injected. Mirrors core's export vocabulary
- * (B-04) for the formats the editor UI can drive. */
+/** Built-in export formats (AC-010). Mirrors core's complete export
+ * vocabulary (B-04), including the distinct print-preflight PDF path. */
 export type CanvasExportFormat =
 	| "png"
 	| "jpeg"
 	| "webp"
 	| "svg"
 	| "pdf"
+	| "pdf-print"
 	| "json";
 
 /** The live editor state an exporter reads from (sourced from the studio context). */
@@ -74,6 +80,10 @@ export interface CanvasExportRequest {
 	readonly resolution: number;
 	/** Strip EXIF/location/camera metadata from raster output. */
 	readonly stripMetadata: boolean;
+	/** Host policy overrides. Omitted fields retain the secure core defaults. */
+	readonly limits?: Partial<CanvasExportLimits>;
+	/** Print contract for `pdf-print`; ignored by every other format. */
+	readonly print?: CanvasPrintPdfMetadata;
 	/**
 	 * Poll-based cancellation (FR-154): when present and returns `true`, a
 	 * built-in multi-page exporter (PDF) stops between page iterations and
@@ -97,9 +107,19 @@ export interface CanvasExportRequest {
  * identical cancel semantics.
  */
 export class CanvasExportCancelledError extends Error {
+	readonly code = "CANVAS_EXPORT_CANCELLED" as const;
+	readonly diagnostic: CanvasExportDiagnostic;
+
 	constructor(message = "Canvas export was cancelled.") {
 		super(message);
 		this.name = "CanvasExportCancelledError";
+		this.diagnostic = {
+			code: this.code,
+			category: "cancellation",
+			level: "error",
+			message,
+			correctiveAction: "Start the export again when ready.",
+		};
 	}
 }
 
@@ -146,17 +166,22 @@ export type CanvasExporter = (
 
 /** Options for {@link createCanvasExportPlugin} / `<ExportMenu>`. */
 export interface CanvasExportPluginOptions {
+	/** Configurable hard ceilings, merged over core's secure defaults. */
+	readonly exportLimits?: Partial<CanvasExportLimits>;
 	/**
-	 * Per-format serializers, merged over the built-in PNG/JSON exporters. The
-	 * editor is Puck-independent and budget-capped, so it ships no SVG/PDF
-	 * serializer — hosts inject those (e.g. from `@anvilkit/plugin-export-canvas`).
+	 * Per-format serializers, merged over all seven built-in exporters. Hosts
+	 * may replace any built-in implementation without changing UI vocabulary.
 	 */
 	readonly exporters?: Partial<Record<CanvasExportFormat, CanvasExporter>>;
 	/**
 	 * Which formats to show, in order. Defaults to every format that has an
-	 * exporter, ordered PNG · SVG · PDF · JSON.
+	 * exporter, ordered PNG · JPEG · WebP · SVG · PDF · Print PDF · JSON.
 	 */
 	readonly formats?: readonly CanvasExportFormat[];
-	/** Invoked when an exporter throws. Defaults to `console.error`. */
-	readonly onError?: (error: unknown, format: CanvasExportFormat) => void;
+	/** Invoked when an exporter throws, with its stable normalized diagnostic. */
+	readonly onError?: (
+		error: unknown,
+		format: CanvasExportFormat,
+		diagnostic: CanvasExportDiagnostic,
+	) => void;
 }

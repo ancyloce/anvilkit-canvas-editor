@@ -1,14 +1,23 @@
 "use client";
 
 import type {
+	CanvasExportCostEstimate,
+	CanvasExportLimitOverrides,
 	CanvasIR,
 	CanvasPage,
 	CanvasResolvedDocument,
 } from "@anvilkit/canvas-core";
-import { resolveCanvasDocument } from "@anvilkit/canvas-core";
+import {
+	assertCanvasExportWithinLimits,
+	estimateCanvasExportCost,
+	resolveCanvasDocument,
+} from "@anvilkit/canvas-core";
 import type Konva from "konva";
 import type { BrandKit } from "../brand/brand-kit.js";
-import { rasterizePage } from "../render/rasterize-page.js";
+import {
+	RasterizePageCancelledError,
+	rasterizePage,
+} from "../render/rasterize-page.js";
 import { buildSelectionExportPage } from "../render/selection-export.js";
 import { createCanvasLayoutMeasurementProvider } from "../text/canvas-text-measurer.js";
 import type { CanvasFontCatalog } from "../text/font-catalog.js";
@@ -18,7 +27,7 @@ import type {
 	CanvasExportFormat,
 	CanvasExportRequest,
 } from "./types.js";
-import { CanvasExportEmptyError } from "./types.js";
+import { CanvasExportCancelledError, CanvasExportEmptyError } from "./types.js";
 
 /**
  * Shared export-rendering logic (§11.2, FR-152, Bug 2/3 fixes): scope
@@ -37,13 +46,47 @@ export const RASTER_FORMATS = new Set<CanvasExportFormat>([
 	"webp",
 ]);
 /** Whole-document formats: one artifact for the whole (scoped) IR. */
-export const WHOLE_DOC_FORMATS = new Set<CanvasExportFormat>(["pdf", "json"]);
+export const WHOLE_DOC_FORMATS = new Set<CanvasExportFormat>([
+	"pdf",
+	"pdf-print",
+	"json",
+]);
 /** Format → MIME type for the built-in raster pipeline. */
 const RASTER_MIME: Record<string, "image/png" | "image/jpeg" | "image/webp"> = {
 	png: "image/png",
 	jpeg: "image/jpeg",
 	webp: "image/webp",
 };
+
+export interface AssertExportWithinLimitsInput {
+	readonly format: CanvasExportFormat;
+	readonly pages: readonly CanvasPage[];
+	readonly pixelRatio?: number | { readonly x: number; readonly y: number };
+	readonly pixelRatios?: Readonly<
+		Record<string, number | { readonly x: number; readonly y: number }>
+	>;
+	readonly requestedScale?: number;
+	readonly limits?: CanvasExportLimitOverrides;
+}
+
+/** Shared pre-allocation guard for both UI and headless export entry points. */
+export function assertExportWithinLimits(
+	input: AssertExportWithinLimitsInput,
+): CanvasExportCostEstimate {
+	const estimate = estimateCanvasExportCost({
+		format: input.format,
+		pages: input.pages,
+		...(input.pixelRatio !== undefined ? { pixelRatio: input.pixelRatio } : {}),
+		...(input.pixelRatios ? { pixelRatios: input.pixelRatios } : {}),
+	});
+	return assertCanvasExportWithinLimits({
+		estimate,
+		...(input.requestedScale !== undefined
+			? { requestedScale: input.requestedScale }
+			: {}),
+		...(input.limits ? { limits: input.limits } : {}),
+	});
+}
 
 /** Page scope understood by the shared runner — mirrors
  * `CanvasExportUiRequest["scope"]` (`stores/export-request-store.ts`). */
@@ -195,17 +238,25 @@ export async function renderPageArtifact(
 ): Promise<CanvasExportArtifact> {
 	const { format, page, docIr, request } = input;
 	if (RASTER_FORMATS.has(format) && !input.isHostOverride) {
-		const { url, mimeType } = await rasterizePage({
-			page,
-			assets: docIr.assets,
-			...(input.brandKit ? { brandKit: input.brandKit } : {}),
-			pixelRatio: input.pixelRatio ?? 2,
-			mimeType: RASTER_MIME[format],
-			quality: request.quality,
-			includeBackground: input.includeBackground ?? true,
-			resolvedDocument: exportResolutionFor(docIr),
-		});
-		return { filename: `${page.id}.${format}`, data: url, mimeType };
+		try {
+			const { url, mimeType } = await rasterizePage({
+				page,
+				assets: docIr.assets,
+				...(input.brandKit ? { brandKit: input.brandKit } : {}),
+				pixelRatio: input.pixelRatio ?? 2,
+				mimeType: RASTER_MIME[format],
+				quality: request.quality,
+				includeBackground: input.includeBackground ?? true,
+				resolvedDocument: exportResolutionFor(docIr),
+				...(request.isCancelled ? { isCancelled: request.isCancelled } : {}),
+			});
+			return { filename: `${page.id}.${format}`, data: url, mimeType };
+		} catch (error) {
+			if (error instanceof RasterizePageCancelledError) {
+				throw new CanvasExportCancelledError();
+			}
+			throw error;
+		}
 	}
 	return input.exporter(
 		{
@@ -232,10 +283,10 @@ export interface RenderWholeDocArtifactInput {
 }
 
 /**
- * Render the ONE artifact whole-document formats (PDF/JSON) produce, over an
+ * Render the ONE artifact whole-document formats (PDF/print PDF/JSON) produce, over an
  * IR scoped to exactly `pages` — the Bug 2/Bug 3 fix: `all`/`pages`/
  * `selection` scopes must never leak the full unscoped document into a
- * PDF/JSON export.
+ * PDF/print PDF/JSON export.
  */
 export async function renderWholeDocArtifact(
 	input: RenderWholeDocArtifactInput,

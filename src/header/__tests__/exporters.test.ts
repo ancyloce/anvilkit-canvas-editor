@@ -163,13 +163,14 @@ describe("built-in raster exporters (B-18, AC-010)", () => {
 		expect(artifact.mimeType).toBe("application/json");
 	});
 
-	it("the default exporter map covers all six FR-151 formats", () => {
-		// FR-151 / AC-010: PNG, JPG, WebP, SVG, PDF, JSON all export with zero
-		// host wiring (SVG via core's serializer, PDF via raster-embed).
+	it("the default exporter map covers all seven FR-151 formats", () => {
+		// FR-151 / AC-010: PNG, JPG, WebP, SVG, PDF, print PDF, and JSON all
+		// export with zero host wiring.
 		expect(Object.keys(DEFAULT_CANVAS_EXPORTERS).sort()).toEqual([
 			"jpeg",
 			"json",
 			"pdf",
+			"pdf-print",
 			"png",
 			"svg",
 			"webp",

@@ -1,6 +1,14 @@
 "use client";
 
-import type { CanvasExportWarning } from "@anvilkit/canvas-core";
+import type {
+	CanvasExportDiagnostic,
+	CanvasExportWarning,
+} from "@anvilkit/canvas-core";
+import {
+	CanvasExportDiagnosticError,
+	canvasExportDiagnosticsForWarnings,
+	normalizeCanvasExportError,
+} from "@anvilkit/canvas-core";
 import { useMemo } from "react";
 import {
 	type CanvasEditorActions,
@@ -14,6 +22,7 @@ import {
 	useCanvasStudio,
 } from "../context/canvas-studio-context.js";
 import {
+	assertExportWithinLimits,
 	isSelectionResult,
 	renderPageArtifact,
 	renderWholeDocArtifact,
@@ -26,7 +35,7 @@ import type {
 	CanvasExportFormat,
 	CanvasExportRequest,
 } from "./types.js";
-import { CanvasExportEmptyError } from "./types.js";
+import { CanvasExportCancelledError, CanvasExportEmptyError } from "./types.js";
 
 /**
  * PRD §11.2 headless export request — format + page scope + output knobs.
@@ -50,6 +59,10 @@ export interface CanvasExportActionRequest {
 	readonly quality?: number;
 	/** Output scale factor. Defaults to 1. */
 	readonly resolution?: number;
+	/** Hard-limit overrides for this headless request. */
+	readonly exportLimits?: CanvasExportRequest["limits"];
+	/** Print metadata for `pdf-print`; defaults to the bounded raster contract. */
+	readonly print?: CanvasExportRequest["print"];
 	/** Paint the page background for raster formats. Defaults to `true`. */
 	readonly includeBackground?: boolean;
 }
@@ -87,7 +100,7 @@ export interface CanvasStudioActions extends CanvasEditorActions {
 	 * code that wants export bytes programmatically (e.g. a custom
 	 * "download all" feature, or a server bridge), distinct from
 	 * {@link CanvasEditorActions.requestExport}, which only opens the dialog
-	 * UI. Uses the built-in exporters — all six formats ship with no host
+	 * UI. Uses the built-in exporters — all seven formats ship with no host
 	 * wiring (AC-010); a host needing a fully custom exporter should call
 	 * that exporter function directly instead of this facade.
 	 */
@@ -100,7 +113,11 @@ async function exportImpl(
 ): Promise<CanvasExportResult> {
 	const exporter = DEFAULT_CANVAS_EXPORTERS[request.format];
 	if (!exporter) {
-		throw new Error(`No built-in exporter for format "${request.format}".`);
+		throw new CanvasExportDiagnosticError(
+			normalizeCanvasExportError(undefined, {
+				unsupportedFormat: request.format,
+			}),
+		);
 	}
 	const ir = ctx.getIR();
 	const scope = request.scope ?? "current";
@@ -109,6 +126,8 @@ async function exportImpl(
 		quality: (request.quality ?? 92) / 100,
 		resolution,
 		stripMetadata: true,
+		...(request.exportLimits ? { limits: request.exportLimits } : {}),
+		...(request.print ? { print: request.print } : {}),
 	};
 	const pixelRatio = 2 * resolution;
 	const includeBackground = request.includeBackground ?? true;
@@ -124,16 +143,35 @@ async function exportImpl(
 			? { resolvedDocument: ctx.resolvedDocumentStore.getState().resolved }
 			: {}),
 	});
+	const costPages = isSelectionResult(resolved)
+		? [resolved.page]
+		: resolved.pages;
+	if (costPages.length === 0) {
+		throw new CanvasExportEmptyError();
+	}
+	assertExportWithinLimits({
+		format: request.format,
+		pages: costPages,
+		pixelRatio,
+		requestedScale: resolution,
+		...(request.exportLimits ? { limits: request.exportLimits } : {}),
+	});
 
 	const artifacts: CanvasExportResultArtifact[] = [];
 	const warnings: CanvasExportWarning[] = [];
+	const diagnostics: CanvasExportDiagnostic[] = [];
 	const collect = (artifact: CanvasExportArtifact, pageId?: string): void => {
 		artifacts.push({
 			filename: artifact.filename,
 			blob: toBlob(artifact.data, artifact.mimeType),
 			...(pageId !== undefined ? { pageId } : {}),
 		});
-		if (artifact.warnings) warnings.push(...artifact.warnings);
+		if (artifact.warnings) {
+			warnings.push(...artifact.warnings);
+			diagnostics.push(
+				...canvasExportDiagnosticsForWarnings(artifact.warnings),
+			);
+		}
 	};
 	// PRD §11.1: notify the host's `onExport` on every successful resolution
 	// of this action, in addition to the resolved promise the caller already
@@ -143,6 +181,7 @@ async function exportImpl(
 			format: request.format,
 			artifacts,
 			warnings,
+			diagnostics,
 		};
 		ctx.onExport?.(result);
 		return result;
@@ -163,10 +202,6 @@ async function exportImpl(
 		});
 		collect(artifact, resolved.page.id);
 		return finish();
-	}
-
-	if (resolved.pages.length === 0) {
-		throw new CanvasExportEmptyError();
 	}
 
 	if (WHOLE_DOC_FORMATS.has(request.format)) {
@@ -202,6 +237,31 @@ async function exportImpl(
 	return finish();
 }
 
+async function exportWithDiagnostics(
+	ctx: CanvasStudioContextValue,
+	request: CanvasExportActionRequest,
+): Promise<CanvasExportResult> {
+	try {
+		return await exportImpl(ctx, request);
+	} catch (error) {
+		if (
+			error instanceof CanvasExportDiagnosticError ||
+			error instanceof CanvasExportEmptyError ||
+			error instanceof CanvasExportCancelledError ||
+			(error !== null &&
+				typeof error === "object" &&
+				"code" in error &&
+				error.code === "CANVAS_EXPORT_BUDGET_EXCEEDED")
+		) {
+			throw error;
+		}
+		throw new CanvasExportDiagnosticError(
+			normalizeCanvasExportError(error, { source: "renderer" }),
+			error,
+		);
+	}
+}
+
 /** Build a {@link CanvasStudioActions} facade over a studio context — the
  * `export`-augmented sibling of {@link createCanvasEditorActions}. */
 export function createCanvasStudioActions(
@@ -209,7 +269,7 @@ export function createCanvasStudioActions(
 ): CanvasStudioActions {
 	return {
 		...createCanvasEditorActions(ctx),
-		export: (request) => exportImpl(ctx, request),
+		export: (request) => exportWithDiagnostics(ctx, request),
 	};
 }
 
@@ -226,7 +286,8 @@ export function useCanvasStudioActions(): CanvasStudioActions {
 	return useMemo(
 		() => ({
 			...editorActions,
-			export: (request: CanvasExportActionRequest) => exportImpl(ctx, request),
+			export: (request: CanvasExportActionRequest) =>
+				exportWithDiagnostics(ctx, request),
 		}),
 		[editorActions, ctx],
 	);
