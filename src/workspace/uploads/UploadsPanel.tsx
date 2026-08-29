@@ -2,7 +2,7 @@
 
 import { Button } from "@anvilkit/ui/button";
 import * as React from "react";
-import { useRef, useSyncExternalStore } from "react";
+import { lazy, Suspense, useRef, useSyncExternalStore } from "react";
 import {
 	retryUploadImpl,
 	uploadFilesImpl,
@@ -16,6 +16,10 @@ import { ASSET_DRAG_MIME } from "./CanvasDropZone.js";
 import { runUploadWork } from "./upload-failure.js";
 
 const EMPTY_TASKS: never[] = [];
+const AssetHealthPanel = lazy(async () => {
+	const module = await import("./AssetHealthPanel.js");
+	return { default: module.AssetHealthPanel };
+});
 
 /**
  * The Uploads dock panel (B-10, FR-091/092) — fills the M0-08 stub. File
@@ -198,6 +202,9 @@ export function UploadsPanel(): React.JSX.Element {
 					))}
 				</ul>
 			) : null}
+			<Suspense fallback={null}>
+				<AssetHealthPanel />
+			</Suspense>
 		</div>
 	);
 }
