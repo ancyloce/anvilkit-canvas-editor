@@ -715,7 +715,8 @@ describe("cp1-005 — through <CanvasStudio>", () => {
 		expect(hoisted.sharedStoreReads).toBe(1);
 	});
 
-	it("never touches the local store when the host owns assets", async () => {
+	it("rehydrates an older local asset even when the host owns new ingress", async () => {
+		hoisted.sharedStore.current = storeHolding("a1");
 		render(
 			<CanvasStudio
 				initialIR={irWithLocalImage()}
@@ -725,12 +726,10 @@ describe("cp1-005 — through <CanvasStudio>", () => {
 		);
 		await flush();
 
-		// No store constructed, no scan, and the host's URI passed through
-		// exactly as the document recorded it.
-		expect(hoisted.sharedStoreReads).toBe(0);
-		expect(minted).toBe(0);
-		expect(hoisted.imageUrls.at(-1)).toBe(
-			"blob:http://localhost/a1-from-a-previous-page",
-		);
+		// Host ingress suppresses only the built-in picker/uploader. E3 composes
+		// the local byte source so an existing document still renders everywhere.
+		expect(hoisted.sharedStoreReads).toBe(1);
+		expect(minted).toBe(1);
+		expect(hoisted.imageUrls.at(-1)).toBe("blob:studio/1");
 	});
 });
