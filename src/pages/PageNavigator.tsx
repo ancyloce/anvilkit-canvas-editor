@@ -80,7 +80,10 @@ export function PageNavigator({
 	const thumbnails = usePageThumbnails({
 		pages,
 		activePageId,
-		assets: ctx.ir.assets,
+		assets: ctx.effectiveAssets ?? ctx.ir.assets,
+		...(ctx.interactionPerformance
+			? { interactionPerformance: ctx.interactionPerformance }
+			: {}),
 		...(resolvedDocument ? { resolvedDocument } : {}),
 	});
 

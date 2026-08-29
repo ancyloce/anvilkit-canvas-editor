@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+	CanvasAssetRef,
 	CanvasExportDiagnostic,
 	CanvasExportWarning,
 	CanvasIR,
@@ -22,6 +23,15 @@ import type {
 	CanvasAssetUploader,
 	CanvasPickedAsset,
 } from "../assets/adapter-types.js";
+import type { CanvasDocumentPortabilityMode } from "../assets/asset-portability.js";
+import type {
+	CanvasAssetResolver,
+	CanvasEffectiveAssetEntry,
+} from "../assets/effective-asset-resolver.js";
+import type {
+	CanvasAssetMigrationResult,
+	CanvasAssetMigrationRunOptions,
+} from "../assets/host-asset-migration.js";
 import type { CanvasLayoutEventHandler } from "../auto-layout/events.js";
 import type { BrandKit } from "../brand/brand-kit.js";
 import type { CanvasAnalyticsSink } from "../component-libraries/analytics.js";
@@ -30,6 +40,7 @@ import type {
 	CanvasKindInspector,
 	CanvasKindRenderer,
 } from "../extensions/editor-extension.js";
+import type { CanvasInteractionPerformanceTracker } from "../perf/interaction-performance.js";
 import type { AiJobStoreApi } from "../stores/ai-job-store.js";
 import type { ComponentScopeStoreApi } from "../stores/component-scope-store.js";
 import type { CropStoreApi } from "../stores/crop-store.js";
@@ -156,6 +167,17 @@ export interface CanvasStudioContextValue {
 	 */
 	pathEditStore: PathEditStoreApi;
 	getIR: CanvasIRGetter;
+	/**
+	 * The live document projected through the single effective asset table.
+	 * Rendering/export only: persistence and commands continue to use {@link ir}.
+	 */
+	effectiveIR?: CanvasIR;
+	/** Exact table shared by stage, thumbnails, preflight, and every exporter. */
+	effectiveAssets?: Record<string, CanvasAssetRef>;
+	/** Source and health evidence for {@link effectiveAssets}. */
+	assetResolutions?: Record<string, CanvasEffectiveAssetEntry>;
+	/** Re-run the full effective-table chain while keeping document metadata intact. */
+	retryAssetResolution?: (assetId?: string) => void;
 	commit: (cmd: AnyCanvasCommand) => CanvasIR;
 	/**
 	 * Apply many commands as one undoable transaction — a single undo step.
@@ -193,6 +215,8 @@ export interface CanvasStudioContextValue {
 	 * reference-identical across resolutions (TD §5.4).
 	 */
 	resolvedDocumentStore?: ResolvedDocumentStoreApi;
+	/** Content-free timing coordinator for direct-manipulation phases. */
+	interactionPerformance?: CanvasInteractionPerformanceTracker;
 	/**
 	 * Replace the WHOLE document with an unrelated `CanvasIR` snapshot (P0-9) —
 	 * not a normal edit, so it does not go through {@link commit}. Resets undo/
@@ -385,9 +409,9 @@ export interface CanvasStudioContextValue {
 	 */
 	onComponentEvent?: CanvasComponentEventHandler;
 	/**
-	 * AC-010 (T-M5-03): true when the document declares a capability this
-	 * build does not implement. The commit pipeline blocks mutating commands;
-	 * render and export stay available (read-only materialized preview).
+	 * True when the document declares an unsupported capability or the current
+	 * authorization session lacks `document.write`. The commit pipeline blocks
+	 * mutations; render, selection, comments, and export stay available.
 	 */
 	documentReadOnly?: boolean;
 	/**
@@ -412,6 +436,17 @@ export interface CanvasStudioContextValue {
 	 */
 	assetPicker?: CanvasAssetPicker;
 	assetUploader?: CanvasAssetUploader;
+	/** Product-selected asset representation contract. */
+	assetPortabilityMode?: CanvasDocumentPortabilityMode;
+	/**
+	 * Upload local bytes and atomically migrate every reference before sharing.
+	 * Always preserves the document on a blocked/failed result.
+	 */
+	migrateAssetsForSharing?: (
+		options?: CanvasAssetMigrationRunOptions,
+	) => Promise<CanvasAssetMigrationResult>;
+	/** Host lookup/signed-URL refresh source used by the effective table. */
+	assetResolver?: CanvasAssetResolver;
 	/** Upload task registry (B-10). Provided by `<CanvasStudio>`. */
 	uploadStore?: UploadStoreApi;
 	/**
@@ -503,7 +538,13 @@ export const CanvasStudioContext =
  */
 export type CanvasStudioStableValue = Omit<
 	CanvasStudioContextValue,
-	"ir" | "activePageId" | "stage" | "documentReadOnly"
+	| "ir"
+	| "effectiveIR"
+	| "effectiveAssets"
+	| "assetResolutions"
+	| "activePageId"
+	| "stage"
+	| "documentReadOnly"
 >;
 
 /** Stable-only context (W16). Provided alongside {@link CanvasStudioContext}. */

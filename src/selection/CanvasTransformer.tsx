@@ -421,6 +421,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		activePageId,
 		resolvedDocumentStore,
 		fieldPreviewStore,
+		interactionPerformance,
 	} = useCanvasStudio();
 	// Hide the resize/rotate transformer while the crop editor owns the handles.
 	const croppingId = useSyncExternalStore(
@@ -574,14 +575,26 @@ export function CanvasTransformer(): React.JSX.Element | null {
 
 	const onTransform = useCallback(() => {
 		if (!transformingRef.current || !sizeLabelRef.current?.visible()) return;
-		if (activeAnchorName(transformerRef.current) === "rotater")
+		const activeAnchor = activeAnchorName(transformerRef.current);
+		const performanceFrame = interactionPerformance?.begin(
+			activeAnchor === "rotater" ? "rotate" : "resize",
+			resolvedDocumentStore?.getState().resolved.records.size ?? 0,
+		);
+		const stageStartedAt = interactionPerformance?.now() ?? 0;
+		if (activeAnchor === "rotater")
 			refreshAngleBadge();
 		else refreshSizeBadge();
 		// T-M4-07: resizing an Auto Layout frame previews through the resolver
 		// overlay — pushing the live candidate bounds into the field preview
 		// store re-resolves children reflow on-screen without ever writing the
 		// IR. Cleared on transform end before the single gesture commit.
-		if (!stage || !fieldPreviewStore || !resolvedDocumentStore) return;
+		if (!stage || !fieldPreviewStore || !resolvedDocumentStore) {
+			interactionPerformance?.completeStageUpdate(
+				performanceFrame,
+				stageStartedAt,
+			);
+			return;
+		}
 		const ir = getIR();
 		const view = resolvedDocumentStore.getState().view;
 		const entries: Record<string, Record<string, unknown>> = {};
@@ -601,6 +614,10 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		if (Object.keys(entries).length > 0) {
 			fieldPreviewStore.getState().setPreviews(entries);
 		}
+		interactionPerformance?.completeStageUpdate(
+			performanceFrame,
+			stageStartedAt,
+		);
 	}, [
 		refreshAngleBadge,
 		refreshSizeBadge,
@@ -610,9 +627,12 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		resolvedDocumentStore,
 		getIR,
 		selectedIds,
+		interactionPerformance,
 	]);
 
 	const onTransformEnd = useCallback(() => {
+		interactionPerformance?.end("resize");
+		interactionPerformance?.end("rotate");
 		// FIRST, ahead of every early return below — the content layer must never
 		// be left unclickable because a gesture ended without a commit (K-15).
 		resumeContentHitGraph();
@@ -682,6 +702,7 @@ export function CanvasTransformer(): React.JSX.Element | null {
 		fieldPreviewStore,
 		resolvedDocumentStore,
 		resumeContentHitGraph,
+		interactionPerformance,
 	]);
 
 	if (croppingId) return null;

@@ -123,7 +123,10 @@ export function PagesCanvas({
 	const thumbnails = usePageThumbnails({
 		pages,
 		activePageId,
-		assets: ctx.ir.assets,
+		assets: ctx.effectiveAssets ?? ctx.ir.assets,
+		...(ctx.interactionPerformance
+			? { interactionPerformance: ctx.interactionPerformance }
+			: {}),
 		...(resolvedDocument ? { resolvedDocument } : {}),
 	});
 	const addWidth = (pages[0]?.size.width ?? 0) * zoom;

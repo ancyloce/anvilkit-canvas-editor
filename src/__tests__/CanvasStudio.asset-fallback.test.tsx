@@ -202,6 +202,29 @@ describe("cp1-004 precedence — the fallback is a floor, never an override", ()
 		expect(ctx?.pickAssets).toBeTypeOf("function");
 		// Deliverable 3: this is what un-gates the Image tool in `ToolStrip`.
 		expect(ctx?.hasImagePicker).toBe(true);
+		expect(ctx?.assetPortabilityMode).toBe("local-only");
+	});
+
+	it("does not create browser-local ingress in hosted-reference mode", () => {
+		mount({ assetPortabilityMode: "hosted-reference" });
+		expect(mocks.createFallback).not.toHaveBeenCalled();
+		expect(ctx?.assetPicker).toBeUndefined();
+		expect(ctx?.assetUploader).toBeUndefined();
+		expect(ctx?.hasImagePicker).toBe(false);
+		expect(ctx?.assetPortabilityMode).toBe("hosted-reference");
+	});
+
+	it("keeps local authoring when only a host migration uploader is supplied", async () => {
+		mount({ assetMigrationUploader: hostUploader });
+		expect(mocks.createFallback).toHaveBeenCalledTimes(1);
+		expect(ctx?.assetUploader).toBeDefined();
+		expect(ctx?.assetUploader).not.toBe(hostUploader);
+		expect(ctx?.migrateAssetsForSharing).toBeTypeOf("function");
+		await expect(ctx?.migrateAssetsForSharing?.()).resolves.toMatchObject({
+			status: "ready",
+			unresolvedAssets: [],
+		});
+		expect(hostUploader.upload).not.toHaveBeenCalled();
 	});
 });
 

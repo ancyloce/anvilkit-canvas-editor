@@ -43,6 +43,7 @@ export function ToolInteractionLayer({
 		isolationStore,
 		cropStore,
 		resolvedDocumentStore,
+		interactionPerformance,
 	} = useCanvasStudio();
 
 	const ctx = useMemo<ToolContext | null>(() => {
@@ -124,6 +125,7 @@ export function ToolInteractionLayer({
 			target: Konva.Node,
 		) => {
 			const activeId = toolStore.getState().activeTool;
+			if (phase === "up") interactionPerformance?.end("drag");
 			const tool = registry[activeId];
 			if (!tool) return;
 			const hook =
@@ -135,6 +137,16 @@ export function ToolInteractionLayer({
 			if (!hook) return;
 			const ptr = getStagePointer(stage);
 			if (!ptr) return;
+			const performanceFrame =
+				phase === "move" && activeId === "select"
+					? interactionPerformance?.begin(
+							"drag",
+							resolvedDocumentStore?.getState().resolved.records.size ?? 0,
+						)
+					: undefined;
+			const stageStartedAt = performanceFrame
+				? interactionPerformance?.now()
+				: undefined;
 			const shiftKey = "shiftKey" in evt ? Boolean(evt.shiftKey) : false;
 			hook(
 				{
@@ -147,6 +159,12 @@ export function ToolInteractionLayer({
 				},
 				ctx,
 			);
+			if (stageStartedAt !== undefined) {
+				interactionPerformance?.completeStageUpdate(
+					performanceFrame,
+					stageStartedAt,
+				);
+			}
 		};
 
 		// Coalesce pointermove to one dispatch per animation frame. Each move
@@ -221,6 +239,7 @@ export function ToolInteractionLayer({
 		stage.on("pointermove", onMove);
 		stage.on("pointerup", onUp);
 		return () => {
+			interactionPerformance?.end("drag");
 			if (moveRaf && hasRaf) cancelAnimationFrame(moveRaf);
 			pendingMove = null;
 			removeWindowFallback();
@@ -228,7 +247,14 @@ export function ToolInteractionLayer({
 			stage.off("pointermove", onMove);
 			stage.off("pointerup", onUp);
 		};
-	}, [stage, ctx, registry, toolStore]);
+	}, [
+		stage,
+		ctx,
+		registry,
+		toolStore,
+		interactionPerformance,
+		resolvedDocumentStore,
+	]);
 
 	// Activate / deactivate hooks + cursor.
 	useEffect(() => {

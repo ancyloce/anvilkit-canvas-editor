@@ -8,6 +8,7 @@ import type {
 } from "@anvilkit/canvas-core";
 import { use, useCallback, useEffect, useRef } from "react";
 import type { PagePreviewPatch } from "../stores/field-preview-store.js";
+import { fieldInteractionKind } from "../perf/interaction-performance.js";
 import {
 	CanvasStudioContext,
 	CanvasStudioStableContext,
@@ -138,6 +139,7 @@ export function useFieldContract<T>(
 			? `page:${contract.page.id}`
 			: contract.nodes.map((n) => n.id).join(",")
 		: "";
+	const interactionKind = fieldInteractionKind(fieldId);
 	// The ONLY thing that used to clear a preview was an explicit commit/cancel
 	// on the field itself, so any interruption — unmount, a selection change that
 	// never fires the input's blur, a peer deleting the edited node — stranded
@@ -151,13 +153,18 @@ export function useFieldContract<T>(
 			if (!previewing.current) return;
 			previewing.current = false;
 			previewStore?.getState().clearPreviews();
+			ctx?.interactionPerformance?.end(interactionKind);
 		},
-		[previewStore, targetKey],
+		[ctx, interactionKind, previewStore, targetKey],
 	);
 	const preview = useCallback(
 		(value: T) => {
 			const store = ctx?.fieldPreviewStore;
 			if (!contract || !store) return;
+			ctx.interactionPerformance?.begin(
+				interactionKind,
+				ctx.resolvedDocumentStore?.getState().resolved.records.size ?? 0,
+			);
 			if ("page" in contract) {
 				store.getState().setPagePreviews({
 					[contract.page.id]: contract.buildPatch(contract.page, value),
@@ -172,17 +179,19 @@ export function useFieldContract<T>(
 			store.getState().setPreviews(entries);
 			previewing.current = true;
 		},
-		[contract, ctx],
+		[contract, ctx, interactionKind],
 	);
 	const cancel = useCallback(() => {
 		previewing.current = false;
 		ctx?.fieldPreviewStore?.getState().clearPreviews();
-	}, [ctx]);
+		ctx?.interactionPerformance?.end(interactionKind);
+	}, [ctx, interactionKind]);
 	const commit = useCallback(
 		(value: T) => {
 			if (!contract || !ctx) return;
 			previewing.current = false;
 			ctx.fieldPreviewStore?.getState().clearPreviews();
+			ctx.interactionPerformance?.end(interactionKind);
 			if ("page" in contract) {
 				const cmd = contract.buildCommand(contract.page, value);
 				const mergeKey = `field:${fieldId}:${contract.page.id}`;
@@ -211,7 +220,7 @@ export function useFieldContract<T>(
 			if (coalesce && ctx.commitCoalesced) ctx.commitCoalesced(cmd, mergeKey);
 			else ctx.commit(cmd);
 		},
-		[coalesce, contract, ctx, fieldId],
+		[coalesce, contract, ctx, fieldId, interactionKind],
 	);
 	return {
 		preview,

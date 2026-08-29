@@ -90,7 +90,7 @@ export function ToolStrip({
 	className,
 	items,
 	renderer,
-}: ToolStripProps): React.JSX.Element {
+}: ToolStripProps): React.JSX.Element | null {
 	const ctx = useCanvasStudio();
 	const t = useCanvasT();
 	const activeTool = useSyncExternalStore(
@@ -110,8 +110,8 @@ export function ToolStrip({
 		() => effectiveToolDescriptors(ctx.toolRegistry, t),
 		[ctx.toolRegistry, t],
 	);
-	const setActiveTool = (id: ToolId): void =>
-		ctx.toolStore.getState().setActiveTool(id);
+	const setActiveTool: (id: ToolId) => void =
+		ctx.toolStore.getState().setActiveTool;
 
 	/** FR-011 rail/overflow button state, identical for both surfaces. */
 	const stateOf = (d: EffectiveToolDescriptor) => ({
@@ -121,6 +121,7 @@ export function ToolStrip({
 			(IMAGE_PICKER_TOOL_IDS.has(d.id) && ctx.hasImagePicker === false) ||
 			(d.disabled?.() ?? false),
 	});
+	if (ctx.documentReadOnly) return null;
 
 	if (renderer) {
 		return (

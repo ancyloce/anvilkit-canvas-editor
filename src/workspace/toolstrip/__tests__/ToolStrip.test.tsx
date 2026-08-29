@@ -140,6 +140,17 @@ describe("ToolStrip built-in coverage (cp3-009)", () => {
 });
 
 describe("ToolStrip disabled/loading states (FR-011)", () => {
+	it("hides the authoring strip for read-only sessions", () => {
+		const h = makeHarness();
+		h.studioCtx.documentReadOnly = true;
+		render(
+			<CanvasStudioContext.Provider value={h.studioCtx}>
+				<ToolStrip />
+			</CanvasStudioContext.Provider>,
+		);
+		expect(screen.queryByTestId("tool-strip")).toBeNull();
+	});
+
 	it("the image tool is enabled by default (lightweight test contexts)", () => {
 		setup();
 		expect(

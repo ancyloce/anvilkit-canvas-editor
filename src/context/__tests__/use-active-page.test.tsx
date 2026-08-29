@@ -36,6 +36,12 @@ function setup(pageName?: string) {
 	const resolvedDocumentStore = createResolvedDocumentStore({
 		sceneStore,
 		fieldPreviewStore,
+		schedulePreviewResolution(callback) {
+			callback();
+			return () => {
+				// This test flushes preview frames synchronously.
+			};
+		},
 	});
 	const disconnect = resolvedDocumentStore.connect();
 	const h = makeHarness({ ir });

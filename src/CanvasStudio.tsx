@@ -39,7 +39,14 @@ import type {
 	CanvasAssetPicker,
 	CanvasAssetUploader,
 } from "./assets/adapter-types.js";
-import { useRehydratedLocalAssets } from "./assets/local-asset-rehydration.js";
+import type { CanvasDocumentPortabilityMode } from "./assets/asset-portability.js";
+import { useEffectiveAssetTable } from "./assets/effective-asset-rehydration.js";
+import type { CanvasAssetResolver } from "./assets/effective-asset-resolver-api.js";
+import {
+	type CanvasAssetMigrationResult,
+	type CanvasAssetMigrationRunOptions,
+	migrateCanvasAssetsForSharing as runAssetMigration,
+} from "./assets/host-asset-migration-api.js";
 import {
 	createLocalAssetFallback,
 	type LocalAssetFallbackFailure,
@@ -81,6 +88,11 @@ import type {
 import { downloadCanvasArtifact } from "./header/download-artifact.js";
 import { PageNavigator } from "./pages/PageNavigator.js";
 import { useDragLayerPromotion } from "./perf/drag-layer.js";
+import {
+	type CanvasInteractionPerformanceHandler,
+	type CanvasInteractionPerformanceTracker,
+	createInteractionPerformanceTracker,
+} from "./perf/interaction-performance.js";
 import { useStaticGroupCache } from "./perf/static-cache.js";
 import {
 	isDocumentCapabilityReadOnly,
@@ -115,8 +127,6 @@ import { DesignBackground } from "./stage/DesignBackground.js";
 import { Grid } from "./stage/Grid.js";
 import { GuideLayoutOverlay } from "./stage/GuideLayoutOverlay.js";
 import { IsolationRenderContext } from "./stage/isolation-render-context.js";
-import { RemoteCursors } from "./stage/RemoteCursors.js";
-import { RemoteSelections } from "./stage/RemoteSelections.js";
 import { RenderLayer } from "./stage/RenderLayer.js";
 import { useStageWindow } from "./stage/stage-window.js";
 import { ViewportCullingController } from "./stage/ViewportCullingController.js";
@@ -211,6 +221,14 @@ export interface CanvasStudioProps {
 	 * flattened per-command changes.
 	 */
 	onChanges?: (changes: readonly CanvasChange[], ir: CanvasIR) => void;
+	/**
+	 * Current host authorization decision. Omit for unrestricted local use.
+	 * Resolve it from the latest session through the optional `/collaboration`
+	 * entrypoint whenever grants refresh.
+	 */
+	canWrite?: boolean;
+	/** Optional non-exported Konva presence chrome supplied by `/collab`. */
+	presenceLayer?: React.ReactNode;
 	/**
 	 * Fires whenever the active page (artboard) changes, with the new
 	 * page id. Used by hosts that want to mirror the active artboard
@@ -318,6 +336,11 @@ export interface CanvasStudioProps {
 	 */
 	onLayoutEvent?: CanvasLayoutEventHandler;
 	/**
+	 * Content-free E4 interaction timings using Core's performance telemetry
+	 * vocabulary. Observer failures never interrupt editing.
+	 */
+	onPerformanceEvent?: CanvasInteractionPerformanceHandler;
+	/**
 	 * Plan 0023 M6-08: host observer for the eight PRD §12 component events.
 	 * No transport ships in this package — the editor emits, the host delivers.
 	 */
@@ -370,27 +393,46 @@ export interface CanvasStudioProps {
 	/** FR-091 upload adapter (B-10) — enables drag-and-drop + the Uploads panel. */
 	assetUploader?: CanvasAssetUploader;
 	/**
+	 * Host-only transport for local-only → hosted-reference migration. Unlike
+	 * `assetUploader`, this does not suppress zero-config local authoring.
+	 */
+	assetMigrationUploader?: CanvasAssetUploader;
+	/**
+	 * Asset representation promised by this product surface. Defaults to
+	 * `"local-only"`. Hosted-reference mode never constructs browser-local
+	 * ingress; packaged mode permits local authoring and embeds on package output.
+	 */
+	assetPortabilityMode?: CanvasDocumentPortabilityMode;
+	/**
+	 * E3 host lookup/refresh source. It composes with live uploads and the local
+	 * store; it does not replace picker/uploader ingress.
+	 */
+	assetResolver?: CanvasAssetResolver;
+	/**
 	 * cp1-004 (PLAN-0035 §5 P1): opt OUT of the built-in local asset fallback.
 	 *
 	 * There are three states, not two:
 	 *
-	 * 1. **A host adapter is present** — any of {@link assetPicker},
+	 * 1. **A host ingress adapter is present** — any of {@link assetPicker},
 	 *    {@link assetUploader} or the legacy {@link onPickAsset}. The host's
-	 *    adapter is used and the fallback is never even constructed. This flag
-	 *    is irrelevant here; a host adapter already wins.
-	 * 2. **No host adapter, flag unset (the default)** — images are ingested
+	 *    ingress adapter is used and the local picker/uploader is never even
+	 *    constructed. Local rehydration still composes with a host
+	 *    {@link assetResolver} unless this flag is true.
+	 * 2. **No host adapter, local-only/packaged mode, flag unset (the default)**
+	 *    — images are ingested
 	 *    into browser-local storage (IndexedDB, degrading to memory), so a bare
 	 *    `<CanvasStudio initialIR={…} />` can accept a drop and un-gate the
 	 *    Image tool with no wiring at all.
-	 * 3. **No host adapter, flag `true`** — images are genuinely unavailable:
+	 * 3. **No host adapter, flag `true` or hosted-reference mode** — images are
+	 *    genuinely unavailable:
 	 *    the Image tool stays disabled and a drop reports "no upload service
 	 *    configured", which is the pre-cp1-004 behaviour. Set this when local
 	 *    storage would be the wrong promise — a host whose documents must be
 	 *    portable across devices, or one under a policy that forbids writing
 	 *    user content to the browser.
 	 *
-	 * Never set this to suppress the fallback while ALSO passing an adapter:
-	 * state 1 already does that, and the flag would be misleading.
+	 * Passing this with a host adapter is meaningful only when policy also
+	 * forbids resolving older browser-local assets from IndexedDB.
 	 */
 	disableLocalAssetFallback?: boolean;
 	/**
@@ -679,10 +721,11 @@ function useEditorStores({
 	initialActivePageId,
 	initialTool,
 	runtime,
+	interactionPerformance,
 }: Pick<
 	CanvasStudioProps,
 	"initialIR" | "initialActivePageId" | "initialTool" | "runtime"
->) {
+> & { interactionPerformance: CanvasInteractionPerformanceTracker }) {
 	const [sceneStore] = useState(() => createSceneStore({ initialIR }));
 	// `runtime` is captured at creation like every other `initial*` prop here
 	// (uncontrolled — see the prop docs): swapping it after mount would silently
@@ -725,7 +768,11 @@ function useEditorStores({
 	// Creation is inert; subscriptions attach in the `connect()` effect below,
 	// so a StrictMode double-invoke of this initializer leaks nothing.
 	const [resolvedDocumentStore] = useState(() =>
-		createResolvedDocumentStore({ sceneStore, fieldPreviewStore }),
+		createResolvedDocumentStore({
+			sceneStore,
+			fieldPreviewStore,
+			interactionPerformance,
+		}),
 	);
 	useEffect(() => resolvedDocumentStore.connect(), [resolvedDocumentStore]);
 	return {
@@ -773,9 +820,18 @@ function useCommitPipeline(
 	onChange: CanvasStudioProps["onChange"],
 	onChanges: CanvasStudioProps["onChanges"],
 	componentScopeStore: ReturnType<typeof createComponentScopeStore>,
+	interactionPerformance: CanvasInteractionPerformanceTracker,
+	documentReadOnly: boolean,
 ) {
 	const onChangeRef = useHostCallbackRef(onChange);
 	const onChangesRef = useHostCallbackRef(onChanges);
+	const writeBlocked = useCallback(
+		(current: CanvasIR): boolean =>
+			documentReadOnly &&
+			(isDocumentCapabilityReadOnly(current) && warnReadOnlyCommitBlocked(current),
+			true),
+		[documentReadOnly],
+	);
 
 	/**
 	 * Plan 0023 M5-03: while a Component Source is open, redirect every
@@ -797,15 +853,13 @@ function useCommitPipeline(
 
 	const commit = useCallback(
 		(command: AnyCanvasCommand): CanvasIR => {
+			const performanceFrame = interactionPerformance.current();
+			const commitStartedAt = performanceFrame
+				? interactionPerformance.now()
+				: 0;
 			const cmd = scoped(command);
 			const current = sceneStore.getState().ir;
-			// AC-010 (T-M5-03): unsupported-capability documents are read-only —
-			// mutating commands are blocked at this single choke point while
-			// render and export stay fully available.
-			if (isDocumentCapabilityReadOnly(current)) {
-				warnReadOnlyCommitBlocked(current);
-				return current;
-			}
+			if (writeBlocked(current)) return current;
 			let next: CanvasIR;
 			try {
 				next = historyStore.getState().commit(current, cmd);
@@ -823,9 +877,22 @@ function useCommitPipeline(
 				const change = commandToChange(cmd as CanvasCommand);
 				onChangesRef.current(change ? [change] : [], next);
 			}
+			interactionPerformance.recordDuration(
+				performanceFrame,
+				"commit",
+				interactionPerformance.now() - commitStartedAt,
+			);
 			return next;
 		},
-		[historyStore, sceneStore, onChangeRef, onChangesRef, scoped],
+		[
+			historyStore,
+			interactionPerformance,
+			sceneStore,
+			onChangeRef,
+			onChangesRef,
+			scoped,
+			writeBlocked,
+		],
 	);
 
 	// §10 field-input contract commit half (B-12): same pipeline as `commit`,
@@ -833,12 +900,13 @@ function useCommitPipeline(
 	// window fold into one undo entry.
 	const commitCoalesced = useCallback(
 		(command: AnyCanvasCommand, mergeKey: string): CanvasIR => {
+			const performanceFrame = interactionPerformance.current();
+			const commitStartedAt = performanceFrame
+				? interactionPerformance.now()
+				: 0;
 			const cmd = scoped(command);
 			const current = sceneStore.getState().ir;
-			if (isDocumentCapabilityReadOnly(current)) {
-				warnReadOnlyCommitBlocked(current);
-				return current;
-			}
+			if (writeBlocked(current)) return current;
 			let next: CanvasIR;
 			try {
 				next = historyStore.getState().commitCoalesced(current, cmd, mergeKey);
@@ -852,9 +920,22 @@ function useCommitPipeline(
 				const change = commandToChange(cmd as CanvasCommand);
 				onChangesRef.current(change ? [change] : [], next);
 			}
+			interactionPerformance.recordDuration(
+				performanceFrame,
+				"commit",
+				interactionPerformance.now() - commitStartedAt,
+			);
 			return next;
 		},
-		[historyStore, sceneStore, onChangeRef, onChangesRef, scoped],
+		[
+			historyStore,
+			interactionPerformance,
+			sceneStore,
+			onChangeRef,
+			onChangesRef,
+			scoped,
+			writeBlocked,
+		],
 	);
 
 	// Apply many commands as ONE undo entry (multi-select move, transform commit,
@@ -862,12 +943,13 @@ function useCommitPipeline(
 	const commitBatch = useCallback(
 		(input: readonly AnyCanvasCommand[], label?: string): CanvasIR => {
 			if (input.length === 0) return sceneStore.getState().ir;
+			const performanceFrame = interactionPerformance.current();
+			const commitStartedAt = performanceFrame
+				? interactionPerformance.now()
+				: 0;
 			const commands = input.map(scoped);
 			const current = sceneStore.getState().ir;
-			if (isDocumentCapabilityReadOnly(current)) {
-				warnReadOnlyCommitBlocked(current);
-				return current;
-			}
+			if (writeBlocked(current)) return current;
 			let next: CanvasIR;
 			try {
 				next = historyStore.getState().commitBatch(current, commands, label);
@@ -893,9 +975,22 @@ function useCommitPipeline(
 					.filter((c): c is CanvasChange => c !== null);
 				onChangesRef.current(changes, next);
 			}
+			interactionPerformance.recordDuration(
+				performanceFrame,
+				"commit",
+				interactionPerformance.now() - commitStartedAt,
+			);
 			return next;
 		},
-		[historyStore, sceneStore, onChangeRef, onChangesRef],
+		[
+			historyStore,
+			interactionPerformance,
+			sceneStore,
+			scoped,
+			onChangeRef,
+			onChangesRef,
+			writeBlocked,
+		],
 	);
 
 	// Undo/redo (E-20): the same onChange/onChanges seam as `commit`. `next ===
@@ -907,31 +1002,25 @@ function useCommitPipeline(
 	// any entry point that seeds `historyStore` directly.
 	const undo = useCallback((): CanvasIR => {
 		const current = sceneStore.getState().ir;
-		if (isDocumentCapabilityReadOnly(current)) {
-			warnReadOnlyCommitBlocked(current);
-			return current;
-		}
+		if (writeBlocked(current)) return current;
 		const next = historyStore.getState().undo(current);
 		if (next === current) return current;
 		sceneStore.getState().setIR(next);
 		onChangeRef.current?.(next, { type: "undo" });
 		onChangesRef.current?.([], next);
 		return next;
-	}, [historyStore, sceneStore, onChangeRef, onChangesRef]);
+	}, [historyStore, sceneStore, onChangeRef, onChangesRef, writeBlocked]);
 
 	const redo = useCallback((): CanvasIR => {
 		const current = sceneStore.getState().ir;
-		if (isDocumentCapabilityReadOnly(current)) {
-			warnReadOnlyCommitBlocked(current);
-			return current;
-		}
+		if (writeBlocked(current)) return current;
 		const next = historyStore.getState().redo(current);
 		if (next === current) return current;
 		sceneStore.getState().setIR(next);
 		onChangeRef.current?.(next, { type: "redo" });
 		onChangesRef.current?.([], next);
 		return next;
-	}, [historyStore, sceneStore, onChangeRef, onChangesRef]);
+	}, [historyStore, sceneStore, onChangeRef, onChangesRef, writeBlocked]);
 
 	const getIR = useCallback(() => sceneStore.getState().ir, [sceneStore]);
 
@@ -980,8 +1069,10 @@ function EditorStage({
 	onExportRecovery,
 	renderErrorDetails,
 	onStageReady,
+	interactionPerformance,
 	dimmedIds,
 	toolRegistry,
+	children,
 }: {
 	t: CanvasT;
 	activePage: CanvasIR["pages"][number];
@@ -1007,9 +1098,11 @@ function EditorStage({
 		| ((info: CanvasErrorDetailsInfo) => React.ReactNode)
 		| undefined;
 	onStageReady: (stage: Konva.Stage | null) => void;
+	interactionPerformance: CanvasInteractionPerformanceTracker;
 	/** C-09 exterior-dim set while isolated; null = no isolation. */
 	dimmedIds: ReadonlySet<string> | null;
 	toolRegistry: ToolRegistry | undefined;
+	children: React.ReactNode;
 }): React.JSX.Element {
 	// The FOOTPRINT box scales with zoom so the page grows/shrinks as a whole
 	// and the multi-page workspace scales every page uniformly. At zoom = 1
@@ -1110,6 +1203,7 @@ function EditorStage({
 									panY={stagePanY}
 									surfaceSize={exportSurfaceSize}
 									onReady={onStageReady}
+									interactionPerformance={interactionPerformance}
 								>
 									{/* Konva warns above 5 physical layers ("recommended maximum
 					    number of layers is 3-5"); this stage used to mount 6 (one per
@@ -1159,10 +1253,9 @@ function EditorStage({
 											<CanvasFocusRing />
 										</Group>
 									</RenderLayer>
-									<RenderLayer name="presence" listening={false}>
-										<RemoteCursors />
-										<RemoteSelections />
-									</RenderLayer>
+					<RenderLayer name="presence" listening={false}>
+						{children}
+					</RenderLayer>
 								</CanvasStage>
 							</div>
 						</div>
@@ -1197,6 +1290,8 @@ export function CanvasStudio({
 	initialTool,
 	onChange,
 	onChanges,
+	canWrite,
+	presenceLayer,
 	onActivePageChange,
 	onSelectionChange,
 	onPickAsset,
@@ -1227,6 +1322,7 @@ export function CanvasStudio({
 	autoLayout = false,
 	localComponents = false,
 	onLayoutEvent,
+	onPerformanceEvent,
 	onComponentEvent,
 	persistenceAdapter,
 	onLoadError,
@@ -1236,6 +1332,9 @@ export function CanvasStudio({
 	onExport,
 	assetPicker,
 	assetUploader,
+	assetMigrationUploader,
+	assetPortabilityMode = "local-only",
+	assetResolver,
 	disableLocalAssetFallback = false,
 	clipboard,
 	children,
@@ -1246,6 +1345,12 @@ export function CanvasStudio({
 		});
 		return initialIR;
 	});
+	const onPerformanceEventRef = useHostCallbackRef(onPerformanceEvent);
+	const [interactionPerformance] = useState(() =>
+		createInteractionPerformanceTracker({
+			onSample: (sample) => onPerformanceEventRef.current?.(sample),
+		}),
+	);
 	const {
 		sceneStore,
 		historyStore,
@@ -1273,6 +1378,7 @@ export function CanvasStudio({
 		initialActivePageId,
 		initialTool,
 		runtime,
+		interactionPerformance,
 	});
 	const ir = useSyncExternalStore(
 		sceneStore.subscribe,
@@ -1334,6 +1440,8 @@ export function CanvasStudio({
 		() => viewportStore.getState().panY,
 		() => viewportStore.getState().panY,
 	);
+	const documentReadOnly =
+		isDocumentCapabilityReadOnly(ir) || canWrite === false;
 	const { commit, commitCoalesced, commitBatch, undo, redo, getIR } =
 		useCommitPipeline(
 			sceneStore,
@@ -1341,6 +1449,8 @@ export function CanvasStudio({
 			onChange,
 			onChanges,
 			componentScopeStore,
+			interactionPerformance,
+			documentReadOnly,
 		);
 	// FR-091: created before `documentStores` so document replacement can abort
 	// in-flight uploads; unmount cleanup lives in the effect below.
@@ -1582,25 +1692,53 @@ export function CanvasStudio({
 	const hostOwnsAssets =
 		Boolean(assetPicker) || Boolean(assetUploader) || Boolean(onPickAsset);
 	const localAssetFallbackEnabled =
-		!hostOwnsAssets && !disableLocalAssetFallback;
+		!hostOwnsAssets &&
+		!disableLocalAssetFallback &&
+		assetPortabilityMode !== "hosted-reference";
+	const [assetResolutionEpoch, setAssetResolutionEpoch] = useState(0);
+	const retryAssetResolution = useCallback((_assetId?: string): void => {
+		// Resolution produces one immutable table for every consumer. A targeted UI
+		// retry therefore refreshes the whole table so stage/export cannot diverge.
+		setAssetResolutionEpoch((epoch) => epoch + 1);
+	}, []);
 
 	/**
-	 * cp1-005 (PLAN-0035 §5 P1): the asset table the STAGE renders against —
-	 * `ir.assets` with every locally-stored `blob:` entry remapped onto a fresh
-	 * object URL, because the one recorded in the document died with the page
-	 * that minted it. The document is never rewritten, so a rehydrated URI can
-	 * never reach `onChange`, the save pipeline or an export.
-	 *
-	 * Gated on the SAME flag as the fallback adapters, deliberately: when the
-	 * host owns asset ingress there is no local store in play, and this must not
-	 * construct one, scan one, or rewrite a URI the host produced. With the flag
-	 * false the hook short-circuits before importing the store module at all.
+	 * E3-T2: one effective table for every visual/export consumer. Local byte
+	 * resolution composes with a host resolver even when host ingress suppresses
+	 * the built-in picker/uploader; only the explicit local-fallback opt-out
+	 * disables IndexedDB resolution.
 	 */
-	const rehydratedAssets = useRehydratedLocalAssets({
+	const effectiveAssetTable = useEffectiveAssetTable({
+		documentId: ir.id,
 		assets: ir.assets,
 		loadedAssets,
-		enabled: localAssetFallbackEnabled,
+		localEnabled: !disableLocalAssetFallback,
+		refreshEpoch: assetResolutionEpoch,
+		...(assetResolver ? { hostResolver: assetResolver } : {}),
 	});
+	const effectiveAssets = effectiveAssetTable.assets;
+	const effectiveIR = useMemo(
+		() =>
+			effectiveAssets === ir.assets ? ir : { ...ir, assets: effectiveAssets },
+		[effectiveAssets, ir],
+	);
+	const assetResolutionEntriesRef = useRef(effectiveAssetTable.entries);
+	useEffect(() => {
+		assetResolutionEntriesRef.current = effectiveAssetTable.entries;
+	}, [effectiveAssetTable.entries]);
+	const hostMigrationUploader = assetMigrationUploader ?? assetUploader;
+	const migrateAssetsForSharing = useCallback(
+		(
+			options: CanvasAssetMigrationRunOptions = {},
+		): Promise<CanvasAssetMigrationResult> =>
+			runAssetMigration({
+				document: { getIR, commitBatch },
+				entries: assetResolutionEntriesRef.current,
+				...(hostMigrationUploader ? { uploader: hostMigrationUploader } : {}),
+				...options,
+			}),
+		[commitBatch, getIR, hostMigrationUploader],
+	);
 
 	// Published by <CanvasToasterBridge> from inside the shell — see it for why
 	// <CanvasStudio>'s own body can never see the real toaster.
@@ -1809,6 +1947,7 @@ export function CanvasStudio({
 			redo,
 			fieldPreviewStore,
 			resolvedDocumentStore,
+			interactionPerformance,
 			rulerGuideStore,
 			isolationStore,
 			componentScopeStore,
@@ -1866,11 +2005,16 @@ export function CanvasStudio({
 			...(effectiveAssetUploader
 				? { assetUploader: effectiveAssetUploader }
 				: {}),
+			...(assetResolver ? { assetResolver } : {}),
 			...(clipboard ? { clipboard } : {}),
 			uploadStore,
+			assetPortabilityMode,
+			migrateAssetsForSharing,
+			retryAssetResolution,
 		}),
 		[
 			historyStore,
+			interactionPerformance,
 			toolStore,
 			selectionStore,
 			focusStore,
@@ -1933,8 +2077,12 @@ export function CanvasStudio({
 			effectiveAssetPicker,
 			pickAssets,
 			effectiveAssetUploader,
+			assetResolver,
 			clipboard,
 			uploadStore,
+			assetPortabilityMode,
+			migrateAssetsForSharing,
+			retryAssetResolution,
 		],
 	);
 
@@ -1963,10 +2111,22 @@ export function CanvasStudio({
 			stage,
 			activePageId,
 			ir,
+			effectiveIR,
+			effectiveAssets,
+			assetResolutions: effectiveAssetTable.entries,
 			// AC-010: WeakMap-cached per document object — free on re-render.
-			documentReadOnly: isDocumentCapabilityReadOnly(ir),
+			documentReadOnly,
 		}),
-		[stableCtxValue, stage, activePageId, ir],
+		[
+			stableCtxValue,
+			stage,
+			activePageId,
+			ir,
+			effectiveIR,
+			effectiveAssets,
+			effectiveAssetTable.entries,
+			documentReadOnly,
+		],
 	);
 
 	// C-09 (FR-055): exterior-dim set while a container is isolated.
@@ -2038,7 +2198,7 @@ export function CanvasStudio({
 			activePage={activePage}
 			activePageId={activePageId}
 			sourceRoot={sourceRoot}
-			assets={rehydratedAssets}
+			assets={effectiveAssets}
 			brandKit={brandKit}
 			width={width}
 			height={height}
@@ -2050,9 +2210,12 @@ export function CanvasStudio({
 			onExportRecovery={exportRecovery}
 			renderErrorDetails={renderErrorDetails}
 			onStageReady={handleStageReady}
+			interactionPerformance={interactionPerformance}
 			dimmedIds={dimmedIds}
 			toolRegistry={effectiveToolRegistry}
-		/>
+		>
+			{presenceLayer}
+		</EditorStage>
 	);
 	// FR-164: the recover-draft prompt rides with the stage so it sits under
 	// the workspace's dialog host when a shell is composed around it.
@@ -2073,7 +2236,7 @@ export function CanvasStudio({
 	// same check as the commit guards, riding with the stage so the bare
 	// layout and any `renderShell` composition both show it. Inline-styled
 	// like the bare layout: partial hosts may not load the compiled CSS.
-	const stageWithChrome = isDocumentCapabilityReadOnly(ir) ? (
+	const stageWithChrome = documentReadOnly ? (
 		<>
 			<div
 				role="status"
@@ -2088,7 +2251,7 @@ export function CanvasStudio({
 			>
 				{t(
 					"canvas.readOnly.banner",
-					"This document requires a capability this editor does not support. Editing is disabled; viewing and export remain available.",
+					"Editing is disabled.",
 				)}
 			</div>
 			{stageWithRecovery}

@@ -181,7 +181,7 @@ export function SceneAccessibilityTree(): React.JSX.Element {
 		if (node.type === "image" || node.type === "svg") {
 			// FR-095 accessible description: a broken asset reference must be
 			// perceivable without sight of the canvas placeholder chrome.
-			if (ctx.ir.assets[node.assetId] === undefined) {
+			if ((ctx.effectiveAssets ?? ctx.ir.assets)[node.assetId] === undefined) {
 				return `${base} — ${t("canvas.a11y.missingAsset", "missing asset")}`;
 			}
 			// §12 alt-text: announce the image's alternative text when set.

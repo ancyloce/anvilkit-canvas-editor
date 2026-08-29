@@ -53,6 +53,39 @@ export type {
 	CanvasAssetUploader,
 	CanvasPickedAsset,
 } from "./assets/adapter-types.js";
+export {
+	assessCanvasDocumentPortability,
+	CANVAS_DOCUMENT_PORTABILITY_BEHAVIORS,
+	type CanvasAssetPortabilityAction,
+	type CanvasAssetPortabilityIssue,
+	type CanvasAssetPortabilityIssueReason,
+	type CanvasDocumentPortabilityAssessment,
+	type CanvasDocumentPortabilityBehavior,
+	type CanvasDocumentPortabilityMode,
+} from "./assets/asset-portability.js";
+export {
+	type CanvasAssetResolutionStatus,
+	type CanvasAssetResolveContext,
+	type CanvasAssetResolver,
+	type CanvasAssetResolverResult,
+	type CanvasEffectiveAssetEntry,
+	type CanvasEffectiveAssetSource,
+	type CanvasEffectiveAssetTable,
+	type ResolveEffectiveAssetTableOptions,
+	resolveEffectiveAssetTable,
+} from "./assets/effective-asset-resolver-api.js";
+export {
+	ASSET_MIGRATION_HISTORY_LABEL,
+	type CanvasAssetMigrationDocumentPort,
+	type CanvasAssetMigrationIssue,
+	type CanvasAssetMigrationIssueReason,
+	type CanvasAssetMigrationProgress,
+	type CanvasAssetMigrationResult,
+	type CanvasAssetMigrationRetryState,
+	type CanvasAssetMigrationRunOptions,
+	type MigrateCanvasAssetsForSharingOptions,
+	migrateCanvasAssetsForSharing,
+} from "./assets/host-asset-migration-api.js";
 // ── Core editor + shell ──────────────────────────────────────────────────────
 export type {
 	CanvasLayoutEditorEvent,
@@ -169,6 +202,29 @@ export {
 	checkForComponentUpdates,
 	collectExternalRefUsage,
 } from "./component-libraries/use-update-check.js";
+// ── Comment threads ──────────────────────────────────────────────────────────
+// Runtime providers and UI live at `/collaboration`; root keeps types only so
+// collaboration-disabled hosts do not pay their eager bundle cost.
+export {
+	type CommentThreadPanelProps,
+	type CanvasCommentNotification,
+	type CanvasCommentNotificationKind,
+	type CanvasCommentNotificationPreferences,
+	type CanvasCommentNotificationProvider,
+	type CanvasCommentMessage,
+	type CanvasCommentUnreadState,
+	type CanvasMemoryCommentNotificationProvider,
+	type CanvasCommentThread,
+	type CanvasCommentThreadErrorCode,
+	type CanvasCommentThreadProvider,
+	type CanvasCommentThreadStatus,
+	type CreateAuthorizedCanvasCommentThreadProviderOptions,
+	type CreateCanvasCommentThreadRequest,
+	type CreateMemoryCanvasCommentNotificationProviderOptions,
+	type CreateMemoryCanvasCommentThreadProviderOptions,
+	type ReplyCanvasCommentThreadRequest,
+	type TransitionCanvasCommentThreadRequest,
+} from "./comments/index.js";
 // ── Context + hooks ──────────────────────────────────────────────────────────
 export {
 	type CanvasIRGetter,
@@ -181,6 +237,50 @@ export {
 	useCanvasStudio,
 	useCanvasT,
 } from "./context/canvas-studio-context.js";
+// ── Sharing authorization ────────────────────────────────────────────────────
+export {
+	type CanvasActivityEventBase,
+	type CanvasActivityEvent,
+	type CanvasActivitySink,
+	type CanvasCollaborationActivityEvent,
+	type CanvasCollaborationRecoveryCode,
+	type CanvasCommentActivityEvent,
+	type CanvasMemoryActivitySink,
+	type CanvasRoleActivityEvent,
+	type CanvasShareActivityEvent,
+	type RecordCanvasRoleChangeInput,
+} from "./sharing/activity-events.js";
+export {
+	type CanvasAuthorizationAction,
+	type CanvasAuthorizationDecision,
+	type CanvasAuthorizationDecisionCode,
+	type CanvasAuthorizationDeny,
+	type CanvasAuthorizationGrant,
+	type CanvasAuthorizationResource,
+	type CanvasAuthorizationScope,
+	type CanvasAuthorizationScopeKind,
+	type CanvasAuthorizationSession,
+	type CanvasCollaborationRole,
+	type ResolveCanvasAuthorizationOptions,
+} from "./sharing/authorization.js";
+export {
+	type CanvasClipboardTextWriter,
+	type CanvasShareLinkAccessCode,
+	type CanvasShareLinkAccessDecision,
+	type CanvasShareLinkAccessRequest,
+	type CanvasShareLinkCreated,
+	type CanvasShareLinkErrorCode,
+	type CanvasShareLinkHostPolicy,
+	type CanvasShareLinkIdentity,
+	type CanvasShareLinkProvider,
+	type CanvasShareLinkRecord,
+	type CanvasShareLinkRestrictions,
+	type CanvasShareLinkRole,
+	type CanvasShareLinkStatus,
+	type CreateCanvasShareLinkRequest,
+	type CreateAuthorizedCanvasShareLinkProviderOptions,
+	type CreateMemoryCanvasShareLinkProviderOptions,
+} from "./sharing/share-links.js";
 // ── Typography: the font catalog (PLAN-0035 P2) ─────────────────────────────
 // `<CanvasStudio fontCatalog>` is the seam. Build a catalog with
 // `createFontCatalog(entries)` and pass it; the editor merges it over
@@ -329,6 +429,14 @@ export {
 	insertTemplateAsNewPages,
 	loadTemplate,
 } from "./panels/template-actions.js";
+export type {
+	CanvasInteractionFrame,
+	CanvasInteractionKind,
+	CanvasInteractionPerformanceHandler,
+	CanvasInteractionPerformanceSample,
+	CanvasInteractionPerformanceTracker,
+	CanvasInteractionPhase,
+} from "./perf/interaction-performance.js";
 export {
 	type CanvasLoadDiagnostics,
 	type CanvasLoadResult,
