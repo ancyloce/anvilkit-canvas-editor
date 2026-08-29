@@ -1,7 +1,12 @@
 {
 	"$schema": "https://typedoc.org/schema.json",
 	"extends": ["../../../../typedoc.base.json"],
-	"entryPoints": ["./src/index.ts", "./src/collab/index.ts", "./src/internal.ts"],
+	"entryPoints": [
+		"./src/index.ts",
+		"./src/collab/index.ts",
+		"./src/collaboration.ts",
+		"./src/internal.ts"
+	],
 	"tsconfig": "./tsconfig.json",
 	"name": "@anvilkit/canvas-editor",
 	"intentionallyNotExported": [

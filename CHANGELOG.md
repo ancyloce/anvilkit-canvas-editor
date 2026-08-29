@@ -34,6 +34,59 @@ does anything:
 
 ## Unreleased
 
+### Sharing, roles, comments, and presence (PLAN-0039 E6)
+
+- Added a fail-closed owner/editor/commenter/viewer authorization matrix with
+  inherited document/page/node/thread scopes, explicit deny precedence, and
+  enforcement at editor command, share provider, comment provider, and Yjs
+  write boundaries. Hosts pass the current document-write decision into the
+  editor while the full resolver remains on the optional collaboration entry,
+  preserving the local editor's eager bundle boundary.
+- Added expiring, revocable, rotatable share links with identity/domain host
+  policy, current-session authorization, and immediate stale-token rejection.
+- Added external anchored comment threads with replies, mentions,
+  resolve/reopen, unread state, preference-aware idempotent notifications, and
+  a keyboard/screen-reader-operable thread panel with focus return.
+- Replaced deferred presence stubs with ephemeral collaborator cursor and
+  stable-ID selection overlays plus an accessible connection/participant view;
+  hosts inject the optional `/collab` overlays through `presenceLayer`.
+- Added closed, content-free activity events for share, role, comment, and
+  collaboration recovery lifecycle changes.
+
+### Granular collaboration data model (PLAN-0039 E5)
+
+- Replaced whole-document last-writer-wins synchronization with schema-v2
+  per-field node/page/component maps, stable-ID orders, parent selection,
+  tombstones, and `Y.Text` rich text.
+- Added one-shot recoverable legacy-room migration, fail-closed mixed/newer
+  schema handling, locally scoped collaborative undo/redo, offline queue state,
+  and explicit reconnect acknowledgement.
+- Added stable recovery diagnostics, invalid-state export, explicit repair from
+  the last valid editor document, and deterministic structural/rich-text
+  concurrency coverage including a 10,000-operation four-replica stress gate.
+
+### Interactive preview performance (PLAN-0039 E4)
+
+- Added a content-free `onPerformanceEvent` observer for input-to-preview,
+  resolution, layout, stage update, thumbnail invalidation, and commit timing
+  across property, color, drag, resize, and rotation interactions.
+- Coalesced rapid field-preview writes into one latest-value resolution per
+  animation frame while keeping committed scene writes and undo synchronous.
+- Derived dirty nodes, ancestors, Auto Layout constraint closures, and
+  component-dependent instances from immutable IR identity so unrelated pages
+  retain their resolved records.
+- Deferred page-thumbnail fingerprinting and rasterization while drag, resize,
+  rotate, color, or property interactions are active, then invalidated once
+  against the latest settled document.
+- Added deterministic 1,000-node and 5,000-node modes. Large documents now
+  rasterize thumbnails in bounded progressive batches and temporarily omit
+  live blur/shadow work during direct manipulation; settled and exported
+  rendering remains full fidelity.
+- Added an isolated CI gate over fixed 100-, 1,000-, and 5,000-node documents
+  plus text-, image-, and component-heavy fixtures. It reports median/p95,
+  enforces the 16.7/50 ms p95 budgets, and fails normalized regressions above
+  15%.
+
 ### Document input safety (PLAN-0039 E1)
 
 - Added document-budget admission to persistence, recovery, import,
