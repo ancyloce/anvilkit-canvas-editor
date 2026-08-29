@@ -16,15 +16,81 @@ including the `disableLocalAssetFallback` opt-out — is in
 ## The asset model
 
 Assets live in `ir.assets` (id → `{ uri, mimeType?, width?, height? }`);
-nodes reference them by `assetId`. Whatever `uri` is stored is what renders in
-the editor *and* what exports embed or reference. **A host adapter should
-return a durable URL (a CDN URL), because the document travels wherever that
-URL resolves.** The built-in fallback deliberately does not — it returns a
-`blob:` handle into this browser's own store, which is exactly why it carries
-the portability caveat below. Intrinsic `width`/`height` matter either way:
+nodes reference them by `assetId`. Persisted metadata is only one input to the
+**effective asset table**: current-session uploads, browser-local bytes,
+host-refreshed URLs, remote references, and embedded data are resolved behind
+one interface without rewriting the document. The stage, page thumbnails,
+print preflight, and every built-in exporter receive that same table, so a
+rehydrated image cannot appear on canvas while disappearing from an export.
+
+**A host adapter should return a durable URL (a CDN URL), because the document
+travels wherever that URL resolves.** The built-in fallback deliberately does
+not — it returns a `blob:` handle into this browser's own store, which is
+exactly why it carries the portability caveat below. Intrinsic
+`width`/`height` matter either way:
 the `original` and `center` fit modes need them (exports approximate as `fit`
 with a typed warning when they're missing), and drop placement uses them for
 initial node bounds.
+
+## Document portability modes
+
+`CanvasStudio` makes the product promise explicit with
+`assetPortabilityMode`. The default is `"local-only"`.
+
+| Mode | New asset ingress | Cross-device/share behavior | Output behavior |
+| --- | --- | --- | --- |
+| `local-only` | Browser-local fallback is allowed. | The live design is valid on this browser. Sharing must migrate local references through a host uploader or block with the exact unresolved asset list. | Render/export use the effective table; portable formats carry bytes according to their format semantics. |
+| `hosted-reference` | A host picker/uploader is required; the browser-local fallback is never constructed. Existing local assets may still be rehydrated so migration can recover them. | Every persisted asset must have an absolute `http:`/`https:` URL and healthy resolution. | References stay hosted; signed URLs may be refreshed by `assetResolver` without mutating persisted metadata. |
+| `packaged` | Local authoring is allowed; bytes are embedded when the package is emitted. | The emitted artifact is self-contained. Any asset that cannot be read/embedded blocks a complete package. | Raster/PDF carry pixels, SVG embeds bytes, and JSON uses `data:` URIs under its configured safety cap. |
+
+Hosts can use `assessCanvasDocumentPortability(assetResolutions, mode)` with
+`useCanvasStudio().assetResolutions` before share/package actions. Its
+`unresolvedAssets` list is deterministic and includes the asset id, recorded
+URI, health status, reason, and required action (`upload`, `embed`, `retry`,
+`replace`, or `reauthorize`). The corresponding executable behavior contract
+is `CANVAS_DOCUMENT_PORTABILITY_BEHAVIORS`; UI and backend workflows should not
+restate these rules independently.
+
+### Migrating a local document before sharing
+
+Provide `assetMigrationUploader` when a product intentionally allows
+browser-local authoring but has a host transport available at share time. It is
+separate from `assetUploader`: migration-only wiring does not suppress the
+zero-config local picker/uploader.
+
+Call `useCanvasStudio().migrateAssetsForSharing()` from the host's share action.
+The workflow preflights the effective table, reads each local blob, and uploads
+one file at a time. It does **not** change the document while uploads are in
+flight. Only after every host result is a valid absolute HTTP(S) reference does
+it commit `asset.migrate` commands as one `"Make assets portable"` history
+entry. That command updates page trees, Component Sources, masks, media
+posters, frame placeholders, and component image overrides even when their
+nodes are locked; one Undo restores both the original references and local
+asset-table entries.
+
+Blocked results contain `unresolvedAssets` with exact asset ids and
+`retryable`/`replaceable` flags. If some uploads succeeded before another
+failed, pass the result's `retryState` into the next call so successful assets
+are not uploaded twice. The local design and its undo history stay untouched
+until the complete transaction succeeds; local blobs are retained after
+migration so Undo can rehydrate them.
+
+### Asset health and recovery UI
+
+The built-in Uploads panel reads `assetResolutions`, so its health list reports
+the same state the stage, thumbnails, preflight, and exporters consume. It
+distinguishes checking, uploading, unavailable, stale, unauthorized, missing,
+and retrying assets and preserves the resolver's precise host message. Retry
+increments a resolution epoch and rebuilds the entire immutable table; it never
+writes a refreshed signed URL into document metadata.
+
+In `hosted-reference` mode, **Make portable** runs the migration workflow above
+with accessible determinate or indeterminate progress. A partial failure keeps
+its `retryState`, so the panel's retry skips uploads that already succeeded.
+Every blocked asset also offers **Replace** when a picker is configured. The
+panel shows replacing, replaced, and replacement-failed states, and a successful
+replacement commits exactly one `asset.migrate` command. Until that command is
+accepted, the original asset table and every node reference remain unchanged.
 
 ## The built-in local adapters (zero config)
 
@@ -56,10 +122,11 @@ format that **carries the bytes**:
 | `json` | **Under a cap.** Local assets inline as `data:` URIs while their combined *source* size is at most `DEFAULT_JSON_INLINE_ASSET_BYTES` (10 MiB). Above the cap nothing is inlined and the artifact carries one `LOCAL_ASSET_NOT_PORTABLE` warning **per** image, naming it — it never emits an unresolvable URI silently. |
 
 So: if the product's documents must move between devices, users, or a server,
-either wire a real `assetUploader` (which stops the fallback being constructed
-at all) or turn images off deliberately with `disableLocalAssetFallback`. If
-they stay on one machine — a scratch pad, a preview, a demo — the default is
-exactly right.
+set `assetPortabilityMode="hosted-reference"` and wire a real host uploader,
+or emit a `"packaged"` artifact. `disableLocalAssetFallback` remains the
+stronger policy switch that also forbids reading older local bytes. If designs
+stay on one machine — a scratch pad, a preview, a demo — the default is exactly
+right.
 
 The per-format detail, all three warning codes, and how to change the JSON cap
 are in
@@ -105,12 +172,15 @@ normally.
 Two properties are worth knowing because they shape what a host can observe:
 
 - **The document is never rewritten.** The fresh URI exists only in the
-  render-time context — it cannot reach `onChange`, a save, or an export. A
-  re-minted `blob:` URI is exactly as unportable as the one it replaces, so
-  persisting it would only move the same breakage one save later.
-- **Rehydration only runs in the zero-config state.** With a host adapter
-  present the editor stays out of it entirely and your URIs reach the renderer
-  untouched.
+  effective table — it cannot reach `onChange` or a save. Stage, thumbnails,
+  preflight, and exporters all read that table, while each exporter decides
+  whether to carry pixels, embed the recovered bytes, or preserve a reference.
+  Persisting the re-minted `blob:` URI would only move the same breakage one
+  save later, so it never enters document state.
+- **Local and host resolution compose.** A host picker/uploader owns new
+  ingress, while older browser-local assets can still rehydrate and a host
+  `assetResolver` can refresh remote references. Only
+  `disableLocalAssetFallback` forbids the IndexedDB read path entirely.
 
 An id the store no longer holds is dropped from the table and renders the
 existing missing-asset placeholder (`canvas.image.missingAsset`) plus the
