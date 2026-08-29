@@ -1,24 +1,22 @@
 /**
- * `@anvilkit/canvas-editor/collab` — the Yjs collaboration prototype (I3-1).
+ * `@anvilkit/canvas-editor/collab` — granular Yjs collaboration for CanvasIR.
  *
  * Isolated from the main editor entry on purpose: nothing in `src/index.ts`
  * imports this subtree, so yjs / y-protocols never enter the measured
  * `dist/index.js` bundle (size-limit, 400 KB gz). yjs + y-protocols are
  * OPTIONAL peer dependencies — install them only when wiring collab.
  *
- * Architectural only (M6 / I3-1): binds the canvas `sceneStore` to a `Y.Doc`
- * and scaffolds presence/awareness. No collaborative UI ships from here.
- *
- * CONSISTENCY MODEL (P0-10): `createCanvasYjsBinding` is whole-document
- * last-writer-wins, not a CRDT over the document tree — two peers editing
- * different nodes concurrently do not merge; one write wins outright. See
- * `createCanvasYjsBinding`'s own doc comment for the full explanation before
- * integrating this in a multi-writer setting. `CanvasCollabAdapter` is the
- * transport-/consistency-model-agnostic shape a future fine-grained adapter
- * (per-node CRDT, or a replicated command log) can implement as a drop-in
- * replacement without changing call sites.
+ * Schema v2 stores pages, nodes, fields, ordering, assets, components, and rich
+ * text in independently addressable shared types. Presence remains ephemeral.
  */
-export const CANVAS_COLLAB_VERSION = "0.1.0";
+export const CANVAS_COLLAB_VERSION = "0.2.0";
+
+export {
+	type CollaboratorPresenceListProps,
+	CollaboratorPresenceList,
+} from "./CollaboratorPresenceList.js";
+export { RemoteCursors } from "../stage/RemoteCursors.js";
+export { RemoteSelections } from "../stage/RemoteSelections.js";
 
 export {
 	type DocumentSnapshotSource,
@@ -28,10 +26,34 @@ export {
 } from "../stores/replace-document.js";
 export {
 	type CanvasCollabAdapter,
+	type CanvasCollabConnectionSource,
+	type CanvasCollabConnectionStatus,
+	type CanvasCollabDiagnostic,
+	type CanvasCollabDiagnosticAction,
+	type CanvasCollabDiagnosticCode,
+	type CanvasCollabRecoveryController,
+	type CanvasCollabRecoveryPackage,
+	type CanvasCollabRecoveryState,
+	type CanvasCollabRepairResult,
+	type CanvasCollabSyncController,
+	type CanvasCollabSyncState,
+	type CanvasCollabUndoController,
+	type CanvasCollabUndoOptions,
 	type CanvasYjsBinding,
 	type CreateCanvasYjsBindingOptions,
 	createCanvasYjsBinding,
 } from "./binding.js";
+export {
+	CANVAS_COLLAB_SCHEMA_VERSION,
+	CANVAS_COLLAB_SCHEMA_VERSION_KEY,
+	CanvasCrdtProjectionError,
+	type CanvasCrdtProjectionErrorCode,
+	type CanvasCrdtSharedMap,
+	getCanvasCrdtRoot,
+	type ReadCanvasIRFromCrdtOptions,
+	readCanvasIRFromCrdt,
+	writeCanvasIRToCrdt,
+} from "./crdt-document.js";
 export {
 	decodeCanvasIR,
 	encodeCanvasIR,
@@ -62,6 +84,20 @@ export type {
 	CanvasPresenceSelection,
 	CanvasPresenceState,
 } from "./presence-types.js";
+export {
+	type CanvasLegacyWriteGuard,
+	type CanvasRoomMigrationResult,
+	type CanvasRoomMigrationStatus,
+	LEGACY_RECOVERY_ERROR_KEY,
+	LEGACY_RECOVERY_SNAPSHOT_KEY,
+	LEGACY_ROOM_SCHEMA_VERSION_KEY,
+	type MigrateCanvasCollaborationRoomOptions,
+	migrateCanvasCollaborationRoom,
+	type SeedEmptyCanvasCollaborationRoomOptions,
+	seedEmptyCanvasCollaborationRoom,
+	type WatchLegacyCanvasRoomWritesOptions,
+	watchLegacyCanvasRoomWrites,
+} from "./room-migration.js";
 export {
 	CanvasPresenceContext,
 	type CanvasPresenceSource,
