@@ -6,6 +6,7 @@ import {
 } from "@anvilkit/canvas-core";
 import { describe, expect, it, vi } from "vitest";
 import type { rasterizePage } from "@/render/rasterize-page.js";
+import { createInteractionPerformanceTracker } from "../interaction-performance.js";
 import { pageThumbnailKey, usePageThumbnails } from "../page-thumbnails.js";
 
 function pageWith(id: string, rectIds: string[]): CanvasPage {
@@ -49,6 +50,87 @@ const stubRasterize = (() =>
 	}))) as unknown as () => typeof rasterizePage;
 
 describe("usePageThumbnails", () => {
+	it("progressively rasterizes very-large documents in batches of two", async () => {
+		const { renderHook, act } = await import("@testing-library/react");
+		const settle: Array<() => void> = [];
+		const rasterize = vi.fn(
+			({ page }: { page: CanvasPage }) =>
+				new Promise<{ url: string; mimeType: string }>((resolve) => {
+					settle.push(() =>
+						resolve({
+							url: `data:thumb/${page.id}`,
+							mimeType: "image/png",
+						}),
+					);
+				}),
+		) as unknown as typeof rasterizePage;
+		const pages = ["p1", "p2", "p3", "p4", "p5"].map((id) =>
+			pageWith(id, [`${id}-rect`]),
+		);
+		const resolvedDocument = {
+			records: new Map(
+				Array.from({ length: 5_000 }, (_, index) => [String(index), {}]),
+			),
+		} as never;
+
+		const { result } = renderHook(() =>
+			usePageThumbnails({
+				pages,
+				activePageId: "p1",
+				assets: {},
+				rasterize,
+				resolvedDocument,
+			}),
+		);
+		expect(rasterize).toHaveBeenCalledTimes(2);
+
+		await act(async () => {
+			settle[0]?.();
+			settle[1]?.();
+			await Promise.resolve();
+		});
+		expect(rasterize).toHaveBeenCalledTimes(4);
+		expect(result.current.size).toBe(2);
+
+		await act(async () => {
+			settle[2]?.();
+			settle[3]?.();
+			await Promise.resolve();
+		});
+		expect(result.current.size).toBe(4);
+	});
+
+	it("defers thumbnail work until the active interaction settles", async () => {
+		const { renderHook, act } = await import("@testing-library/react");
+		const phases: string[] = [];
+		const rasterize = stubRasterize();
+		const tracker = createInteractionPerformanceTracker({
+			onSample: (sample) => phases.push(sample.phase),
+		});
+		tracker.begin("property-scrub", 100);
+		renderHook(() =>
+			usePageThumbnails({
+				pages: [pageWith("p1", ["r1"]), pageWith("p2", ["r2"])],
+				activePageId: "p1",
+				assets: {},
+				rasterize,
+				interactionPerformance: tracker,
+			}),
+		);
+		await act(async () => {
+			await Promise.resolve();
+		});
+		expect(rasterize).not.toHaveBeenCalled();
+		expect(phases).not.toContain("thumbnail-invalidation");
+
+		await act(async () => {
+			tracker.end("property-scrub");
+			await Promise.resolve();
+		});
+		expect(rasterize).toHaveBeenCalledTimes(1);
+		expect(phases).toContain("thumbnail-invalidation");
+	});
+
 	it("rasterizes non-active pages, skips the active page, and caches", async () => {
 		const { renderHook, act } = await import("@testing-library/react");
 		const rasterize = stubRasterize();
@@ -94,6 +176,30 @@ describe("usePageThumbnails", () => {
 		).toHaveBeenCalledTimes(2);
 	});
 
+	it("invalidates a cached thumbnail when the effective asset URI changes", async () => {
+		const { renderHook, act } = await import("@testing-library/react");
+		const rasterize = stubRasterize();
+		const pages = [pageWith("p1", ["r1"]), pageWith("p2", ["r2"])];
+		const { rerender } = renderHook(
+			(props: { uri: string }) =>
+				usePageThumbnails({
+					pages,
+					activePageId: "p1",
+					assets: { photo: { id: "photo", uri: props.uri } },
+					rasterize,
+				}),
+			{ initialProps: { uri: "blob:rehydrated-1" } },
+		);
+		await act(async () => {
+			await Promise.resolve();
+		});
+		rerender({ uri: "blob:rehydrated-2" });
+		await act(async () => {
+			await Promise.resolve();
+		});
+		expect(rasterize).toHaveBeenCalledTimes(2);
+	});
+
 	/**
 	 * Plan 0024 T-4.3. `resolvedDocument` changes identity on EVERY resolution,
 	 * including every frame of a live preview, so it was moved out of the effect's
@@ -104,8 +210,8 @@ describe("usePageThumbnails", () => {
 	it("rasterizes with the LATEST resolvedDocument, not the one captured when the effect last ran", async () => {
 		const { renderHook, act } = await import("@testing-library/react");
 		const rasterize = stubRasterize();
-		const first = { marker: "first" } as never;
-		const second = { marker: "second" } as never;
+		const first = { marker: "first", records: new Map() } as never;
+		const second = { marker: "second", records: new Map() } as never;
 		const p1 = pageWith("p1", ["r1"]);
 
 		const { rerender } = renderHook(
@@ -155,6 +261,9 @@ describe("usePageThumbnails", () => {
 	it("does not re-fingerprint inactive pages when only the active page changed (plan 0024 T-4.3)", async () => {
 		const { renderHook, act } = await import("@testing-library/react");
 		const rasterize = stubRasterize();
+		const tracker = createInteractionPerformanceTracker({
+			onSample: vi.fn(),
+		});
 		let fingerprints = 0;
 		const counted: CanvasPage = { ...pageWith("p2", ["r2"]) };
 		Object.defineProperty(counted, "name", {
@@ -176,6 +285,7 @@ describe("usePageThumbnails", () => {
 					activePageId: "p1",
 					assets,
 					rasterize,
+					interactionPerformance: tracker,
 				}),
 			{ initialProps: { pages: [pageWith("p1", ["r1"]), counted] } },
 		);
@@ -185,6 +295,9 @@ describe("usePageThumbnails", () => {
 		const spy = rasterize as unknown as ReturnType<typeof vi.fn>;
 		expect(spy).toHaveBeenCalledTimes(1);
 		expect(fingerprints).toBe(1);
+		act(() => {
+			tracker.begin("drag", 100);
+		});
 
 		// Three preview frames: the ACTIVE page is rebuilt with different content
 		// each time (as `withPreviews` does), every other page reference-identical.
@@ -197,6 +310,9 @@ describe("usePageThumbnails", () => {
 		// Unchanged: the effect never re-ran, so p2 was never re-serialized.
 		expect(fingerprints).toBe(1);
 		expect(spy).toHaveBeenCalledTimes(1);
+		act(() => {
+			tracker.end("drag");
+		});
 	});
 
 	// E-15: no in-flight dedup meant every effect re-run while a page's
@@ -240,10 +356,8 @@ describe("usePageThumbnails", () => {
 		});
 		expect(rasterize).toHaveBeenCalledTimes(1);
 
-		// Settle the stale in-flight rasterize (the array-reference rerender
-		// above already cancelled ITS effect's own subscription per the
-		// existing `cancelled`-flag cleanup — an unrelated, pre-existing
-		// mechanism — so this is just proving it resolves without throwing).
+		// Settle the shared in-flight rasterize. A replacement effect can await
+		// the same promise; the page+key slot remains the single owner of pixels.
 		await act(async () => {
 			resolveRasterize?.({ url: "data:thumb/p2-stale", mimeType: "image/png" });
 			await Promise.resolve();
