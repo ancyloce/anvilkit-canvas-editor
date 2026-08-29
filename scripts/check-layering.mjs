@@ -64,6 +64,14 @@ const LAYERS = [
 			p.startsWith("actions/") ||
 			p.startsWith("assets/") ||
 			p.startsWith("brand/") ||
+			// PLAN-0039 E6: authorization, sharing/activity provider seams,
+			// thread persistence, and the structural presence context are editor
+			// domain logic consumed by CanvasStudio, collab adapters, and UI.
+			// Keep the React thread panel and Yjs adapters one layer above.
+			p.startsWith("sharing/") ||
+			p === "comments/comment-threads.ts" ||
+			p === "collab/presence-types.ts" ||
+			p === "collab/useCanvasPresence.ts" ||
 			// External Component Libraries and brand governance (plan 0021,
 			// D-3): the Provider seam, request store, integrity adapter, and
 			// the effective-policy context. Both sit with `brand/` for the same
@@ -98,6 +106,7 @@ const LAYERS = [
 			p.startsWith("a11y/") ||
 			p.startsWith("chrome/") ||
 			p.startsWith("collab/") ||
+			p.startsWith("comments/") ||
 			p.startsWith("header/") ||
 			p.startsWith("pages/"),
 	},
@@ -115,7 +124,8 @@ const LAYERS = [
 	{
 		domain: "root",
 		rank: 5,
-		match: (p) => p === "index.ts" || p === "internal.ts",
+		match: (p) =>
+			p === "index.ts" || p === "internal.ts" || p === "collaboration.ts",
 	},
 ];
 
@@ -221,6 +231,7 @@ function selfTest() {
 		["text/canvas-text-measurer.ts", "stage/CanvasStage.tsx", true], // leaf importing up
 		["workspace/index.ts", "panels/PropertyInspector.tsx", false], // downward
 		["index.ts", "workspace/index.ts", false], // root -> workspace
+		["collaboration.ts", "comments/index.ts", false],
 		["a11y/ToolAnnouncer.tsx", "unmapped-thing.ts", true], // unmapped importee
 		// --- plan 0021 M0 (T-003) -------------------------------------------
 		// Both new domains are folded into `interaction-core`, so they may
@@ -236,6 +247,12 @@ function selfTest() {
 		// ...and neither domain may reach up into a panel.
 		["component-libraries/request-store.ts", "panels/LibrariesPanel.tsx", true],
 		["brand-governance/effective-policy.tsx", "panels/CompliancePanel.tsx", true],
+		// --- PLAN-0039 E6 collaboration surfaces -----------------------------
+		["stage/RemoteCursors.tsx", "collab/useCanvasPresence.ts", false],
+		["collab/binding.ts", "sharing/activity-events.ts", false],
+		["comments/comment-threads.ts", "sharing/authorization.ts", false],
+		["comments/CommentThreadPanel.tsx", "comments/comment-threads.ts", false],
+		["sharing/share-links.ts", "comments/CommentThreadPanel.tsx", true],
 	];
 	const failures = cases.filter(
 		([importer, importee, expectViolation]) =>

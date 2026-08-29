@@ -139,17 +139,18 @@ const EAGER_GROUP_CEILINGS = [
 
 /**
  * Backstop for eager weight no rule above names. Measured 141,031 B at cp6-002
- * (9 chunks); the ceiling is that + ~5%. Rationale for the tolerance:
- * rebuild-to-rebuild gzip noise is ~2 B (content-hash filename length), one
- * ordinary feature task costs 100 B - 2 kB, and the smallest lazy payload this
- * file guards is 55.9 kB gz. 5% is therefore far above the noise floor, leaves
- * room for a few normal tasks before a deliberate review, and is ~8x smaller
- * than a single catalog regression.
+ * (9 chunks); its original 148,000 B ceiling was deliberately reviewed after
+ * E3 added the public portability contract and effective-asset lifecycle. The
+ * heavy E3 implementations remain behind dynamic imports (health panel, host
+ * migration, and resolver), while the required synchronous surface measured
+ * 149,917 B across 11 eager chunks. The 152,000 B ceiling leaves ~1.3% headroom:
+ * far above rebuild noise, but still ~28x smaller than a single 55.9 kB catalog
+ * regression.
  *
  * Basis: the SUM of per-chunk gzip streams, because that is what a browser
  * actually transfers - each chunk is compressed on its own connection.
  */
-const EAGER_TOTAL_GZIP_CEILING = 148_000;
+const EAGER_TOTAL_GZIP_CEILING = 152_000;
 
 function parseLimitToBytes(limit) {
 	const match = /^([\d.]+)\s*(B|KB|MB)$/i.exec(String(limit).trim());
