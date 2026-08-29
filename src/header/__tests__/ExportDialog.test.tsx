@@ -209,6 +209,34 @@ describe("ExportDialog (B-09, FR-150..154)", () => {
 		);
 	});
 
+	it("preserves the print PDF compound filename in dialog downloads", async () => {
+		const downloads: string[] = [];
+		vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+			this: HTMLAnchorElement,
+		) {
+			downloads.push(this.download);
+		});
+		vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+		vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+		const printPdf: CanvasExporter = () => ({
+			filename: "fallback.print.pdf",
+			data: "%PDF",
+			mimeType: "application/pdf",
+		});
+
+		setup({ "pdf-print": printPdf });
+		await openDialog();
+		fireEvent.click(screen.getByTestId("export-format-pdf-print"));
+		fireEvent.click(screen.getByTestId("export-run"));
+		await waitFor(() => {
+			expect(
+				screen.getByTestId("export-progress").getAttribute("data-phase"),
+			).toBe("completed");
+		});
+
+		expect(downloads).toEqual(["Untitled.print.pdf"]);
+	});
+
 	it("failed exports surface the FR-154 failed phase", async () => {
 		const svg: CanvasExporter = () => {
 			throw new Error("nope");

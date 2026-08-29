@@ -124,7 +124,7 @@ export default function ExportDialog({
 	const [resolution, setResolution] = useState<number>(1);
 	const [quality, setQuality] = useState<number>(92);
 	const [includeBackground, setIncludeBackground] = useState(true);
-	const ir = ctx.getIR();
+	const ir = ctx.effectiveIR ?? ctx.getIR();
 	const [filename, setFilename] = useState(() =>
 		sanitizeExportFilename(ir.title?.trim() || ir.id || "canvas"),
 	);
@@ -457,9 +457,15 @@ export default function ExportDialog({
 
 	function withFilename(fallback: string): string {
 		const stem = sanitizeExportFilename(filename || fallback, "export");
-		const ext = fallback.includes(".")
-			? fallback.slice(fallback.lastIndexOf(".") + 1)
-			: format;
+		// Print PDF's compound suffix is part of its public artifact contract and
+		// distinguishes it from the screen-PDF download. Taking only the final
+		// extension silently collapsed both formats to `<name>.pdf` in the dialog.
+		const ext =
+			format === "pdf-print"
+				? "print.pdf"
+				: fallback.includes(".")
+					? fallback.slice(fallback.lastIndexOf(".") + 1)
+					: format;
 		return `${stem}.${ext}`;
 	}
 

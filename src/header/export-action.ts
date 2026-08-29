@@ -119,7 +119,7 @@ async function exportImpl(
 			}),
 		);
 	}
-	const ir = ctx.getIR();
+	const ir = ctx.effectiveIR ?? ctx.getIR();
 	const scope = request.scope ?? "current";
 	const resolution = request.resolution ?? 1;
 	const exportRequest: CanvasExportRequest = {

@@ -162,7 +162,7 @@ export function ExportMenu({
 		try {
 			const artifact = await exporter(
 				{
-					ir: ctx.getIR(),
+					ir: ctx.effectiveIR ?? ctx.getIR(),
 					activePageId: ctx.activePageId,
 					stage: ctx.stage,
 					...(ctx.brandKit ? { brandKit: ctx.brandKit } : {}),

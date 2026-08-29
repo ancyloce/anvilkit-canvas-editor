@@ -67,6 +67,33 @@ describe("CanvasStudioActions.export() — headless export (§11.2)", () => {
 		expect(parsed.pages.map((p) => p.id)).toEqual(["p1", "p2"]);
 	});
 
+	it("packages the shared effective asset table instead of raw persisted URIs", async () => {
+		const persisted = {
+			...twoPageIR(),
+			assets: {
+				photo: { id: "photo", uri: "blob:https://expired/photo" },
+			},
+		};
+		const effectiveIR = {
+			...persisted,
+			assets: {
+				photo: { id: "photo", uri: "data:image/png;base64,SGk=" },
+			},
+		};
+		const h = makeHarness({ ir: persisted });
+		const actions = createCanvasStudioActions({
+			...h.studioCtx,
+			effectiveIR,
+		});
+
+		const result = await actions.export({ format: "json", scope: "all" });
+		const parsed = JSON.parse(
+			(await result.artifacts[0]?.blob.text()) ?? "{}",
+		) as { assets: Record<string, { uri: string }> };
+		expect(parsed.assets.photo?.uri).toBe("data:image/png;base64,SGk=");
+		expect(persisted.assets.photo.uri).toContain("expired");
+	});
+
 	it("exports print PDF as one default-built-in artifact", async () => {
 		const h = makeHarness({ ir: twoPageIR() });
 		const actions = createCanvasStudioActions(h.studioCtx);
