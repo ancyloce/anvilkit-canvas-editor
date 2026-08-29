@@ -1,0 +1,61 @@
+{
+	"schemaVersion": 1,
+	"capturedAt": "2026-08-28T11:47:23.152Z",
+	"source": "PLAN-0039 E4 nominated Canvas reference desktop",
+	"regressionTolerance": 0.15,
+	"runs": 200,
+	"warmup": 20,
+	"capturePasses": 3,
+	"environment": {
+		"cpuModel": "Intel(R) Core(TM) i5-10300H CPU @ 2.50GHz",
+		"logicalCores": 8,
+		"platform": "linux",
+		"arch": "x64",
+		"release": "5.15.167.4-microsoft-standard-WSL2",
+		"node": "v24.19.0"
+	},
+	"metrics": [
+		{
+			"id": "flat-100",
+			"median": 0.752766500000007,
+			"p95": 1.7503750000000764,
+			"normalizedP95": 0.39924724943364376,
+			"regressionEligible": false
+		},
+		{
+			"id": "flat-1000",
+			"median": 4.866858500000035,
+			"p95": 8.202700999999706,
+			"normalizedP95": 1.8803112907720658,
+			"regressionEligible": true
+		},
+		{
+			"id": "flat-5000",
+			"median": 30.018955500000175,
+			"p95": 43.265111000000616,
+			"normalizedP95": 9.73010382724178,
+			"regressionEligible": true
+		},
+		{
+			"id": "text-1000",
+			"median": 5.514758999997866,
+			"p95": 9.110842000001867,
+			"normalizedP95": 2.0843898546946704,
+			"regressionEligible": true
+		},
+		{
+			"id": "image-1000",
+			"median": 4.760479499997018,
+			"p95": 7.994251000000077,
+			"normalizedP95": 1.8345904917072566,
+			"regressionEligible": true
+		},
+		{
+			"id": "component-1000",
+			"median": 5.6774214999968535,
+			"p95": 8.833733999999822,
+			"normalizedP95": 2.02387877714607,
+			"regressionEligible": true
+		}
+	]
+}
