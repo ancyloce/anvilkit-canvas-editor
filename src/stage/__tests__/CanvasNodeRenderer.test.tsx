@@ -111,6 +111,7 @@ import {
 	CanvasToastContext,
 	type CanvasToastInput,
 } from "@/context/toast-context.js";
+import { CanvasSimplifiedEffectsContext } from "@/stage/isolation-render-context.js";
 import { createAiJobStore } from "@/stores/ai-job-store.js";
 import type { BrandKit } from "../../brand/brand-kit.js";
 import { resetFontStatusesForTests } from "../../text/font-status.js";
@@ -2084,6 +2085,38 @@ describe("effects → Konva shadow props (C-03)", () => {
 		expect(Array.isArray(props.filters)).toBe(true);
 		expect((props.filters as unknown[]).length).toBe(1);
 		expect(props.blurRadius).toBeGreaterThan(0);
+	});
+
+	it("temporarily removes blur and shadow work in simplified interaction mode", () => {
+		const rect = {
+			...createRect({ id: "r-simplified", bounds: { width: 10, height: 10 } }),
+			effects: [
+				{ type: "blur" as const, radius: 6 },
+				{
+					type: "drop-shadow" as const,
+					color: "#112233",
+					blur: 4,
+					offsetX: 2,
+					offsetY: 3,
+				},
+			],
+		};
+		const tree = (simplified: boolean) => (
+			<CanvasSimplifiedEffectsContext.Provider value={simplified}>
+				<CanvasNodeRenderer node={rect} />
+			</CanvasSimplifiedEffectsContext.Provider>
+		);
+		const view = render(tree(false));
+		const stub = callsOfType("Rect").at(-1)?.node;
+		expect(stub?.cache).toHaveBeenCalledTimes(1);
+
+		view.rerender(tree(true));
+		const props = callsOfType("Rect").at(-1)?.props as Record<string, unknown>;
+		expect(props.filters).toBeUndefined();
+		expect(props.blurRadius).toBeUndefined();
+		expect(props.shadowColor).toBeUndefined();
+		expect(props.sceneFunc).toBeUndefined();
+		expect(stub?.clearCache).toHaveBeenCalled();
 	});
 
 	it("rebuilds a blurred token-fill cache when its resolved brand paint changes", () => {

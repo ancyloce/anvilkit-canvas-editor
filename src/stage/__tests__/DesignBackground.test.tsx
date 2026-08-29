@@ -116,6 +116,12 @@ describe("DesignBackground (live stage page background, M0-04)", () => {
 		const resolvedDocumentStore = createResolvedDocumentStore({
 			sceneStore,
 			fieldPreviewStore,
+			schedulePreviewResolution(callback) {
+				callback();
+				return () => {
+					// Background assertions flush the preview frame synchronously.
+				};
+			},
 		});
 		const disconnect = resolvedDocumentStore.connect();
 		fieldPreviewStore.getState().setPagePreviews({ p1: patch });

@@ -116,9 +116,14 @@ export function useNodeBlur(
 		effects?: CanvasEffect[];
 	},
 	externalPaintState?: unknown,
+	disabled = false,
 ): Konva.ShapeConfig {
 	const effects = node.effects;
-	const blurRadius = useMemo(() => nodeBlurRadius(effects ?? []), [effects]);
+	const sourceBlurRadius = useMemo(
+		() => nodeBlurRadius(effects ?? []),
+		[effects],
+	);
+	const blurRadius = disabled ? 0 : sourceBlurRadius;
 	const padding = useMemo(() => {
 		if (blurRadius <= 0) return 0;
 		const shadows = (effects ?? []).filter(
@@ -133,8 +138,8 @@ export function useNodeBlur(
 		[blurRadius],
 	);
 	const cacheKey = useMemo(
-		() => localRenderingKey(node, externalPaintState),
-		[node, externalPaintState],
+		() => (disabled ? "disabled" : localRenderingKey(node, externalPaintState)),
+		[node, externalPaintState, disabled],
 	);
 
 	const shapeRef = useRef<Konva.Node | null>(null);
@@ -163,7 +168,11 @@ export function useNodeBlur(
 	// so a fresh `{}` per render would defeat that memo for every node in the
 	// document — the overwhelming majority of which take the no-blur branch.
 	return useMemo(() => {
-		if (blurRadius <= 0 || !filters) return NO_BLUR_PROPS;
+		if (sourceBlurRadius <= 0) return NO_BLUR_PROPS;
+		// Keep the composed ref while temporarily disabled so the layout effect
+		// can clear an existing filtered cache at gesture start. Dropping the ref
+		// here would detach `shapeRef` before that effect could reach the node.
+		if (disabled || blurRadius <= 0 || !filters) return { ref: setRef };
 		return {
 			filters,
 			// Konva's Blur is a stack blur over the CACHED bitmap's own pixels, so
@@ -176,7 +185,7 @@ export function useNodeBlur(
 			blurRadius: blurRadius * cachePixelRatio(),
 			ref: setRef,
 		};
-	}, [blurRadius, filters, setRef]);
+	}, [blurRadius, disabled, filters, setRef, sourceBlurRadius]);
 }
 
 /** Shared empty result, so the no-blur path never allocates (see above). */

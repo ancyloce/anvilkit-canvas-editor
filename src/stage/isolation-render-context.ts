@@ -14,5 +14,8 @@ export const IsolationRenderContext = createContext<ReadonlySet<string> | null>(
 	null,
 );
 
+/** Large live documents omit expensive effects only while a gesture is active. */
+export const CanvasSimplifiedEffectsContext = createContext(false);
+
 /** Exterior dim factor while isolated (FR-055 "dimmed"). */
 export const ISOLATION_DIM_OPACITY = 0.3;

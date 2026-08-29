@@ -96,6 +96,7 @@ import {
 	withFiniteGeometry,
 } from "./finite-geometry.js";
 import {
+	CanvasSimplifiedEffectsContext,
 	ISOLATION_DIM_OPACITY,
 	IsolationRenderContext,
 } from "./isolation-render-context.js";
@@ -328,6 +329,7 @@ function useShapeStyleProps(
 	node: ShapeStyleSource,
 	brandKit: BrandKit,
 ): Konva.ShapeConfig {
+	const simplifyEffects = use(CanvasSimplifiedEffectsContext);
 	const {
 		fill,
 		bounds,
@@ -344,14 +346,18 @@ function useShapeStyleProps(
 	// blur — and with it no cache, no filter and no ref override. Spread LAST so
 	// its composed ref wins over `commonProps`' registry-only one; the composition
 	// keeps the registry registration intact.
-	const blurProps = useNodeBlur(node, blurExternalPaintKey(node, brandKit));
+	const blurProps = useNodeBlur(
+		node,
+		blurExternalPaintKey(node, brandKit),
+		simplifyEffects,
+	);
 	const styleProps = useMemo(
 		() => ({
 			...fillProps(fill, bounds, brandKit),
 			// `strokeWidth` rides along because a spread dilation widens the
 			// node's OWN outline — the ring has to start from the stroke the
 			// shape already draws, not from zero.
-			...shadowProps({ effects, shadow, strokeWidth }),
+			...(simplifyEffects ? {} : shadowProps({ effects, shadow, strokeWidth })),
 			...strokeStyleProps({
 				stroke,
 				strokeWidth,
@@ -373,6 +379,7 @@ function useShapeStyleProps(
 			strokeDash,
 			strokeCap,
 			strokeJoin,
+			simplifyEffects,
 		],
 	);
 	return useMemo(

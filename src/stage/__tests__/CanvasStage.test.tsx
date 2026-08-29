@@ -1,6 +1,8 @@
-import { render } from "@testing-library/react";
-import { type ReactNode, StrictMode } from "react";
+import { act, render } from "@testing-library/react";
+import { type ReactNode, StrictMode, use } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { createInteractionPerformanceTracker } from "@/perf/interaction-performance.js";
+import { CanvasSimplifiedEffectsContext } from "@/stage/isolation-render-context.js";
 
 const destroyMock = vi.fn();
 const stageInstances: Array<{ destroy: () => void }> = [];
@@ -39,6 +41,11 @@ vi.mock("react-konva", () => {
 });
 
 import { CanvasStage } from "../CanvasStage.js";
+
+function SimplifiedEffectsProbe() {
+	const simplified = use(CanvasSimplifiedEffectsContext);
+	return <span data-testid="simplified-effects">{String(simplified)}</span>;
+}
 
 describe("CanvasStage", () => {
 	it("renders its children inside a Stage", () => {
@@ -122,6 +129,52 @@ describe("CanvasStage", () => {
 		);
 		expect(onReady).toHaveBeenCalledTimes(1);
 		expect(onReady.mock.calls[0]?.[0]).toMatchObject({ width: 100 });
+	});
+
+	it("reports stage-update and input-to-preview after the Konva commit", () => {
+		let now = 5;
+		const phases: string[] = [];
+		const tracker = createInteractionPerformanceTracker({
+			onSample: (sample) => phases.push(sample.phase),
+			now: () => now,
+		});
+		tracker.begin("property-scrub", 100);
+		now = 9;
+		render(
+			<CanvasStage width={100} height={100} interactionPerformance={tracker}>
+				<div />
+			</CanvasStage>,
+		);
+		expect(phases).toEqual(["stage-update", "input-to-preview"]);
+	});
+
+	it("simplifies effects only during active large-document interactions", () => {
+		const tracker = createInteractionPerformanceTracker({});
+		tracker.begin("drag", 1_000);
+		const { container } = render(
+			<CanvasStage width={100} height={100} interactionPerformance={tracker}>
+				<SimplifiedEffectsProbe />
+			</CanvasStage>,
+		);
+		const probe = container.querySelector('[data-testid="simplified-effects"]');
+		expect(probe?.textContent).toBe("true");
+
+		act(() => tracker.end("drag"));
+		expect(probe?.textContent).toBe("false");
+	});
+
+	it("retains full effects for standard documents during interaction", () => {
+		const tracker = createInteractionPerformanceTracker({});
+		tracker.begin("drag", 999);
+		const { container } = render(
+			<CanvasStage width={100} height={100} interactionPerformance={tracker}>
+				<SimplifiedEffectsProbe />
+			</CanvasStage>,
+		);
+		expect(
+			container.querySelector('[data-testid="simplified-effects"]')
+				?.textContent,
+		).toBe("false");
 	});
 });
 

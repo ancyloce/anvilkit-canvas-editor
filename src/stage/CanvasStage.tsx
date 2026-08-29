@@ -2,8 +2,13 @@
 
 import type Konva from "konva";
 import * as React from "react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 import { Stage } from "react-konva";
+import {
+	type CanvasInteractionPerformanceTracker,
+	useCanvasInteractionActive,
+} from "../perf/interaction-performance.js";
+import { CanvasSimplifiedEffectsContext } from "./isolation-render-context.js";
 // Registers every Konva shape class react-konva can name (K-13). Anchored HERE
 // because every Konva tree in this package is mounted inside this component —
 // the live stage and the offscreen rasterizer both go through it — so no
@@ -28,6 +33,7 @@ export interface CanvasStageProps {
 	 */
 	surfaceSize?: { readonly width: number; readonly height: number };
 	onReady?: (stage: Konva.Stage) => void;
+	interactionPerformance?: CanvasInteractionPerformanceTracker;
 	children: ReactNode;
 }
 
@@ -39,9 +45,23 @@ export function CanvasStage({
 	panY = 0,
 	surfaceSize,
 	onReady,
+	interactionPerformance,
 	children,
 }: CanvasStageProps): React.JSX.Element {
 	const stageRef = useRef<Konva.Stage | null>(null);
+	const interactionActive = useCanvasInteractionActive(interactionPerformance);
+	const interactionFrame = interactionPerformance?.current();
+	const simplifyEffects =
+		interactionActive &&
+		(interactionFrame?.nodeCountBucket === "1000-4999" ||
+			interactionFrame?.nodeCountBucket === "5000-plus");
+	const stageStartedAt = interactionPerformance?.now() ?? 0;
+	useLayoutEffect(() => {
+		interactionPerformance?.completeStageUpdate(
+			interactionFrame,
+			stageStartedAt,
+		);
+	}, [interactionFrame, interactionPerformance, stageStartedAt]);
 
 	useEffect(() => {
 		const stage = stageRef.current;
@@ -73,7 +93,9 @@ export function CanvasStage({
 			// memoized object so this never churns `_setAttr` (K-3 discipline).
 			akSurfaceSize={surfaceSize}
 		>
-			{children}
+			<CanvasSimplifiedEffectsContext value={simplifyEffects}>
+				{children}
+			</CanvasSimplifiedEffectsContext>
 		</Stage>
 	);
 }

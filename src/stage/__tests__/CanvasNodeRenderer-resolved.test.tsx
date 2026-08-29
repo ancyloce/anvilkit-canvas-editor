@@ -81,6 +81,12 @@ function mountWithStores(ir: CanvasIR, node: CanvasNode) {
 	const resolvedDocumentStore = createResolvedDocumentStore({
 		sceneStore,
 		fieldPreviewStore,
+		schedulePreviewResolution(callback) {
+			callback();
+			return () => {
+				// Renderer semantics are asserted after a synchronous test frame.
+			};
+		},
 	});
 	const disconnect = resolvedDocumentStore.connect();
 	const view = render(
